@@ -1,30 +1,19 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:polaris_music/main.dart';
+import 'package:polaris_music/core/utils/formatters.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('Formatters.duration', () {
+    test('formatea minutos y segundos', () {
+      expect(Formatters.duration(const Duration(seconds: 65)), '01:05');
+      expect(Formatters.duration(Duration.zero), '00:00');
+    });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
-
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    test('incluye horas cuando hace falta', () {
+      expect(
+        Formatters.duration(const Duration(hours: 1, minutes: 2, seconds: 3)),
+        '1:02:03',
+      );
+    });
   });
 }

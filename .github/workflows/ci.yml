@@ -40,6 +40,8 @@ jobs:
           channel: stable
           flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
+      - name: Install Rust toolchain (smtc_windows)
+        uses: dtolnay/rust-toolchain@stable
       - run: flutter pub get
       - run: flutter build windows --release
       - name: Package
