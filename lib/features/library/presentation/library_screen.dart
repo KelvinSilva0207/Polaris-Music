@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/track_tile.dart';
@@ -280,11 +281,7 @@ class _ScanSummaryBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-      ),
+      decoration: context.tokens.panelDecoration(radius: 12, elevated: false),
       child: Row(
         children: <Widget>[
           const Icon(Icons.check_circle_outline_rounded, size: 18),

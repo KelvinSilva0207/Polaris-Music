@@ -21,6 +21,7 @@ import '../../../features/player/domain/player_controller.dart';
 import '../../../features/player/presentation/player_providers.dart';
 import '../../../features/profiles_backup/domain/profiles_service.dart';
 import '../../../features/profiles_backup/presentation/profiles_providers.dart';
+import '../../../shared/widgets/polaris_surface.dart';
 import 'customization_screen.dart';
 
 /// Ajustes de Polaris Music: apariencia, audio, ventana, respaldos y más.
@@ -453,13 +454,8 @@ class _Section extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final PolarisTokens tokens = context.tokens;
-    return Container(
+    return PolarisSurface(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[

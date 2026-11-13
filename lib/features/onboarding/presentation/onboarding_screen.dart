@@ -111,9 +111,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: <Color>[
-              const Color(0xFF0B0710),
+              tokens.background,
               tokens.accent.withValues(alpha: 0.18),
-              const Color(0xFF0B0710),
+              tokens.background,
             ],
           ),
         ),
@@ -308,11 +308,7 @@ class _FeatureChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
-        borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
+      decoration: context.tokens.panelDecoration(radius: 30, elevated: false),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
@@ -487,10 +483,9 @@ class _LibraryPage extends StatelessWidget {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.04),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            decoration: context.tokens.panelDecoration(
+              radius: 20,
+              elevated: false,
             ),
             child: Column(
               children: <Widget>[

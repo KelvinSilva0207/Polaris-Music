@@ -42,23 +42,9 @@ class PolarisSurface extends StatelessWidget {
             filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
             child: Container(
               padding: padding,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: tokens.glassOpacity),
-                borderRadius: BorderRadius.circular(radius),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-                boxShadow: <BoxShadow>[
-                  if (glowColor != null)
-                    BoxShadow(
-                      color: glowColor!.withValues(alpha: 0.18),
-                      blurRadius: 40,
-                      spreadRadius: 2,
-                    ),
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.28),
-                    blurRadius: 24,
-                    offset: const Offset(0, 14),
-                  ),
-                ],
+              decoration: tokens.panelDecoration(
+                radius: radius,
+                glow: glowColor,
               ),
               child: child,
             ),
@@ -68,34 +54,14 @@ class PolarisSurface extends StatelessWidget {
       case CardStyle.neumorphic:
         return Container(
           padding: padding,
-          decoration: BoxDecoration(
-            color: tokens.surface,
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.035)),
-            boxShadow: <BoxShadow>[
-              BoxShadow(
-                color: tokens.neumorphicLight.withValues(alpha: 0.30),
-                blurRadius: 14,
-                offset: const Offset(-5, -5),
-              ),
-              BoxShadow(
-                color: tokens.neumorphicDark.withValues(alpha: 0.85),
-                blurRadius: 20,
-                offset: const Offset(7, 8),
-              ),
-            ],
-          ),
+          decoration: tokens.panelDecoration(radius: radius, glow: glowColor),
           child: child,
         );
 
       case CardStyle.flatMinimal:
         return Container(
           padding: padding,
-          decoration: BoxDecoration(
-            color: tokens.surface.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
-          ),
+          decoration: tokens.panelDecoration(radius: radius, glow: glowColor),
           child: child,
         );
     }

@@ -55,6 +55,89 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   Color get neumorphicDark =>
       Color.lerp(surface, Colors.black, 0.55) ?? surface;
 
+  /// Color base de un panel según el [cardStyle] activo.
+  ///
+  /// Las pantallas que no pueden usar el contenedor compartido (por ejemplo,
+  /// porque necesitan animar su decoración) consumen estos getters para que el
+  /// preset de tema también las afecte.
+  Color get panelColor => switch (cardStyle) {
+    CardStyle.glassmorphic => Colors.white.withValues(alpha: glassOpacity),
+    CardStyle.neumorphic => surface,
+    CardStyle.flatMinimal => surface.withValues(alpha: 0.94),
+  };
+
+  /// Color opaco para paneles flotantes que no pueden desenfocar el fondo
+  /// (por ejemplo, la isla dinámica animada). Mantiene la legibilidad.
+  Color get panelOverlay => switch (cardStyle) {
+    CardStyle.glassmorphic =>
+      Color.lerp(surface, Colors.white, 0.10) ?? surface,
+    CardStyle.neumorphic => surface,
+    CardStyle.flatMinimal => surface,
+  };
+
+  /// Borde de un panel según el [cardStyle] activo.
+  Color get panelBorder => switch (cardStyle) {
+    CardStyle.glassmorphic => Colors.white.withValues(alpha: 0.16),
+    CardStyle.neumorphic => Colors.white.withValues(alpha: 0.035),
+    CardStyle.flatMinimal => Colors.white.withValues(alpha: 0.07),
+  };
+
+  /// Sombras de un panel, opcionalmente con un resplandor del acento.
+  List<BoxShadow> panelShadows({Color? glow, double radius = 24}) {
+    switch (cardStyle) {
+      case CardStyle.glassmorphic:
+        return <BoxShadow>[
+          if (glow != null)
+            BoxShadow(
+              color: glow.withValues(alpha: 0.18),
+              blurRadius: 40,
+              spreadRadius: 2,
+            ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
+            blurRadius: radius,
+            offset: const Offset(0, 14),
+          ),
+        ];
+      case CardStyle.neumorphic:
+        return <BoxShadow>[
+          BoxShadow(
+            color: neumorphicLight.withValues(alpha: 0.30),
+            blurRadius: 14,
+            offset: const Offset(-5, -5),
+          ),
+          BoxShadow(
+            color: neumorphicDark.withValues(alpha: 0.85),
+            blurRadius: 20,
+            offset: const Offset(7, 8),
+          ),
+        ];
+      case CardStyle.flatMinimal:
+        return const <BoxShadow>[];
+    }
+  }
+
+  /// Decoración completa de un panel adaptada al estilo activo.
+  ///
+  /// [elevated] desactiva las sombras en paneles pequeños que viven dentro de
+  /// una lista o tarjeta y no deben flotar sobre el fondo.
+  BoxDecoration panelDecoration({
+    double? radius,
+    Color? glow,
+    Color? color,
+    Color? borderColor,
+    Gradient? gradient,
+    bool elevated = true,
+  }) {
+    return BoxDecoration(
+      color: gradient == null ? (color ?? panelColor) : null,
+      gradient: gradient,
+      borderRadius: BorderRadius.circular(radius ?? panelRadius),
+      border: Border.all(color: borderColor ?? panelBorder),
+      boxShadow: elevated ? panelShadows(glow: glow) : null,
+    );
+  }
+
   static const PolarisTokens fallback = PolarisTokens(
     accent: Color(0xFF8B5CF6),
   );

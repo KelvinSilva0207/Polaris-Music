@@ -41,18 +41,12 @@ class DynamicIslandOverlay extends ConsumerWidget {
             curve: Curves.easeOutCubic,
             width: island.expanded ? 420 : 320,
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1B1428).withValues(alpha: 0.96),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.45),
-                  blurRadius: 30,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
+            decoration: tokens
+                .panelDecoration(
+                  radius: tokens.islandRadius,
+                  glow: tokens.accent,
+                )
+                .copyWith(color: tokens.panelOverlay.withValues(alpha: 0.96)),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polaris_music/core/theme/app_theme_config.dart';
+import 'package:polaris_music/core/theme/theme_tokens.dart';
 
 void main() {
   group('AppThemeConfig presets', () {
@@ -41,6 +42,65 @@ void main() {
         AppThemeConfig.fromPreset(AppThemePreset.custom),
         AppThemeConfig.defaults,
       );
+    });
+  });
+
+  group('Tokens de panel', () {
+    const Color surface = Color(0xFF171126);
+
+    test('cada cardStyle define su propia superficie de panel', () {
+      const PolarisTokens glass = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        cardStyle: CardStyle.glassmorphic,
+        surface: surface,
+      );
+      const PolarisTokens neumorphic = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        cardStyle: CardStyle.neumorphic,
+        surface: surface,
+      );
+      const PolarisTokens flat = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        cardStyle: CardStyle.flatMinimal,
+        surface: surface,
+      );
+
+      expect(glass.panelColor, isNot(surface));
+      expect(neumorphic.panelColor, surface);
+      expect(flat.panelColor, surface.withValues(alpha: 0.94));
+    });
+
+    test('las sombras siguen el estilo de tarjeta', () {
+      const PolarisTokens glass = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        cardStyle: CardStyle.glassmorphic,
+      );
+      const PolarisTokens neumorphic = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        cardStyle: CardStyle.neumorphic,
+      );
+      const PolarisTokens flat = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        cardStyle: CardStyle.flatMinimal,
+      );
+
+      expect(glass.panelShadows(), hasLength(1));
+      expect(glass.panelShadows(glow: glass.accent), hasLength(2));
+      expect(neumorphic.panelShadows(), hasLength(2));
+      expect(flat.panelShadows(), isEmpty);
+    });
+
+    test('panelDecoration respeta radio y borde del estilo', () {
+      const PolarisTokens tokens = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        cardStyle: CardStyle.glassmorphic,
+      );
+
+      final BoxDecoration decoration = tokens.panelDecoration(radius: 12);
+
+      expect(decoration.color, tokens.panelColor);
+      expect(decoration.border, isNotNull);
+      expect(decoration.borderRadius, BorderRadius.circular(12));
     });
   });
 

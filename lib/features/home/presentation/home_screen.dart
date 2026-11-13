@@ -194,11 +194,7 @@ class _StatChip extends StatelessWidget {
     return Container(
       width: 190,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-      ),
+      decoration: tokens.panelDecoration(radius: 16, elevated: false),
       child: Row(
         children: <Widget>[
           Icon(icon, color: tokens.accent, size: 22),

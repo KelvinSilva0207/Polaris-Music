@@ -55,10 +55,9 @@ class EqualizerScreen extends ConsumerWidget {
         const SizedBox(height: 20),
         Container(
           padding: const EdgeInsets.fromLTRB(12, 20, 12, 12),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+          decoration: context.tokens.panelDecoration(
+            radius: 20,
+            elevated: false,
           ),
           child: Column(
             children: <Widget>[

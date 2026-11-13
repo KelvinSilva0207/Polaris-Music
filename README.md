@@ -56,6 +56,9 @@ del usuario.
   planas, anillo de progreso interactivo, transiciones `AnimatedSwitcher` y fondo con orbes.
 - `CustomizationScreen` con vista previa en vivo, selectores, perfiles personalizados y
   exportación/importación `.json`.
+- Los tokens de panel (`panelColor`, `panelBorder`, `panelShadows`, `panelDecoration`) hacen que
+  el estilo de tarjeta activo afecte a mini reproductor, isla dinámica, ajustes, inicio,
+  biblioteca, ecualizador, estadísticas y bienvenida, no solo a Now Playing.
 - DSP real del ecualizador: 10 bandas + preamplificador enviados a libmpv como filtros `lavfi`.
 - Persistencia en Drift (`theme.config`, `theme.profiles`, compatibilidad con `theme.accent`).
 
@@ -82,7 +85,7 @@ del usuario.
 - [x] Motor de temas con presets y perfiles
 - [ ] Gestos avanzados estilo Poweramp (pista, volumen, brillo)
 - [x] Isla dinámica
-- [x] Normalización de volumen (ReplayGain persistido; DSP pendiente)
+- [x] Normalización de volumen (ReplayGain aplicado sobre el volumen efectivo)
 - [x] Notificación y controles en pantalla de bloqueo
 
 ### 4. Gestión y reproducción

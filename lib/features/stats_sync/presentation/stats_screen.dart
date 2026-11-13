@@ -135,11 +135,12 @@ class _WrappedCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: <Color>[
             tokens.accent.withValues(alpha: 0.34),
-            const Color(0xFF3B1D5E).withValues(alpha: 0.55),
-            const Color(0xFF151020),
+            (Color.lerp(tokens.accent, tokens.surface, 0.62) ?? tokens.surface)
+                .withValues(alpha: 0.55),
+            tokens.surface,
           ],
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: tokens.panelBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,11 +271,7 @@ class _DailyChart extends StatelessWidget {
 
         return Container(
           padding: const EdgeInsets.fromLTRB(14, 16, 14, 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
-          ),
+          decoration: tokens.panelDecoration(radius: 16, elevated: false),
           child: Column(
             children: <Widget>[
               SizedBox(
