@@ -45,7 +45,7 @@ dependencies:
   path_provider: ^2.1.6
   path: ^1.9.1
   file_picker: ^13.3.3
-  permission_handler: ^13.0.2
+  permission_handler: ^12.0.3
   window_manager: ^0.6.0
   dio: ^5.11.1
   audio_metadata_reader: ^1.8.1
