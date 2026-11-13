@@ -109,7 +109,11 @@ del usuario.
 - **Metadatos:** la edición se guarda en Drift; escribir las etiquetas de vuelta al archivo queda
   para una fase posterior.
 - **Android local:** sin Android SDK/JDK en el equipo de desarrollo, los APK se generan en CI.
+- **`permission_handler`:** fijado en `^12.0.3`; la rama 13 usa un plugin Android que exige
+  `compileSdk 37`, mientras que Flutter 3.47.6 compila contra 36.
 - **`smtc_windows`:** requiere Rust en Windows; el workflow instala el toolchain.
+- **CI Linux:** el job de tests instala `libgtk-3-dev`, `libx11-dev` y `libxi-dev` porque los
+  *native assets* de `cnativeapi` los necesitan para compilar.
 
 ---
 
