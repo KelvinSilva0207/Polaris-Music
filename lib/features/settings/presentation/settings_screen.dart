@@ -975,11 +975,15 @@ class _UpdateSection extends ConsumerStatefulWidget {
 class _UpdateSectionState extends ConsumerState<_UpdateSection> {
   double? _progress;
   String? _downloaded;
+  bool _installing = false;
 
   @override
   Widget build(BuildContext context) {
     final AsyncValue<String> current = ref.watch(currentVersionProvider);
     final AsyncValue<UpdateInfo?> latest = ref.watch(latestUpdateProvider);
+    final bool canInstallHere = ref
+        .watch(updateServiceProvider)
+        .canInstallSilently;
 
     return _Section(
       title: 'Actualizaciones',
@@ -1076,14 +1080,40 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                     'Descargado en: $_downloaded',
                     style: const TextStyle(fontSize: 11),
                   ),
-                  const SizedBox(height: 6),
-                  OutlinedButton.icon(
-                    onPressed: () => ref
-                        .read(updateServiceProvider)
-                        .openDownloadedFile(_downloaded!),
-                    icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                    label: const Text('Abrir instalador'),
-                  ),
+                  if (canInstallHere &&
+                      _downloaded!.toLowerCase().endsWith('.exe')) ...<Widget>[
+                    const SizedBox(height: 10),
+                    FilledButton.icon(
+                      onPressed: _installing ? null : () => _install(info),
+                      icon: _installing
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.restart_alt_rounded, size: 18),
+                      label: Text(
+                        _installing
+                            ? 'Iniciando instalador…'
+                            : 'Instalar ahora',
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'La app se cerrará para instalar la nueva versión y se '
+                      'volverá a abrir automáticamente.',
+                      style: TextStyle(fontSize: 11, color: Colors.white54),
+                    ),
+                  ] else ...<Widget>[
+                    const SizedBox(height: 6),
+                    OutlinedButton.icon(
+                      onPressed: () => ref
+                          .read(updateServiceProvider)
+                          .openDownloadedFile(_downloaded!),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                      label: const Text('Abrir instalador'),
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 8),
                 Wrap(
@@ -1092,7 +1122,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                   children: <Widget>[
                     if (info.downloadUrl != null)
                       FilledButton.icon(
-                        onPressed: _progress != null
+                        onPressed: _progress != null || _installing
                             ? null
                             : () => _download(info),
                         icon: const Icon(Icons.download_rounded, size: 18),
@@ -1159,5 +1189,56 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
         const SnackBar(content: Text('La descarga no se pudo completar')),
       );
     }
+  }
+
+  Future<void> _install(UpdateInfo info) async {
+    final String? path = _downloaded;
+    if (path == null || _installing) return;
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Instalar actualización'),
+        content: Text(
+          'Polaris Music se cerrará para instalar la versión '
+          '${info.latestVersion}.\n\n'
+          'Al terminar, la app se abrirá automáticamente con la nueva '
+          'versión. ¿Quieres continuar?',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Instalar y reiniciar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _installing = true);
+    final bool started = await ref
+        .read(updateServiceProvider)
+        .installDownloadedUpdate(path);
+    if (!mounted) return;
+
+    if (!started) {
+      setState(() => _installing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo iniciar el instalador. Inténtalo de nuevo.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    // Da tiempo al instalador a arrancar antes de liberar el ejecutable.
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    exit(0);
   }
 }

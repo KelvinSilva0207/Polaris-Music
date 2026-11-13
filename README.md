@@ -19,7 +19,7 @@ del usuario.
 | Biblioteca | Drift + SQLite, escáner de carpetas | ✅ Fase 1 |
 | Sesión de medios | `audio_service` (Android) / `smtc_windows` (Windows) | ✅ Fase 1 |
 | Temas dinámicos | `AppThemeConfig` + tokens + presets | ✅ Fase 2 |
-| CI/CD | GitHub Actions → `.exe` + `.apk` | ✅ pipeline definido |
+| CI/CD | GitHub Actions → instalador `.exe` + `.apk` | ✅ release automática |
 
 > Regla del proyecto: ninguna decisión de motor se cierra sin una prueba real de formato,
 > gapless, EQ y consumo en segundo plano.
@@ -126,6 +126,61 @@ flutter analyze
 flutter test
 ```
 
+## Instalador de Windows
+
+La app se distribuye con un instalador de **Inno Setup 6** con el mismo lenguaje visual
+(panel oscuro, logo, tipografía y textos en español). El resultado es
+`Polaris-Music-Setup-<versión>.exe`, publicado automáticamente en cada release de GitHub.
+
+### Instalar
+
+1. Descarga el instalador desde [Releases](https://github.com/KelvinSilva0207/Polaris-Music/releases).
+2. Ejecútalo. Por defecto se instala **solo para el usuario actual**
+   (`%LOCALAPPDATA%\Programs\Polaris Music`), sin pedir UAC.
+3. Si eres administrador, el asistente ofrece instalar para **todos los usuarios**
+   (`C:\Program Files\Polaris Music`). También puede forzarse con `/ALLUSERS`.
+4. Se crean accesos directos en el menú Inicio y, opcionalmente, en el escritorio.
+
+La desinstalación se hace desde **Configuración → Aplicaciones → Polaris Music**.
+Los datos de usuario (biblioteca, temas y respaldos) se conservan.
+
+### Compilar el instalador
+
+Requisitos: Flutter con soporte Windows e [Inno Setup 6](https://jrsoftware.org/isinfo.php).
+
+```powershell
+winget install --id JRSoftware.InnoSetup -e
+
+# Compila la app y el instalador
+powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1
+
+# Reutiliza el build existente
+powershell -ExecutionPolicy Bypass -File installer\build_installer.ps1 -SkipBuild
+```
+
+La versión se lee de `pubspec.yaml`; `installer/Output/` está ignorado por Git.
+El CI instala Inno Setup con Chocolatey, compila el instalador en cada push y lo adjunta
+a la release cuando se publica un tag `v*`.
+
+### Autoactualización desde la app
+
+`UpdateService` consulta `releases/latest`, prioriza el asset `Polaris-Music-Setup-*.exe`
+y lo descarga en la carpeta de datos de la app. En **Ajustes → Actualizaciones** aparece
+**Instalar ahora**:
+
+1. La app confirma y ejecuta el instalador con
+   `/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG /AUTOUPDATE`.
+2. Se cierra para liberar el ejecutable.
+3. Inno Setup instala la nueva versión y vuelve a abrir Polaris Music al terminar.
+
+En una instalación para todos los usuarios, la actualización solicita UAC una vez.
+Para que el flujo silencioso funcione sin interrupciones, la instalación recomendada es
+la de usuario actual.
+
+> Nota: el instalador no está firmado con un certificado de code signing, por lo que
+> Windows SmartScreen puede mostrar una advertencia la primera vez. Se puede firmar en CI
+> añadiendo un certificado y configurando `SignTool` en Inno Setup.
+
 ## Notas del entorno local
 
 - Flutter 3.47.6 stable, Visual Studio Build Tools 2022 y Rust → build de Windows OK.
@@ -140,4 +195,5 @@ lib/
   core/           # base de datos, servicios, tema, providers y utilidades
   features/       # player, equalizer, library, lyrics, dynamic_island, ...
   shared/         # widgets reutilizables (artwork, superficies, estados vacíos)
+installer/        # Inno Setup, imágenes del asistente y script de compilación
 ```

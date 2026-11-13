@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.polaris" "\0"
-            VALUE "FileDescription", "polaris_music" "\0"
+            VALUE "CompanyName", "Kelvin Silva" "\0"
+            VALUE "FileDescription", "Polaris Music" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "polaris_music" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.polaris. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Kelvin Silva. Todos los derechos reservados." "\0"
             VALUE "OriginalFilename", "polaris_music.exe" "\0"
-            VALUE "ProductName", "polaris_music" "\0"
+            VALUE "ProductName", "Polaris Music" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

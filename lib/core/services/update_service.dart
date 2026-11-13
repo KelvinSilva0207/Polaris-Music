@@ -15,10 +15,10 @@ import '../utils/semver.dart';
 
 /// Comprobación de actualizaciones contra las releases de GitHub.
 ///
-/// Fase 1: consulta la última release, compara versiones y descarga el binario
-/// a la carpeta de descargas de la app. La instalación desatendida queda para
-/// la fase de empaquetado (MSIX / APK), por lo que aquí solo se abre el archivo
-/// o la página de la release.
+/// Consulta la última release, compara versiones y descarga el binario a la
+/// carpeta de descargas de la app. En Windows el instalador de Inno Setup se
+/// puede ejecutar en modo desatendido y la app se reinicia al terminar; en el
+/// resto de plataformas se abre el archivo o la página de la release.
 class UpdateService {
   UpdateService({Dio? dio}) : _dio = dio ?? Dio();
 
@@ -115,6 +115,10 @@ class UpdateService {
 
   /// Prefiere el instalador de la plataforma actual; si no existe, cualquier
   /// archivo descargable de la release.
+  ///
+  /// En Windows se prioriza el instalador (`Polaris-Music-Setup-*.exe`) sobre
+  /// otros `.exe` o el ZIP portable, para que el botón "Instalar ahora" reciba
+  /// siempre el paquete correcto.
   Map<String, dynamic>? _chooseAsset(dynamic rawAssets) {
     if (rawAssets is! List) return null;
     final List<Map<String, dynamic>> assets = rawAssets
@@ -123,6 +127,10 @@ class UpdateService {
           (Map<String, dynamic> a) =>
               (a['browser_download_url'] as String?) != null,
         )
+        .where((Map<String, dynamic> a) {
+          final String name = (a['name'] as String? ?? '').toLowerCase();
+          return !_ignoredAssetExtensions.any(name.endsWith);
+        })
         .toList(growable: false);
     if (assets.isEmpty) return null;
 
@@ -137,14 +145,42 @@ class UpdateService {
       preferredExtensions = <String>[];
     }
 
-    for (final String ext in preferredExtensions) {
-      for (final Map<String, dynamic> asset in assets) {
-        final String name = (asset['name'] as String? ?? '').toLowerCase();
-        if (name.endsWith(ext)) return asset;
+    int score(Map<String, dynamic> asset) {
+      final String name = (asset['name'] as String? ?? '').toLowerCase();
+      int value = 0;
+      for (int i = 0; i < preferredExtensions.length; i++) {
+        if (name.endsWith(preferredExtensions[i])) {
+          value += (preferredExtensions.length - i) * 10;
+          break;
+        }
       }
+      if (name.contains('setup') || name.contains('installer')) {
+        value += 6;
+      }
+      if (name.contains('polaris')) {
+        value += 2;
+      }
+      return value;
     }
-    return assets.first;
+
+    final List<Map<String, dynamic>> sorted =
+        List<Map<String, dynamic>>.of(assets)
+          ..sort((Map<String, dynamic> a, Map<String, dynamic> b) {
+            return score(b).compareTo(score(a));
+          });
+    return sorted.first;
   }
+
+  static const List<String> _ignoredAssetExtensions = <String>[
+    '.sha256',
+    '.sha512',
+    '.sig',
+    '.txt',
+    '.json',
+    '.yml',
+    '.yaml',
+    '.blockmap',
+  ];
 
   /// Descarga el binario de la release. Devuelve la ruta local, o `null`.
   Future<String?> download(
@@ -186,6 +222,78 @@ class UpdateService {
       AppLog.w(_tag, 'Error inesperado al descargar', error, stack);
       return null;
     }
+  }
+
+  /// `true` si la actualización puede instalarse sin salir de la app.
+  bool get canInstallSilently => !kIsWeb && Platform.isWindows;
+
+  /// Ejecuta el instalador descargado en modo desatendido.
+  ///
+  /// La app debe cerrarse justo después de que este método devuelva `true`:
+  /// Inno Setup espera a que se libere el ejecutable, instala la nueva versión
+  /// y vuelve a abrir Polaris Music al terminar (`/AUTOUPDATE`).
+  Future<bool> installDownloadedUpdate(String path) async {
+    if (!canInstallSilently) return false;
+
+    try {
+      final File installer = File(path);
+      if (!await installer.exists()) {
+        AppLog.w(_tag, 'El instalador ya no existe en $path');
+        return false;
+      }
+
+      final List<String> arguments = <String>[
+        '/SILENT',
+        '/SUPPRESSMSGBOXES',
+        '/NORESTART',
+        '/CLOSEAPPLICATIONS',
+        '/LOG',
+        '/AUTOUPDATE',
+        _installScopeArgument(),
+      ];
+
+      final Process process = await Process.start(
+        installer.path,
+        arguments,
+        mode: ProcessStartMode.detached,
+      );
+      AppLog.i(
+        _tag,
+        'Instalador lanzado (pid ${process.pid}) con ${arguments.join(' ')}',
+      );
+      return true;
+    } catch (error, stack) {
+      AppLog.w(_tag, 'No se pudo lanzar el instalador', error, stack);
+      return false;
+    }
+  }
+
+  /// Elige el ámbito de instalación para que una actualización no duplique la
+  /// app: `Program Files` → todos los usuarios; cualquier otra ruta → usuario
+  /// actual (sin UAC).
+  String _installScopeArgument() {
+    try {
+      final String executable = Platform.resolvedExecutable.toLowerCase();
+      final Iterable<String> roots = <String?>[
+        Platform.environment['ProgramFiles'],
+        Platform.environment['ProgramFiles(x86)'],
+        Platform.environment['ProgramW6432'],
+      ].whereType<String>();
+      for (final String root in roots) {
+        final String normalized = root.toLowerCase().trimRight();
+        if (normalized.isNotEmpty && executable.startsWith(normalized)) {
+          return '/ALLUSERS';
+        }
+      }
+    } catch (error, stack) {
+      AppLog.w(
+        _tag,
+        'No se pudo detectar el ámbito de instalación',
+        error,
+        stack,
+      );
+    }
+    return '/CURRENTUSER';
   }
 
   Future<bool> openReleasePage(UpdateInfo info) => _open(

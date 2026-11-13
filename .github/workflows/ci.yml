@@ -48,13 +48,23 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
       - run: flutter pub get
       - run: flutter build windows --release
-      - name: Package
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build Windows installer
+        shell: pwsh
+        run: .\installer\build_installer.ps1 -SkipBuild
+      - name: Package portable build
         shell: pwsh
         run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath polaris-music-windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
           name: polaris-music-windows-x64
           path: polaris-music-windows-x64.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: polaris-music-windows-installer
+          path: installer/Output/Polaris-Music-Setup-*.exe
           if-no-files-found: error
 
   build-android:
@@ -92,6 +102,7 @@ jobs:
       - name: Collect files
         run: |
           mkdir -p out
+          cp dist/polaris-music-windows-installer/Polaris-Music-Setup-*.exe out/
           cp dist/polaris-music-windows-x64/polaris-music-windows-x64.zip out/
           cp dist/polaris-music-android/app-release.apk out/polaris-music-android.apk
       - uses: softprops/action-gh-release@v2
