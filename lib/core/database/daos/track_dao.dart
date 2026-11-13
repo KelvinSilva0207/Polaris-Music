@@ -127,10 +127,10 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
         TracksCompanion(isFavorite: Value(value)),
       );
 
-  /// Edición de metadatos desde la app (Fase 1: solo Drift).
+  /// Edición de metadatos desde la app (solo Drift).
   ///
-  /// Escribir los tags en el archivo original queda para Fase 2; aquí no se
-  /// toca el audio, solo la proyección local.
+  /// Escribir los tags en el archivo original queda para una fase posterior;
+  /// aquí no se toca el audio, solo la proyección local.
   Future<void> updateMetadata(
     int id, {
     String? title,

@@ -56,6 +56,7 @@ del usuario.
   planas, anillo de progreso interactivo, transiciones `AnimatedSwitcher` y fondo con orbes.
 - `CustomizationScreen` con vista previa en vivo, selectores, perfiles personalizados y
   exportación/importación `.json`.
+- DSP real del ecualizador: 10 bandas + preamplificador enviados a libmpv como filtros `lavfi`.
 - Persistencia en Drift (`theme.config`, `theme.profiles`, compatibilidad con `theme.accent`).
 
 ---
@@ -74,7 +75,7 @@ del usuario.
 - [x] Modo mini / ocultación lateral estilo AIMP
 - [x] Control de ventana (always on top, etc.)
 - [x] Isla dinámica de Windows
-- [ ] Ecualización DSP real estilo FXSound (la UI y persistencia ya existen)
+- [x] Ecualización DSP real de 10 bandas mediante filtros de libmpv
 
 ### 3. Móvil e interfaz
 - [x] Glassmorphism + fondo dinámico según carátula
@@ -97,8 +98,9 @@ del usuario.
 
 ## Limitaciones conocidas
 
-- **Ecualizador:** `media_kit`/libmpv no expone los filtros desde Dart; en esta etapa se guardan
-  presets y se muestra la UI, pero el DSP real queda pendiente.
+- **Ecualizador:** las 10 bandas y el preamplificador se aplican con filtros `lavfi` de libmpv
+  (`equalizer` + `volume`) en Windows y Android. En plataformas sin libmpv nativo la UI avisa y
+  solo se guardan los presets.
 - **Crossfade:** el ajuste se persiste, pero el fundido requiere dos decks simultáneos y aún no
   se implementa.
 - **Metadatos:** la edición se guarda en Drift; escribir las etiquetas de vuelta al archivo queda

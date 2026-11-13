@@ -151,7 +151,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               contentPadding: EdgeInsets.zero,
               title: const Text('Crossfade entre pistas'),
               subtitle: const Text(
-                'Fase 1 guarda el ajuste; el fundido real llega en Fase 2',
+                'El fundido real requiere dos motores simultáneos; pendiente',
               ),
               value: player.crossfadeEnabled,
               onChanged: (bool value) => ref
@@ -429,8 +429,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(height: 10),
         const Text(
-          'Fase 1: los ajustes de DSP (ecualizador y crossfade) se guardan, '
-          'pero su procesamiento real se implementará en la Fase 2.',
+          'El ecualizador de 10 bandas aplica filtros reales mediante libmpv en '
+          'Windows y Android. El crossfade sigue pendiente porque requiere dos '
+          'motores reproduciendo a la vez.',
           style: TextStyle(fontSize: 12, color: Colors.white60),
         ),
       ],

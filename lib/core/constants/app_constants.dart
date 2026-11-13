@@ -81,6 +81,8 @@ class AppConstants {
   static const String keySleepTimerDefault = 'player.sleep_timer_min';
   static const String keyEqEnabled = 'eq.enabled';
   static const String keyEqPreset = 'eq.preset';
+  static const String keyEqCustomBands = 'eq.custom_bands';
+  static const String keyEqCustomPreamp = 'eq.custom_preamp';
   static const String keyAlwaysOnTop = 'window.always_on_top';
   static const String keyMiniMode = 'window.mini_mode';
   static const String keyTrayEnabled = 'window.tray_enabled';

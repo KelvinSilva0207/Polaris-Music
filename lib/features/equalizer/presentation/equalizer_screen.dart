@@ -9,9 +9,9 @@ import 'equalizer_providers.dart';
 
 /// Ecualizador de 10 bandas + preamplificador.
 ///
-/// Fase 1: la interfaz, los presets y la persistencia están completos. El DSP
-/// real no se aplica todavía porque `media_kit` no expone filtros de audio; el
-/// aviso superior lo deja claro y no se simula ningún efecto.
+/// Los ajustes se aplican al audio mediante los filtros `lavfi` de libmpv
+/// (Windows y Android). En plataformas sin DSP la pantalla lo indica y los
+/// valores se siguen guardando como preset.
 class EqualizerScreen extends ConsumerWidget {
   const EqualizerScreen({super.key});
 
@@ -48,9 +48,9 @@ class EqualizerScreen extends ConsumerWidget {
             Switch(value: state.enabled, onChanged: controller.setEnabled),
           ],
         ),
-        const SizedBox(height: 16),
-        if (!backend) const _DspNotice(),
-        const SizedBox(height: 8),
+        const SizedBox(height: 14),
+        if (backend) _DspStatus(enabled: state.enabled) else const _DspNotice(),
+        const SizedBox(height: 10),
         _PresetSelector(state: state, controller: controller),
         const SizedBox(height: 20),
         Container(
@@ -163,6 +163,47 @@ class EqualizerScreen extends ConsumerWidget {
   }
 }
 
+class _DspStatus extends StatelessWidget {
+  const _DspStatus({required this.enabled});
+
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = context.tokens.accent;
+    final Color color = enabled ? accent : Colors.white54;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            enabled
+                ? Icons.graphic_eq_rounded
+                : Icons.power_settings_new_rounded,
+            size: 18,
+            color: color,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              enabled
+                  ? 'DSP activo: 10 bandas aplicadas al audio mediante libmpv.'
+                  : 'DSP en espera. Activa el interruptor para escuchar el '
+                        'ecualizador.',
+              style: const TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DspNotice extends StatelessWidget {
   const _DspNotice();
 
@@ -184,9 +225,8 @@ class _DspNotice extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Fase 1: los ajustes se guardan y se dibujan, pero el DSP todavía '
-              'no se aplica al audio porque media_kit no expone filtros. El '
-              'backend real llegará en la Fase 2.',
+              'Esta plataforma no permite aplicar filtros de audio. Los ajustes '
+              'se guardan como preset, pero no modifican la reproducción.',
               style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
           ),

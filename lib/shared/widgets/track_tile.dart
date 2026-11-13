@@ -187,10 +187,10 @@ class TrackTile extends ConsumerWidget {
   }
 }
 
-/// Editor de metadatos de Fase 1.
+/// Editor de metadatos local.
 ///
-/// Solo actualiza la base de datos local; la escritura de tags en el archivo
-/// original se hará en Fase 2 (documentado en README).
+/// Actualiza la base de datos de Polaris; la escritura de tags en el archivo
+/// original queda para una fase posterior (documentado en README).
 Future<void> showMetadataEditor(
   BuildContext context,
   WidgetRef ref,
@@ -287,8 +287,9 @@ Future<void> showMetadataEditor(
               ),
               const SizedBox(height: 14),
               Text(
-                'Fase 1: los cambios se guardan en la base de datos de Polaris. '
-                'La escritura de etiquetas en el archivo llegará en la Fase 2.',
+                'Los cambios se guardan en la base de datos de Polaris. La '
+                'escritura de etiquetas en el archivo queda para una fase '
+                'posterior.',
                 style: Theme.of(context).textTheme.bodySmall
                     ?.copyWith(color: Colors.white54),
               ),

@@ -17,8 +17,8 @@ import '../utils/replay_gain.dart';
 /// - Repetición y aleatorio: delegados a mpv (`PlaylistMode` / `shuffle`).
 /// - ReplayGain: se aplica sobre el volumen efectivo (no altera el volumen
 ///   elegido por el usuario).
-/// - Crossfade: requiere dos decks simultáneos; se expone el ajuste y se
-///   implementará en Fase 2 (ver README).
+/// - Crossfade: requiere dos decks simultáneos; se expone el ajuste y queda
+///   pendiente de implementación (ver README).
 class AudioEngineService {
   AudioEngineService({Player? player}) : _player = player ?? Player();
 
@@ -42,8 +42,27 @@ class AudioEngineService {
   Stream<bool> get playingStream => _player.stream.playing;
   Stream<String> get errorStream => _player.stream.error;
 
-  /// Acceso de bajo nivel para DSP/ecualizador (Fase 2).
+  /// Acceso de bajo nivel para DSP/ecualizador.
   Player get player => _player;
+
+  /// `true` cuando libmpv está disponible y acepta filtros de audio.
+  ///
+  /// En Windows y Android `media_kit` usa [NativePlayer]; en web no hay DSP.
+  bool get dspAvailable => _player.platform is NativePlayer;
+
+  /// Aplica la cadena de filtros de audio (`af`) o la limpia con `''`.
+  ///
+  /// La cadena la construye `EqualizerDsp`; aquí solo se habla con libmpv.
+  Future<void> setAudioFilter(String filter) async {
+    final PlatformPlayer? platform = _player.platform;
+    if (platform is! NativePlayer) return;
+    try {
+      await platform.setProperty('af', filter);
+      AppLog.i(_tag, filter.isEmpty ? 'DSP desactivado' : 'DSP: $filter');
+    } catch (error, stack) {
+      AppLog.w(_tag, 'No se pudo aplicar el filtro de audio', error, stack);
+    }
+  }
 
   Future<void> initialize() async {
     if (_initialized) return;

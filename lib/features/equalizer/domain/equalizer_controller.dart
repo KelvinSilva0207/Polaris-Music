@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/models/equalizer_preset.dart';
+import '../../../core/services/audio_engine_service.dart';
 import '../../../core/services/settings_service.dart';
+import '../../../core/utils/equalizer_dsp.dart';
 
 /// Estado del ecualizador de 10 bandas.
 @immutable
@@ -44,20 +48,20 @@ class EqualizerState {
 
 /// Controlador del ecualizador.
 ///
-/// **Limitación conocida de Fase 1:** `media_kit` no expone filtros de audio
-/// (solo volumen, velocidad y tono), así que los ajustes se guardan y se
-/// dibujan, pero el DSP real todavía no se aplica. No se simula: la UI muestra
-/// un aviso claro y el README documenta la brecha. El backend (mpv
-/// `af=equalizer` o un procesador nativo) se conectará en Fase 2 sin cambiar
-/// este controlador.
+/// Los ajustes se persisten en Drift y, además, se envían a libmpv como una
+/// cadena de filtros `lavfi` (preamp + 10 bandas). En plataformas sin libmpv
+/// nativo el DSP se omite y la UI lo indica.
 class EqualizerController extends StateNotifier<EqualizerState> {
-  EqualizerController(this._dao, this._settings)
+  EqualizerController(this._dao, this._settings, this._engine)
     : super(const EqualizerState());
 
   final EqDao _dao;
   final SettingsService _settings;
+  final AudioEngineService _engine;
 
-  static const bool backendAvailable = false;
+  Timer? _dspDebounce;
+
+  bool get backendAvailable => _engine.dspAvailable;
 
   Future<void> load() async {
     final List<EqPresetRow> rows = await _dao.getAll();
@@ -68,10 +72,20 @@ class EqualizerController extends StateNotifier<EqualizerState> {
       AppConstants.keyEqPreset,
       'Flat',
     );
-    final EqualizerPreset selected = presets.firstWhere(
-      (EqualizerPreset p) => p.name == presetName,
-      orElse: () => presets.isEmpty ? EqualizerPreset.flat() : presets.first,
-    );
+    final bool custom = presetName == 'Personalizado';
+    final EqualizerPreset selected = custom
+        ? EqualizerPreset(
+            name: 'Personalizado',
+            gains: _parseBands(
+              _settings.stringOr(AppConstants.keyEqCustomBands, ''),
+            ),
+            preampDb: _settings.doubleOr(AppConstants.keyEqCustomPreamp),
+          )
+        : presets.firstWhere(
+            (EqualizerPreset p) => p.name == presetName,
+            orElse: () =>
+                presets.isEmpty ? EqualizerPreset.flat() : presets.first,
+          );
 
     state = state.copyWith(
       enabled: _settings.boolOr(AppConstants.keyEqEnabled, fallback: false),
@@ -81,11 +95,13 @@ class EqualizerController extends StateNotifier<EqualizerState> {
       selectedPreset: selected.name,
       loaded: true,
     );
+    await _applyDsp();
   }
 
   Future<void> setEnabled(bool value) async {
     state = state.copyWith(enabled: value);
     await _settings.setBool(AppConstants.keyEqEnabled, value);
+    await _applyDsp();
   }
 
   Future<void> toggleEnabled() => setEnabled(!state.enabled);
@@ -95,6 +111,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
     final List<double> bands = List<double>.of(state.bands);
     bands[index] = gainDb.clamp(AppConstants.eqMinGain, AppConstants.eqMaxGain);
     state = state.copyWith(bands: bands, selectedPreset: 'Personalizado');
+    _scheduleDsp();
   }
 
   Future<void> setPreamp(double db) async {
@@ -102,6 +119,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
       preampDb: db.clamp(-12.0, 12.0),
       selectedPreset: 'Personalizado',
     );
+    _scheduleDsp();
   }
 
   Future<void> applyPreset(String name) async {
@@ -119,6 +137,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
       selectedPreset: preset.name,
     );
     await _settings.setString(AppConstants.keyEqPreset, preset.name);
+    await _applyDsp();
   }
 
   Future<void> saveAs(String name) async {
@@ -150,6 +169,59 @@ class EqualizerController extends StateNotifier<EqualizerState> {
       selectedPreset: 'Flat',
     );
     await _settings.setString(AppConstants.keyEqPreset, 'Flat');
+    await _applyDsp();
+  }
+
+  Future<void> _applyDsp() async {
+    _dspDebounce?.cancel();
+    await _engine.setAudioFilter(
+      EqualizerDsp.buildFilter(
+        enabled: state.enabled,
+        gains: state.bands,
+        preampDb: state.preampDb,
+      ),
+    );
+  }
+
+  /// Evita inundar libmpv mientras se arrastra un deslizador.
+  void _scheduleDsp() {
+    _dspDebounce?.cancel();
+    _dspDebounce = Timer(const Duration(milliseconds: 60), () {
+      unawaited(_persistCustom());
+      unawaited(_applyDsp());
+    });
+  }
+
+  /// Recuerda la curva manual para que sobreviva al reinicio.
+  Future<void> _persistCustom() async {
+    if (state.selectedPreset != 'Personalizado') return;
+    await _settings.setString(AppConstants.keyEqPreset, 'Personalizado');
+    await _settings.setString(
+      AppConstants.keyEqCustomBands,
+      state.bands.map((double gain) => gain.toStringAsFixed(2)).join(','),
+    );
+    await _settings.setDouble(AppConstants.keyEqCustomPreamp, state.preampDb);
+  }
+
+  static List<double> _parseBands(String raw) {
+    final int length = AppConstants.eqBands.length;
+    if (raw.isEmpty) return List<double>.filled(length, 0);
+    final List<double> parsed = raw
+        .split(',')
+        .map((String value) => double.tryParse(value.trim()) ?? 0)
+        .toList(growable: false);
+    return List<double>.generate(
+      length,
+      (int index) => index < parsed.length
+          ? parsed[index].clamp(AppConstants.eqMinGain, AppConstants.eqMaxGain)
+          : 0,
+    );
+  }
+
+  @override
+  void dispose() {
+    _dspDebounce?.cancel();
+    super.dispose();
   }
 
   Future<void> _refreshPresets({required String selected}) async {
