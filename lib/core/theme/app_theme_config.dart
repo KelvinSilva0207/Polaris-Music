@@ -92,6 +92,14 @@ class AppThemeConfig {
     required this.background,
     required this.surface,
     required this.backdrop,
+    this.panelRadius = 18,
+    this.artworkRadius = 24,
+    this.glassBlur = 24,
+    this.borderColor = const Color(0x1AFFFFFF),
+    this.shadowColor = const Color(0xFF000000),
+    this.shadowOpacity = 0.28,
+    this.neumorphicLight = const Color(0xFF2A2A2A),
+    this.neumorphicDark = const Color(0xFF000000),
   });
 
   final AppThemePreset preset;
@@ -106,16 +114,45 @@ class AppThemeConfig {
   /// Colores del degradado de fondo, de arriba-izquierda a abajo-derecha.
   final List<Color> backdrop;
 
+  /// Radio compartido por paneles, tarjetas y hojas.
+  final double panelRadius;
+
+  /// Radio de la carátula cuando su forma es [ArtworkShape.squareRounded]
+  /// o [ArtworkShape.card3D].
+  final double artworkRadius;
+
+  /// Intensidad del desenfoque de los paneles de vidrio.
+  final double glassBlur;
+
+  /// Borde de los paneles. Violet Glass usa blanco al 10 % de opacidad.
+  final Color borderColor;
+
+  /// Color base de las sombras del preset y su opacidad.
+  final Color shadowColor;
+  final double shadowOpacity;
+
+  /// Luces y sombras del relieve neumórfico.
+  final Color neumorphicLight;
+  final Color neumorphicDark;
+
   static const AppThemeConfig polarisVioletGlass = AppThemeConfig(
     preset: AppThemePreset.polarisVioletGlass,
     cardStyle: CardStyle.glassmorphic,
-    artworkShape: ArtworkShape.circleVinyl,
+    artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.linearClassic,
     paletteMode: ColorPaletteMode.fixedPreset,
     accent: Color(0xFF8B5CF6),
-    background: Color(0xFF0B0710),
-    surface: Color(0xFF171126),
-    backdrop: <Color>[Color(0xFF180E2E), Color(0xFF0B0710), Color(0xFF2A1450)],
+    background: Color(0xFF0D0515),
+    surface: Color(0xFF1A0B2A),
+    backdrop: <Color>[Color(0xFF1A0B2A), Color(0xFF0D0515)],
+    panelRadius: 28,
+    artworkRadius: 32,
+    glassBlur: 20,
+    borderColor: Color(0x1AFFFFFF),
+    shadowColor: Color(0xFF000000),
+    shadowOpacity: 0.30,
+    neumorphicLight: Color(0xFF3A2A52),
+    neumorphicDark: Color(0xFF050208),
   );
 
   static const AppThemeConfig monolithMinimal = AppThemeConfig(
@@ -124,10 +161,18 @@ class AppThemeConfig {
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.waveform,
     paletteMode: ColorPaletteMode.fixedPreset,
-    accent: Color(0xFFE4E4E7),
-    background: Color(0xFF0E0E10),
-    surface: Color(0xFF1A1A1D),
-    backdrop: <Color>[Color(0xFF151517), Color(0xFF0E0E10), Color(0xFF202024)],
+    accent: Color(0xFF39FF14),
+    background: Color(0xFF121212),
+    surface: Color(0xFF1A1A1A),
+    backdrop: <Color>[Color(0xFF1E1E1E), Color(0xFF121212), Color(0xFF0A0A0A)],
+    panelRadius: 16,
+    artworkRadius: 16,
+    glassBlur: 18,
+    borderColor: Color(0x12FFFFFF),
+    shadowColor: Color(0xFF050505),
+    shadowOpacity: 0.18,
+    neumorphicLight: Color(0xFF2A2A2A),
+    neumorphicDark: Color(0xFF050505),
   );
 
   static const AppThemeConfig bronzeVinyl = AppThemeConfig(
@@ -136,10 +181,18 @@ class AppThemeConfig {
     artworkShape: ArtworkShape.circleVinyl,
     progressBarType: ProgressBarType.circularAroundArtwork,
     paletteMode: ColorPaletteMode.fixedPreset,
-    accent: Color(0xFFC98B4B),
-    background: Color(0xFF161210),
-    surface: Color(0xFF241C16),
-    backdrop: <Color>[Color(0xFF2B1D13), Color(0xFF161210), Color(0xFF3B2A1A)],
+    accent: Color(0xFFD4A76A),
+    background: Color(0xFF1F1F1F),
+    surface: Color(0xFF242424),
+    backdrop: <Color>[Color(0xFF2A2A2A), Color(0xFF1F1F1F), Color(0xFF141414)],
+    panelRadius: 22,
+    artworkRadius: 22,
+    glassBlur: 18,
+    borderColor: Color(0x0DFFFFFF),
+    shadowColor: Color(0xFF000000),
+    shadowOpacity: 0.90,
+    neumorphicLight: Color(0xFF2A2A2A),
+    neumorphicDark: Color(0xFF000000),
   );
 
   /// Configuración usada la primera vez que se abre la app.
@@ -176,6 +229,14 @@ class AppThemeConfig {
     Color? background,
     Color? surface,
     List<Color>? backdrop,
+    double? panelRadius,
+    double? artworkRadius,
+    double? glassBlur,
+    Color? borderColor,
+    Color? shadowColor,
+    double? shadowOpacity,
+    Color? neumorphicLight,
+    Color? neumorphicDark,
   }) {
     return AppThemeConfig(
       preset: preset ?? this.preset,
@@ -187,6 +248,14 @@ class AppThemeConfig {
       background: background ?? this.background,
       surface: surface ?? this.surface,
       backdrop: backdrop ?? this.backdrop,
+      panelRadius: panelRadius ?? this.panelRadius,
+      artworkRadius: artworkRadius ?? this.artworkRadius,
+      glassBlur: glassBlur ?? this.glassBlur,
+      borderColor: borderColor ?? this.borderColor,
+      shadowColor: shadowColor ?? this.shadowColor,
+      shadowOpacity: shadowOpacity ?? this.shadowOpacity,
+      neumorphicLight: neumorphicLight ?? this.neumorphicLight,
+      neumorphicDark: neumorphicDark ?? this.neumorphicDark,
     );
   }
 
@@ -200,6 +269,14 @@ class AppThemeConfig {
     'background': background.toARGB32(),
     'surface': surface.toARGB32(),
     'backdrop': backdrop.map((Color color) => color.toARGB32()).toList(),
+    'panelRadius': panelRadius,
+    'artworkRadius': artworkRadius,
+    'glassBlur': glassBlur,
+    'borderColor': borderColor.toARGB32(),
+    'shadowColor': shadowColor.toARGB32(),
+    'shadowOpacity': shadowOpacity,
+    'neumorphicLight': neumorphicLight.toARGB32(),
+    'neumorphicDark': neumorphicDark.toARGB32(),
   };
 
   factory AppThemeConfig.fromJson(Map<String, Object?> json) {
@@ -233,6 +310,14 @@ class AppThemeConfig {
       backdrop: backdrop == null || backdrop.length < 2
           ? base.backdrop
           : backdrop,
+      panelRadius: _double(json['panelRadius'], base.panelRadius),
+      artworkRadius: _double(json['artworkRadius'], base.artworkRadius),
+      glassBlur: _double(json['glassBlur'], base.glassBlur),
+      borderColor: _color(json['borderColor'], base.borderColor),
+      shadowColor: _color(json['shadowColor'], base.shadowColor),
+      shadowOpacity: _double(json['shadowOpacity'], base.shadowOpacity),
+      neumorphicLight: _color(json['neumorphicLight'], base.neumorphicLight),
+      neumorphicDark: _color(json['neumorphicDark'], base.neumorphicDark),
     );
   }
 
@@ -248,7 +333,15 @@ class AppThemeConfig {
           accent == other.accent &&
           background == other.background &&
           surface == other.surface &&
-          listEquals(backdrop, other.backdrop);
+          listEquals(backdrop, other.backdrop) &&
+          panelRadius == other.panelRadius &&
+          artworkRadius == other.artworkRadius &&
+          glassBlur == other.glassBlur &&
+          borderColor == other.borderColor &&
+          shadowColor == other.shadowColor &&
+          shadowOpacity == other.shadowOpacity &&
+          neumorphicLight == other.neumorphicLight &&
+          neumorphicDark == other.neumorphicDark;
 
   @override
   int get hashCode => Object.hash(
@@ -261,6 +354,14 @@ class AppThemeConfig {
     background,
     surface,
     Object.hashAll(backdrop),
+    panelRadius,
+    artworkRadius,
+    glassBlur,
+    borderColor,
+    shadowColor,
+    shadowOpacity,
+    neumorphicLight,
+    neumorphicDark,
   );
 
   static T? _enumByName<T extends Enum>(List<T> values, Object? raw) {
@@ -273,6 +374,9 @@ class AppThemeConfig {
 
   static Color _color(Object? raw, Color fallback) =>
       raw is int ? Color(raw) : fallback;
+
+  static double _double(Object? raw, double fallback) =>
+      raw is num ? raw.toDouble() : fallback;
 }
 
 /// Perfil personalizado guardado por el usuario.

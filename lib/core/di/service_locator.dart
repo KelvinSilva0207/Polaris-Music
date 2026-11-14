@@ -32,17 +32,21 @@ class ServiceLocator {
   static Future<void> bootstrap() async {
     if (sl.isRegistered<AppDatabase>()) return;
 
+    AppLog.i('Bootstrap', 'Abriendo base de datos');
     final AppDatabase database = AppDatabase();
     sl.registerSingleton<AppDatabase>(database);
 
+    AppLog.i('Bootstrap', 'Cargando preferencias');
     final SettingsService settings = SettingsService(database.settingsDao);
     await settings.load();
     sl.registerSingleton<SettingsService>(settings);
 
+    AppLog.i('Bootstrap', 'Iniciando motor de audio');
     final AudioEngineService engine = AudioEngineService();
     await engine.initialize();
     sl.registerSingleton<AudioEngineService>(engine);
 
+    AppLog.i('Bootstrap', 'Iniciando sesión multimedia');
     final MediaSessionService mediaSession = MediaSessionService(engine);
     await mediaSession.initialize();
     sl.registerSingleton<MediaSessionService>(mediaSession);
@@ -53,10 +57,12 @@ class ServiceLocator {
     )..start();
     sl.registerSingleton<PlaybackStatsRecorder>(statsRecorder);
 
+    AppLog.i('Bootstrap', 'Preparando ventana');
     final WindowService window = WindowService();
     await window.initialize();
     sl.registerSingleton<WindowService>(window);
 
+    AppLog.i('Bootstrap', 'Preparando bandeja del sistema');
     final TrayService tray = TrayService(engine: engine, window: window);
     await tray.initialize();
     sl.registerSingleton<TrayService>(tray);

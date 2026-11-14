@@ -12,6 +12,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   const PolarisTokens({
     required this.accent,
     this.panelRadius = 18,
+    this.artworkRadius = 24,
     this.glassOpacity = 0.10,
     this.glassBlur = 24,
     this.islandRadius = 28,
@@ -27,10 +28,16 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
       Color(0xFF0B0710),
       Color(0xFF2A1450),
     ],
+    this.borderColor = const Color(0x1AFFFFFF),
+    this.shadowColor = const Color(0xFF000000),
+    this.shadowOpacity = 0.28,
+    this.neumorphicLight = const Color(0xFF2A2A2A),
+    this.neumorphicDark = const Color(0xFF000000),
   });
 
   final Color accent;
   final double panelRadius;
+  final double artworkRadius;
   final double glassOpacity;
   final double glassBlur;
   final double islandRadius;
@@ -43,17 +50,20 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   final Color surface;
   final List<Color> backdrop;
 
+  /// Borde de los paneles: Violet Glass lo define como blanco al 10 %.
+  final Color borderColor;
+
+  /// Color y opacidad de las sombras suaves del preset.
+  final Color shadowColor;
+  final double shadowOpacity;
+
+  /// Luces y sombras del relieve neumórfico.
+  final Color neumorphicLight;
+  final Color neumorphicDark;
+
   bool get isGlass => cardStyle == CardStyle.glassmorphic;
   bool get isNeumorphic => cardStyle == CardStyle.neumorphic;
   bool get isFlat => cardStyle == CardStyle.flatMinimal;
-
-  /// Color de relieve claro para neumorphism.
-  Color get neumorphicLight =>
-      Color.lerp(surface, Colors.white, 0.10) ?? surface;
-
-  /// Color de relieve oscuro para neumorphism.
-  Color get neumorphicDark =>
-      Color.lerp(surface, Colors.black, 0.55) ?? surface;
 
   /// Color base de un panel según el [cardStyle] activo.
   ///
@@ -76,11 +86,9 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   };
 
   /// Borde de un panel según el [cardStyle] activo.
-  Color get panelBorder => switch (cardStyle) {
-    CardStyle.glassmorphic => Colors.white.withValues(alpha: 0.16),
-    CardStyle.neumorphic => Colors.white.withValues(alpha: 0.035),
-    CardStyle.flatMinimal => Colors.white.withValues(alpha: 0.07),
-  };
+  ///
+  /// `borderColor` viene del preset: Violet Glass usa blanco al 10 %.
+  Color get panelBorder => borderColor;
 
   /// Sombras de un panel, opcionalmente con un resplandor del acento.
   List<BoxShadow> panelShadows({Color? glow, double radius = 24}) {
@@ -94,7 +102,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
               spreadRadius: 2,
             ),
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.28),
+            color: shadowColor.withValues(alpha: shadowOpacity),
             blurRadius: radius,
             offset: const Offset(0, 14),
           ),
@@ -102,18 +110,30 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
       case CardStyle.neumorphic:
         return <BoxShadow>[
           BoxShadow(
-            color: neumorphicLight.withValues(alpha: 0.30),
+            color: neumorphicLight.withValues(alpha: 0.90),
             blurRadius: 14,
             offset: const Offset(-5, -5),
           ),
           BoxShadow(
-            color: neumorphicDark.withValues(alpha: 0.85),
+            color: neumorphicDark.withValues(alpha: shadowOpacity),
             blurRadius: 20,
             offset: const Offset(7, 8),
           ),
         ];
       case CardStyle.flatMinimal:
-        return const <BoxShadow>[];
+        // Monolith Minimal: sombras suaves, casi imperceptibles.
+        return <BoxShadow>[
+          BoxShadow(
+            color: shadowColor.withValues(alpha: shadowOpacity),
+            blurRadius: 22,
+            offset: const Offset(0, 10),
+          ),
+          BoxShadow(
+            color: shadowColor.withValues(alpha: shadowOpacity * 0.55),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ];
     }
   }
 
@@ -146,6 +166,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   PolarisTokens copyWith({
     Color? accent,
     double? panelRadius,
+    double? artworkRadius,
     double? glassOpacity,
     double? glassBlur,
     double? islandRadius,
@@ -157,9 +178,15 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     Color? background,
     Color? surface,
     List<Color>? backdrop,
+    Color? borderColor,
+    Color? shadowColor,
+    double? shadowOpacity,
+    Color? neumorphicLight,
+    Color? neumorphicDark,
   }) => PolarisTokens(
     accent: accent ?? this.accent,
     panelRadius: panelRadius ?? this.panelRadius,
+    artworkRadius: artworkRadius ?? this.artworkRadius,
     glassOpacity: glassOpacity ?? this.glassOpacity,
     glassBlur: glassBlur ?? this.glassBlur,
     islandRadius: islandRadius ?? this.islandRadius,
@@ -171,6 +198,11 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     background: background ?? this.background,
     surface: surface ?? this.surface,
     backdrop: backdrop ?? this.backdrop,
+    borderColor: borderColor ?? this.borderColor,
+    shadowColor: shadowColor ?? this.shadowColor,
+    shadowOpacity: shadowOpacity ?? this.shadowOpacity,
+    neumorphicLight: neumorphicLight ?? this.neumorphicLight,
+    neumorphicDark: neumorphicDark ?? this.neumorphicDark,
   );
 
   @override
@@ -179,6 +211,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     return PolarisTokens(
       accent: Color.lerp(accent, other.accent, t) ?? accent,
       panelRadius: lerpDouble(panelRadius, other.panelRadius, t),
+      artworkRadius: lerpDouble(artworkRadius, other.artworkRadius, t),
       glassOpacity: lerpDouble(glassOpacity, other.glassOpacity, t),
       glassBlur: lerpDouble(glassBlur, other.glassBlur, t),
       islandRadius: lerpDouble(islandRadius, other.islandRadius, t),
@@ -190,6 +223,14 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
       background: Color.lerp(background, other.background, t) ?? background,
       surface: Color.lerp(surface, other.surface, t) ?? surface,
       backdrop: other.backdrop,
+      borderColor: Color.lerp(borderColor, other.borderColor, t) ?? borderColor,
+      shadowColor: Color.lerp(shadowColor, other.shadowColor, t) ?? shadowColor,
+      shadowOpacity: lerpDouble(shadowOpacity, other.shadowOpacity, t),
+      neumorphicLight:
+          Color.lerp(neumorphicLight, other.neumorphicLight, t) ??
+          neumorphicLight,
+      neumorphicDark:
+          Color.lerp(neumorphicDark, other.neumorphicDark, t) ?? neumorphicDark,
     );
   }
 

@@ -90,10 +90,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       body: Stack(
-        children: <Widget>[
-          Positioned.fill(child: content),
-          const DynamicIslandOverlay(),
-        ],
+        fit: StackFit.expand,
+        children: <Widget>[content, const DynamicIslandOverlay()],
       ),
     );
   }

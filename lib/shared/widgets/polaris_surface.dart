@@ -16,7 +16,7 @@ class PolarisSurface extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.all(18),
     this.borderRadius,
-    this.blur = 26,
+    this.blur,
     this.glowColor,
     this.clipBehavior = Clip.antiAlias,
   });
@@ -24,7 +24,7 @@ class PolarisSurface extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double? borderRadius;
-  final double blur;
+  final double? blur;
   final Color? glowColor;
   final Clip clipBehavior;
 
@@ -32,6 +32,7 @@ class PolarisSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final PolarisTokens tokens = context.tokens;
     final double radius = borderRadius ?? tokens.panelRadius;
+    final double sigma = blur ?? tokens.glassBlur;
 
     switch (tokens.cardStyle) {
       case CardStyle.glassmorphic:
@@ -39,7 +40,7 @@ class PolarisSurface extends StatelessWidget {
           borderRadius: BorderRadius.circular(radius),
           clipBehavior: clipBehavior,
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+            filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
             child: Container(
               padding: padding,
               decoration: tokens.panelDecoration(

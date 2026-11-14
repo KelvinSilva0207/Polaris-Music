@@ -2,7 +2,7 @@
 ;  Polaris Music - instalador oficial para Windows
 ;
 ;  Compilar con:  installer\build_installer.ps1
-;  o directamente: ISCC.exe /DMyAppVersion=1.0.0 installer\polaris_music.iss
+;  o directamente: ISCC.exe /DMyAppVersion=1.0.1 installer\polaris_music.iss
 ;
 ;  El instalador es por usuario por defecto (sin UAC), lo que permite que la
 ;  autoactualización desde la app se ejecute de forma silenciosa. Tambien puede
@@ -22,7 +22,7 @@
 #ifndef MyAppVersion
   #define MyAppVersion GetEnv("POLARIS_VERSION")
   #if MyAppVersion == ""
-    #define MyAppVersion "1.0.0"
+    #define MyAppVersion "1.0.1"
   #endif
 #endif
 
@@ -47,6 +47,8 @@ VersionInfoCopyright={#MyAppCopyright}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
+; Pagina de bienvenida con el logo y el ecualizador animado.
+DisableWelcomePage=no
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 UsePreviousAppDir=yes
@@ -134,4 +136,161 @@ end;
 function ShouldRelaunchAfterUpdate(): Boolean;
 begin
   Result := WizardSilent and CmdLineParamExists('/AUTOUPDATE');
+end;
+
+{ ---------------------------------------------------------------------------
+  Animacion de bienvenida
+  ---------------------------------------------------------------------------
+  Dibuja un ecualizador animado sobre la imagen lateral del asistente.
+  Cada barra es un TPanel independiente; un temporizador de Windows actualiza
+  su altura mientras la pagina de bienvenida (o la final) esta visible.
+  No usa recursos externos y no interfiere con la instalacion silenciosa. }
+
+const
+  EqBarCount = 11;
+
+var
+  EqBars: array of TPanel;
+  EqTimerId: Longword;
+  EqTimerHwnd: Longword;
+  EqCallback: Longword;
+  EqPhase: Integer;
+  EqHost: TWinControl;
+
+function SetTimer(hWnd, nIDEvent, uElapse, lpTimerFunc: Longword): Longword;
+  external 'SetTimer@user32.dll stdcall';
+
+function KillTimer(hWnd, nIDEvent: Longword): Bool;
+  external 'KillTimer@user32.dll stdcall';
+
+{ TColor usa formato BGR: $00BBGGRR. }
+function AccentBarColor(Index: Integer): TColor;
+begin
+  case Index mod 4 of
+    0: Result := $00F65C8B; { violeta 139,92,246 }
+    1: Result := $00FA8BA7; { lavanda 167,139,250 }
+    2: Result := $00FDB5C4; { lila claro 196,181,253 }
+    else Result := $00FF5C7C; { violeta intenso 124,92,255 }
+  end;
+end;
+
+{ Patron determinista de alturas (porcentaje de la altura maxima). }
+function EqBarUnit(Index: Integer): Integer;
+begin
+  case Index mod 12 of
+    0: Result := 34;
+    1: Result := 58;
+    2: Result := 78;
+    3: Result := 100;
+    4: Result := 72;
+    5: Result := 46;
+    6: Result := 86;
+    7: Result := 62;
+    8: Result := 40;
+    9: Result := 68;
+    10: Result := 92;
+    else Result := 52;
+  end;
+end;
+
+procedure LayoutEqualizer;
+var
+  Img: TBitmapImage;
+  I, BarWidth, Gap, TotalWidth, Left0, Baseline, MaxHeight, BarHeight: Integer;
+begin
+  if (WizardForm = nil) or (WizardForm.WizardBitmapImage = nil) then Exit;
+
+  Img := WizardForm.WizardBitmapImage;
+  if (Img.Width <= 0) or (Img.Height <= 0) then Exit;
+
+  BarWidth := Img.Width div 36;
+  if BarWidth < 4 then BarWidth := 4;
+  Gap := BarWidth div 2;
+  if Gap < 2 then Gap := 2;
+
+  TotalWidth := EqBarCount * BarWidth + (EqBarCount - 1) * Gap;
+  Left0 := Img.Left + (Img.Width - TotalWidth) div 2;
+  Baseline := Img.Top + (Img.Height * 87) div 100;
+  MaxHeight := (Img.Height * 7) div 100;
+  if MaxHeight < 24 then MaxHeight := 24;
+
+  for I := 0 to EqBarCount - 1 do
+  begin
+    BarHeight := (MaxHeight * EqBarUnit(EqPhase + I)) div 100;
+    if BarHeight < 6 then BarHeight := 6;
+    EqBars[I].Width := BarWidth;
+    EqBars[I].Height := BarHeight;
+    EqBars[I].Left := Left0 + I * (BarWidth + Gap);
+    EqBars[I].Top := Baseline - BarHeight;
+  end;
+end;
+
+procedure TickEqualizer(Arg1, Arg2, Arg3, Arg4: Longword);
+var
+  I: Integer;
+  ShouldShow: Boolean;
+begin
+  if WizardForm = nil then Exit;
+  if WizardForm.CurPageID = wpInstalling then Exit;
+
+  ShouldShow := (WizardForm.CurPageID = wpWelcome) or
+    (WizardForm.CurPageID = wpFinished);
+  for I := 0 to EqBarCount - 1 do
+    EqBars[I].Visible := ShouldShow;
+
+  if not ShouldShow then Exit;
+
+  Inc(EqPhase);
+  LayoutEqualizer;
+end;
+
+procedure InitializeEqualizer;
+var
+  I: Integer;
+  Img: TBitmapImage;
+begin
+  if WizardSilent then Exit;
+  if (WizardForm = nil) or (WizardForm.WizardBitmapImage = nil) then Exit;
+
+  { Los paneles deben ser hermanos de la imagen lateral: si se crean
+    directamente sobre el formulario quedan detras de MainPanel y no se ven. }
+  Img := WizardForm.WizardBitmapImage;
+  EqHost := Img.Parent;
+  if EqHost = nil then EqHost := WizardForm;
+
+  SetArrayLength(EqBars, EqBarCount);
+  for I := 0 to EqBarCount - 1 do
+  begin
+    EqBars[I] := TPanel.Create(EqHost);
+    EqBars[I].Parent := EqHost;
+    EqBars[I].Caption := '';
+    EqBars[I].BevelOuter := bvNone;
+    EqBars[I].BevelInner := bvNone;
+    EqBars[I].ParentBackground := False;
+    { El estilo personalizado del asistente ignora Color: sin elementos de
+      estilo, cada barra conserva su tono violeta. }
+    EqBars[I].StyleElements := [];
+    EqBars[I].Color := AccentBarColor(I);
+    EqBars[I].Visible := False;
+    EqBars[I].BringToFront;
+  end;
+
+  LayoutEqualizer;
+  EqCallback := CreateCallback(@TickEqualizer);
+  EqTimerHwnd := WizardForm.Handle;
+  EqTimerId := SetTimer(EqTimerHwnd, 0, 110, EqCallback);
+end;
+
+procedure InitializeWizard;
+begin
+  InitializeEqualizer;
+end;
+
+procedure DeinitializeSetup;
+begin
+  if EqTimerId <> 0 then
+  begin
+    KillTimer(EqTimerHwnd, EqTimerId);
+    EqTimerId := 0;
+  end;
 end;

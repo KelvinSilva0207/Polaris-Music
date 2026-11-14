@@ -12,11 +12,17 @@ void main() {
       );
       expect(
         AppThemeConfig.polarisVioletGlass.artworkShape,
-        ArtworkShape.circleVinyl,
+        ArtworkShape.squareRounded,
       );
       expect(
         AppThemeConfig.polarisVioletGlass.progressBarType,
         ProgressBarType.linearClassic,
+      );
+      expect(AppThemeConfig.polarisVioletGlass.artworkRadius, 32);
+      expect(AppThemeConfig.polarisVioletGlass.glassBlur, 20);
+      expect(
+        AppThemeConfig.polarisVioletGlass.borderColor,
+        const Color(0x1AFFFFFF),
       );
 
       expect(AppThemeConfig.monolithMinimal.cardStyle, CardStyle.flatMinimal);
@@ -24,12 +30,28 @@ void main() {
         AppThemeConfig.monolithMinimal.progressBarType,
         ProgressBarType.waveform,
       );
+      expect(
+        AppThemeConfig.monolithMinimal.background,
+        const Color(0xFF121212),
+      );
+      expect(AppThemeConfig.monolithMinimal.artworkRadius, 16);
+      expect(AppThemeConfig.monolithMinimal.accent, const Color(0xFF39FF14));
 
       expect(AppThemeConfig.bronzeVinyl.cardStyle, CardStyle.neumorphic);
       expect(
         AppThemeConfig.bronzeVinyl.progressBarType,
         ProgressBarType.circularAroundArtwork,
       );
+      expect(AppThemeConfig.bronzeVinyl.background, const Color(0xFF1F1F1F));
+      expect(
+        AppThemeConfig.bronzeVinyl.neumorphicLight,
+        const Color(0xFF2A2A2A),
+      );
+      expect(
+        AppThemeConfig.bronzeVinyl.neumorphicDark,
+        const Color(0xFF000000),
+      );
+      expect(AppThemeConfig.bronzeVinyl.accent, const Color(0xFFD4A76A));
       expect(AppThemeConfig.builtInPresets.length, 3);
     });
 
@@ -87,7 +109,7 @@ void main() {
       expect(glass.panelShadows(), hasLength(1));
       expect(glass.panelShadows(glow: glass.accent), hasLength(2));
       expect(neumorphic.panelShadows(), hasLength(2));
-      expect(flat.panelShadows(), isEmpty);
+      expect(flat.panelShadows(), hasLength(2));
     });
 
     test('panelDecoration respeta radio y borde del estilo', () {

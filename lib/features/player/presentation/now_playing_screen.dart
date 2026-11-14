@@ -940,6 +940,7 @@ class _ArtworkStage extends StatelessWidget {
         path: track.artworkPath,
         size: size,
         accent: accent,
+        radius: config.artworkRadius,
       ),
       ArtworkShape.circleVinyl => _VinylArtwork(
         path: track.artworkPath,
@@ -951,6 +952,7 @@ class _ArtworkStage extends StatelessWidget {
         path: track.artworkPath,
         size: size,
         accent: accent,
+        radius: config.artworkRadius,
       ),
     };
 
@@ -1069,11 +1071,13 @@ class _SquareArtwork extends StatelessWidget {
     required this.path,
     required this.size,
     required this.accent,
+    required this.radius,
   });
 
   final String? path;
   final double size;
   final Color accent;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -1081,7 +1085,7 @@ class _SquareArtwork extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(5),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(radius),
           gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -1107,7 +1111,7 @@ class _SquareArtwork extends StatelessWidget {
           path: path,
           size: size - 10,
           shape: BoxShape.rectangle,
-          radius: BorderRadius.circular(24),
+          radius: BorderRadius.circular(math.max(radius - 5, 4)),
           accent: accent,
         ),
       ),
@@ -1120,11 +1124,13 @@ class _Card3DArtwork extends StatelessWidget {
     required this.path,
     required this.size,
     required this.accent,
+    required this.radius,
   });
 
   final String? path;
   final double size;
   final Color accent;
+  final double radius;
 
   @override
   Widget build(BuildContext context) {
@@ -1138,7 +1144,7 @@ class _Card3DArtwork extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(radius),
             color: Colors.white.withValues(alpha: 0.05),
             border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
             boxShadow: <BoxShadow>[
@@ -1158,7 +1164,7 @@ class _Card3DArtwork extends StatelessWidget {
             path: path,
             size: size - 12,
             shape: BoxShape.rectangle,
-            radius: BorderRadius.circular(21),
+            radius: BorderRadius.circular(math.max(radius - 5, 4)),
             accent: accent,
           ),
         ),

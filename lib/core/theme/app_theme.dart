@@ -54,9 +54,17 @@ class AppTheme {
           background: config.background,
           surface: config.surface,
           backdrop: config.backdrop,
+          panelRadius: config.panelRadius,
+          artworkRadius: config.artworkRadius,
+          glassBlur: config.glassBlur,
+          borderColor: config.borderColor,
+          shadowColor: config.shadowColor,
+          shadowOpacity: config.shadowOpacity,
+          neumorphicLight: config.neumorphicLight,
+          neumorphicDark: config.neumorphicDark,
           glassEnabled: config.isGlass,
           glassOpacity: config.cardStyle == CardStyle.glassmorphic
-              ? 0.14
+              ? 0.10
               : 0.08,
         ),
       ],
@@ -75,8 +83,8 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+          borderRadius: BorderRadius.circular(config.panelRadius),
+          side: BorderSide(color: config.borderColor),
         ),
       ),
       appBarTheme: const AppBarTheme(
