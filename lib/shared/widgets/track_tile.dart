@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/track.dart';
+import '../../core/theme/theme_tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../features/library/data/library_repository.dart';
 import '../../features/library/presentation/library_providers.dart';
 import '../../features/player/domain/player_controller.dart';
 import '../../features/player/presentation/player_providers.dart';
 import 'track_artwork.dart';
+import 'track_properties_modal.dart';
 
 /// Fila de pista usada por biblioteca, cola, historial y recomendaciones.
 class TrackTile extends ConsumerWidget {
@@ -34,107 +36,179 @@ class TrackTile extends ConsumerWidget {
     final bool current = ui.track?.id == track.id;
     final ThemeData theme = Theme.of(context);
 
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      tileColor: current
-          ? theme.colorScheme.primary.withValues(alpha: 0.12)
-          : null,
-      leading: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          if (showIndex)
-            SizedBox(
-              width: 28,
-              child: Center(
-                child: Text(
-                  '${(index ?? 0) + 1}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: current ? theme.colorScheme.primary : Colors.white38,
+    return GestureDetector(
+      onSecondaryTapDown: (TapDownDetails details) =>
+          _showContextMenu(context, ref, details.globalPosition),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        tileColor: current
+            ? theme.colorScheme.primary.withValues(alpha: 0.12)
+            : null,
+        leading: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (showIndex)
+              SizedBox(
+                width: 28,
+                child: Center(
+                  child: Text(
+                    '${(index ?? 0) + 1}',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: current
+                          ? theme.colorScheme.primary
+                          : Colors.white38,
+                    ),
                   ),
                 ),
               ),
-            ),
-          TrackArtwork(path: track.artworkPath, size: 46, radius: 10),
-        ],
-      ),
-      title: Text(
-        track.title,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-          color: current ? theme.colorScheme.primary : null,
+            TrackArtwork(path: track.artworkPath, size: 46, radius: 10),
+          ],
         ),
-      ),
-      subtitle: Text(
-        track.subtitle,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(color: Colors.white54),
-      ),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          ?trailing,
-          Text(
-            Formatters.duration(track.duration),
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
+        title: Text(
+          track.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontWeight: current ? FontWeight.w700 : FontWeight.w500,
+            color: current ? theme.colorScheme.primary : null,
           ),
-          const SizedBox(width: 4),
-          IconButton(
-            tooltip: track.isFavorite
-                ? 'Quitar de favoritos'
-                : 'Añadir a favoritos',
-            icon: Icon(
-              track.isFavorite
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              color: track.isFavorite
-                  ? theme.colorScheme.primary
-                  : Colors.white38,
-              size: 20,
+        ),
+        subtitle: Row(
+          children: <Widget>[
+            if (track.isDownloaded)
+              Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: Icon(
+                  Icons.cloud_done_rounded,
+                  size: 12,
+                  color: theme.colorScheme.primary.withValues(alpha: 0.85),
+                ),
+              ),
+            Flexible(
+              child: Text(
+                track.subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.white54,
+                ),
+              ),
             ),
-            onPressed: () => ref
-                .read(libraryRepositoryProvider)
-                .setFavorite(track.id, !track.isFavorite),
-          ),
-          PopupMenuButton<String>(
-            tooltip: 'Más acciones',
-            icon: const Icon(
-              Icons.more_vert_rounded,
-              color: Colors.white38,
-              size: 20,
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            ?trailing,
+            Text(
+              Formatters.duration(track.duration),
+              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
             ),
-            onSelected: (String action) => _handleAction(context, ref, action),
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'play',
-                child: Text('Reproducir ahora'),
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: !track.isPersisted
+                  ? 'Descarga la pista para guardarla'
+                  : track.isFavorite
+                  ? 'Quitar de favoritos'
+                  : 'Añadir a favoritos',
+              icon: Icon(
+                track.isFavorite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                color: track.isFavorite
+                    ? theme.colorScheme.primary
+                    : Colors.white38,
+                size: 20,
               ),
-              const PopupMenuItem<String>(
-                value: 'queue',
-                child: Text('Añadir a la cola'),
+              onPressed: track.isPersisted
+                  ? () => ref
+                        .read(libraryRepositoryProvider)
+                        .setFavorite(track.id, !track.isFavorite)
+                  : null,
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Más acciones',
+              icon: const Icon(
+                Icons.more_vert_rounded,
+                color: Colors.white38,
+                size: 20,
               ),
-              const PopupMenuItem<String>(
-                value: 'edit',
-                child: Text('Editar metadatos'),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem<String>(
-                value: 'delete',
-                child: Text('Quitar de la biblioteca'),
-              ),
-            ],
-          ),
-        ],
+              onSelected: (String action) =>
+                  _handleAction(context, ref, action),
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'play',
+                  child: Text('Reproducir ahora'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'queue',
+                  child: Text('Añadir a la cola'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'properties',
+                  child: Text('Propiedades'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'edit',
+                  child: Text('Editar metadatos'),
+                ),
+                const PopupMenuDivider(),
+                const PopupMenuItem<String>(
+                  value: 'delete',
+                  child: Text('Quitar de la biblioteca'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        // En Android el menú de opciones cubre "Propiedades"; una pulsación
+        // larga la abre directamente.
+        onLongPress: () => TrackPropertiesModal.show(
+          context: context,
+          track: track,
+          accent: context.accent,
+        ),
+        onTap:
+            onTap ??
+            () => ref
+                .read(playerControllerProvider.notifier)
+                .playTrack(track, queue: queue),
       ),
-      onTap:
-          onTap ??
-          () => ref
-              .read(playerControllerProvider.notifier)
-              .playTrack(track, queue: queue),
     );
+  }
+
+  /// Menú contextual del clic derecho (escritorio).
+  Future<void> _showContextMenu(
+    BuildContext context,
+    WidgetRef ref,
+    Offset position,
+  ) async {
+    final RenderBox overlay =
+        Overlay.of(context).context.findRenderObject()! as RenderBox;
+    final String? action = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy,
+        overlay.size.width - position.dx,
+        overlay.size.height - position.dy,
+      ),
+      items: const <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(value: 'play', child: Text('Reproducir ahora')),
+        PopupMenuItem<String>(value: 'queue', child: Text('Añadir a la cola')),
+        PopupMenuItem<String>(value: 'properties', child: Text('Propiedades')),
+        PopupMenuItem<String>(value: 'edit', child: Text('Editar metadatos')),
+        PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'delete',
+          child: Text('Quitar de la biblioteca'),
+        ),
+      ],
+    );
+    if (action != null && context.mounted) {
+      await _handleAction(context, ref, action);
+    }
   }
 
   Future<void> _handleAction(
@@ -154,6 +228,12 @@ class TrackTile extends ConsumerWidget {
             SnackBar(content: Text('“${track.title}” añadida a la cola')),
           );
         }
+      case 'properties':
+        await TrackPropertiesModal.show(
+          context: context,
+          track: track,
+          accent: context.accent,
+        );
       case 'edit':
         await showMetadataEditor(context, ref, track);
       case 'delete':

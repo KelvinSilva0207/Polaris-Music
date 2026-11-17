@@ -62,6 +62,18 @@ del usuario.
 - DSP real del ecualizador: 10 bandas + preamplificador enviados a libmpv como filtros `lavfi`.
 - Persistencia en Drift (`theme.config`, `theme.profiles`, compatibilidad con `theme.accent`).
 
+### Fase 3 — Refinamiento de UI y propiedades ✅
+
+- Barra de progreso protagonista: 9 px, degradado con el acento de la carátula, resplandor,
+  indicador tipo píldora que crece al pasar el ratón o arrastrar y tooltip con el tiempo exacto.
+- Control de volumen diferenciado: riel fino segmentado, altavoz clicable para silenciar/restaurar
+  y rueda del ratón sobre el control.
+- Modal **Propiedades** desde clic derecho (escritorio), menú de opciones (Android) o pulsación
+  larga: archivo, calidad real del contenedor, metadatos ID3/Vorbis/MP4, carátula ampliable y
+  estadísticas de Drift.
+- Micro-animaciones: escala al pulsar, transición de pista y vinilo con giro orgánico; sin
+  indicadores tipo panel de administración.
+
 ---
 
 ## Módulos de la visión

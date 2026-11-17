@@ -80,7 +80,16 @@ class LyricsService {
         : online.plainLyrics;
     if (content.trim().isEmpty) return null;
 
-    await _dao.save(track.id, content, synced: online.synced, source: 'lrclib');
+    // Las pistas de streaming no existen en Drift: la letra se mantiene solo
+    // en memoria para no violar la clave foránea de `Lyrics`.
+    if (track.isPersisted) {
+      await _dao.save(
+        track.id,
+        content,
+        synced: online.synced,
+        source: 'lrclib',
+      );
+    }
     final LyricsResult result = LyricsResult(
       document: LrcDocument.parse(content),
       source: 'lrclib',

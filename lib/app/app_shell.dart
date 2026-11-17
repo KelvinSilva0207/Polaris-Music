@@ -1,18 +1,30 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/providers/app_providers.dart';
+import '../core/services/window_service.dart';
+import '../core/theme/theme_tokens.dart';
 import '../features/dynamic_island/presentation/dynamic_island_overlay.dart';
 import '../features/equalizer/presentation/equalizer_screen.dart';
-import '../features/home/presentation/home_screen.dart';
 import '../features/library/presentation/library_providers.dart';
 import '../features/library/presentation/library_screen.dart';
+import '../features/online_music/presentation/online_music_screen.dart';
+import '../features/phone/presentation/phone_mode_shell.dart';
 import '../features/player/presentation/mini_player_bar.dart';
 import '../features/player/presentation/now_playing_screen.dart';
+import '../features/player/presentation/player_providers.dart';
+import '../features/player/presentation/tray_mini_player.dart';
 import '../features/settings/presentation/settings_screen.dart';
-import '../features/stats_sync/presentation/stats_screen.dart';
+import '../shared/widgets/polaris_logo.dart';
+import '../shared/widgets/window_title_bar.dart';
 
 /// Estructura principal: navegación adaptable, mini reproductor e isla.
+///
+/// La app arranca en el reproductor (índice 2) y adapta su composición al modo
+/// de ventana: normal, mini de bandeja o teléfono acoplado.
 class AppShell extends ConsumerStatefulWidget {
   const AppShell({super.key});
 
@@ -23,31 +35,29 @@ class AppShell extends ConsumerStatefulWidget {
 class _AppShellState extends ConsumerState<AppShell> {
   static const int _playerTab = 2;
 
-  int _index = 0;
+  int _index = _playerTab;
 
   late final List<Widget> _screens = <Widget>[
-    HomeScreen(onNavigate: _goTo),
     const LibraryScreen(),
+    const OnlineMusicScreen(),
     const NowPlayingScreen(),
     const EqualizerScreen(),
-    const StatsScreen(),
     SettingsScreen(onNavigate: _goTo),
   ];
 
   static const List<_NavItem> _items = <_NavItem>[
-    _NavItem('Inicio', Icons.home_outlined, Icons.home_rounded),
     _NavItem(
       'Biblioteca',
       Icons.library_music_outlined,
       Icons.library_music_rounded,
     ),
+    _NavItem('Online', Icons.cloud_outlined, Icons.cloud_rounded),
     _NavItem(
       'Reproductor',
       Icons.play_circle_outline_rounded,
       Icons.play_circle_rounded,
     ),
     _NavItem('Ecualizador', Icons.graphic_eq_rounded, Icons.graphic_eq_rounded),
-    _NavItem('Estadísticas', Icons.insights_outlined, Icons.insights_rounded),
     _NavItem('Ajustes', Icons.settings_outlined, Icons.settings_rounded),
   ];
 
@@ -79,8 +89,35 @@ class _AppShellState extends ConsumerState<AppShell> {
     setState(() => _index = index);
   }
 
+  void _togglePlayback() {
+    ref.read(playerControllerProvider.notifier).togglePlay();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final ValueNotifier<WindowUiState> notifier = ref.watch(
+      windowStateProvider,
+    );
+
+    return ValueListenableBuilder<WindowUiState>(
+      valueListenable: notifier,
+      builder: (BuildContext context, WindowUiState state, Widget? _) {
+        switch (state.mode) {
+          case WindowMode.mini:
+            return TrayMiniPlayer(
+              onOpen: ref.read(windowServiceProvider).restoreNormal,
+              onHide: ref.read(windowServiceProvider).minimizeToTray,
+            );
+          case WindowMode.phone:
+            return const PhoneModeShell();
+          case WindowMode.normal:
+            return _buildNormal(state);
+        }
+      },
+    );
+  }
+
+  Widget _buildNormal(WindowUiState state) {
     final Widget content = LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final bool rail = constraints.maxWidth >= 760;
@@ -89,9 +126,36 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
 
     return Scaffold(
-      body: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[content, const DynamicIslandOverlay()],
+      body: Focus(
+        autofocus: true,
+        onKeyEvent: (FocusNode node, KeyEvent event) {
+          if (event is! KeyDownEvent ||
+              event.logicalKey != LogicalKeyboardKey.space) {
+            return KeyEventResult.ignored;
+          }
+          // Nunca robamos la barra espaciadora mientras se escribe.
+          final BuildContext? focused =
+              FocusManager.instance.primaryFocus?.context;
+          if (focused != null &&
+              focused.findAncestorWidgetOfExactType<EditableText>() != null) {
+            return KeyEventResult.ignored;
+          }
+          _togglePlayback();
+          return KeyEventResult.handled;
+        },
+        child: Stack(
+          fit: StackFit.expand,
+          children: <Widget>[
+            Column(
+              children: <Widget>[
+                if (Platform.isWindows) const WindowTitleBar(),
+                Expanded(child: content),
+              ],
+            ),
+            if (!state.sideHidden) const DynamicIslandOverlay(),
+            if (Platform.isWindows) const _SidePeekTab(),
+          ],
+        ),
       ),
     );
   }
@@ -112,13 +176,9 @@ class _AppShellState extends ConsumerState<AppShell> {
             padding: const EdgeInsets.symmetric(vertical: 18),
             child: Column(
               children: <Widget>[
-                Icon(
-                  Icons.public_rounded,
-                  size: 30,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
+                const PolarisLogo(size: 34, glow: true),
                 if (extended) ...<Widget>[
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 8),
                   const Text(
                     'Polaris',
                     style: TextStyle(
@@ -178,6 +238,77 @@ class _AppShellState extends ConsumerState<AppShell> {
               .toList(growable: false),
         ),
       ],
+    );
+  }
+}
+
+/// Pestaña sutil del borde derecho para ocultar/mostrar la ventana (AIMP).
+class _SidePeekTab extends ConsumerStatefulWidget {
+  const _SidePeekTab();
+
+  @override
+  ConsumerState<_SidePeekTab> createState() => _SidePeekTabState();
+}
+
+class _SidePeekTabState extends ConsumerState<_SidePeekTab> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final WindowService window = ref.watch(windowServiceProvider);
+    if (!window.isSupported) return const SizedBox.shrink();
+    final ValueNotifier<WindowUiState> notifier = ref.watch(
+      windowStateProvider,
+    );
+    final PolarisTokens tokens = context.tokens;
+
+    return ValueListenableBuilder<WindowUiState>(
+      valueListenable: notifier,
+      builder: (BuildContext context, WindowUiState state, Widget? _) {
+        final bool hidden = state.sideHidden;
+        return Align(
+          alignment: Alignment.centerRight,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onEnter: (PointerEnterEvent _) {
+              setState(() => _hovered = true);
+              if (hidden) window.setSideHidden(false);
+            },
+            onExit: (PointerExitEvent _) => setState(() => _hovered = false),
+            child: GestureDetector(
+              onTap: () => window.toggleSideHidden(),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                curve: Curves.easeOutCubic,
+                width: _hovered ? 20 : 12,
+                height: 72,
+                decoration: BoxDecoration(
+                  borderRadius: const BorderRadius.horizontal(
+                    left: Radius.circular(10),
+                  ),
+                  color: tokens.surface.withValues(
+                    alpha: _hovered || hidden ? 0.92 : 0.42,
+                  ),
+                  border: Border(
+                    left: BorderSide(
+                      color: tokens.accent.withValues(
+                        alpha: _hovered || hidden ? 0.75 : 0.30,
+                      ),
+                    ),
+                  ),
+                ),
+                child: Icon(
+                  hidden
+                      ? Icons.chevron_right_rounded
+                      : Icons.chevron_left_rounded,
+                  size: 15,
+                  color: tokens.accent.withValues(alpha: 0.9),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -79,8 +79,10 @@ class SettingsService {
 
   int get crossfadeMs => intOr(AppConstants.keyCrossfadeMs, fallback: 3000);
 
-  double get volume =>
-      doubleOr(AppConstants.keyVolume, fallback: 1).clamp(0.0, 1.0).toDouble();
+  double get volume => doubleOr(
+    AppConstants.keyVolume,
+    fallback: 0.5,
+  ).clamp(0.0, 1.0).toDouble();
 
   bool get onboardingDone =>
       boolOr(AppConstants.keyOnboardingDone, fallback: false);

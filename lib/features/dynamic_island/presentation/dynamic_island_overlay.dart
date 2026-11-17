@@ -1,9 +1,12 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/track_artwork.dart';
 import '../../player/presentation/player_providers.dart';
 import '../domain/dynamic_island_controller.dart';
@@ -11,9 +14,9 @@ import 'island_providers.dart';
 
 /// Isla flotante con la pista actual.
 ///
-/// Compacta por defecto: carátula, título y estado. Al tocarla se expande con
-/// el progreso y controles rápidos. En Fase 1 vive dentro de la ventana; más
-/// adelante puede convertirse en una ventana/notificación independiente.
+/// Compacta por defecto —carátula, título y estado— y se convierte en una
+/// barra flotante cuando la ventana se estrecha. Al tocarla se expande con el
+/// progreso y controles rápidos.
 class DynamicIslandOverlay extends ConsumerWidget {
   const DynamicIslandOverlay({super.key});
 
@@ -30,20 +33,36 @@ class DynamicIslandOverlay extends ConsumerWidget {
     final Track? track = island.track;
     final PolarisTokens tokens = context.tokens;
 
+    final double windowWidth = MediaQuery.sizeOf(context).width;
+    if (windowWidth < 360) return const SizedBox.shrink();
+
+    // Barra compacta en ventanas estrechas; tarjeta en ventanas amplias.
+    final bool narrow = windowWidth < 640;
+    final double width = math.min(
+      island.expanded ? 420 : (narrow ? 300 : 330),
+      math.max(windowWidth - 24, 220),
+    );
+    final bool showProgress = island.expanded && track != null;
+
     return Align(
       alignment: Alignment.topCenter,
       child: Padding(
-        padding: const EdgeInsets.only(top: 12),
+        padding: EdgeInsets.only(top: narrow ? 8 : 12),
         child: GestureDetector(
           onTap: controller.toggleExpanded,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 260),
             curve: Curves.easeOutCubic,
-            width: island.expanded ? 420 : 320,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            width: width,
+            padding: EdgeInsets.fromLTRB(
+              narrow ? 10 : 12,
+              narrow ? 8 : 10,
+              narrow ? 8 : 12,
+              narrow ? 8 : 10,
+            ),
             decoration: tokens
                 .panelDecoration(
-                  radius: tokens.islandRadius,
+                  radius: narrow ? 22 : tokens.islandRadius,
                   glow: tokens.accent,
                 )
                 .copyWith(color: tokens.panelOverlay.withValues(alpha: 0.96)),
@@ -55,24 +74,12 @@ class DynamicIslandOverlay extends ConsumerWidget {
                     if (track != null)
                       TrackArtwork(
                         path: track.artworkPath,
-                        size: 34,
-                        radius: 10,
+                        size: narrow ? 28 : 34,
+                        radius: narrow ? 8 : 10,
                       )
                     else
-                      Container(
-                        width: 34,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: tokens.accent.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(
-                          Icons.public_rounded,
-                          size: 18,
-                          color: tokens.accent,
-                        ),
-                      ),
-                    const SizedBox(width: 10),
+                      PolarisLogo(size: narrow ? 28 : 34, radius: 8),
+                    SizedBox(width: narrow ? 8 : 10),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,8 +89,8 @@ class DynamicIslandOverlay extends ConsumerWidget {
                             island.message ?? track?.title ?? 'Polaris Music',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
+                            style: TextStyle(
+                              fontSize: narrow ? 11 : 12,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -92,8 +99,8 @@ class DynamicIslandOverlay extends ConsumerWidget {
                               track.artist,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 10,
+                              style: TextStyle(
+                                fontSize: narrow ? 9 : 10,
                                 color: Colors.white54,
                               ),
                             ),
@@ -111,7 +118,7 @@ class DynamicIslandOverlay extends ConsumerWidget {
                           island.playing
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
-                          size: 22,
+                          size: narrow ? 19 : 22,
                           color: tokens.accent,
                         ),
                       ),
@@ -122,12 +129,15 @@ class DynamicIslandOverlay extends ConsumerWidget {
                           onPressed: () => ref
                               .read(playerControllerProvider.notifier)
                               .next(),
-                          icon: const Icon(Icons.skip_next_rounded, size: 20),
+                          icon: Icon(
+                            Icons.skip_next_rounded,
+                            size: narrow ? 17 : 20,
+                          ),
                         ),
                     ],
                   ],
                 ),
-                if (island.expanded && track != null) ...<Widget>[
+                if (showProgress) ...<Widget>[
                   const SizedBox(height: 8),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(4),

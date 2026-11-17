@@ -16,10 +16,17 @@ class MiniPlayerBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final PlayerUiState ui = ref.watch(playerControllerProvider);
-    final Track? track = ui.track;
+    final Track? track = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.track),
+    );
     if (track == null) return const SizedBox.shrink();
 
+    final bool playing = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playing),
+    );
+    final double progress = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.progress),
+    );
     final PlayerController controller = ref.read(
       playerControllerProvider.notifier,
     );
@@ -38,9 +45,7 @@ class MiniPlayerBar extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               LinearProgressIndicator(
-                value: ui.playback.duration.inMilliseconds == 0
-                    ? 0
-                    : ui.playback.progress,
+                value: progress.clamp(0.0, 1.0),
                 minHeight: 2,
                 backgroundColor: Colors.white.withValues(alpha: 0.06),
               ),
@@ -83,10 +88,10 @@ class MiniPlayerBar extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: ui.playing ? 'Pausar' : 'Reproducir',
+                        tooltip: playing ? 'Pausar' : 'Reproducir',
                         onPressed: controller.togglePlay,
                         icon: Icon(
-                          ui.playing
+                          playing
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
                           color: tokens.accent,

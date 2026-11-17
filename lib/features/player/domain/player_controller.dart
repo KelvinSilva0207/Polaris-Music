@@ -70,8 +70,10 @@ class PlayerController extends StateNotifier<PlayerUiState> {
   PlayerController({
     required AudioEngineService engine,
     required SettingsService settings,
+    Future<void> Function(int id, bool value)? persistFavorite,
   }) : _engine = engine,
        _settings = settings,
+       _persistFavorite = persistFavorite,
        super(
          PlayerUiState(
            playback: engine.state,
@@ -88,11 +90,14 @@ class PlayerController extends StateNotifier<PlayerUiState> {
 
   final AudioEngineService _engine;
   final SettingsService _settings;
+  final Future<void> Function(int id, bool value)? _persistFavorite;
 
   StreamSubscription<PlaybackSnapshot>? _stateSub;
   Timer? _sleepTicker;
   DateTime? _sleepDeadline;
   Timer? _sleepTimeout;
+  Timer? _volumeSaveTimer;
+  double? _pendingVolume;
 
   void _onEngineState(PlaybackSnapshot snapshot) {
     if (snapshot.completed && state.sleepEndsAtTrack) {
@@ -113,14 +118,18 @@ class PlayerController extends StateNotifier<PlayerUiState> {
     } else {
       await _engine.playTrack(track);
     }
-    unawaited(_settings.setInt(AppConstants.keyLastTrackId, track.id));
+    if (track.isPersisted) {
+      unawaited(_settings.setInt(AppConstants.keyLastTrackId, track.id));
+    }
   }
 
   Future<void> playQueue(List<Track> tracks, {int startIndex = 0}) async {
     if (tracks.isEmpty) return;
     await _engine.setQueue(tracks, startIndex: startIndex);
     final Track started = tracks[startIndex.clamp(0, tracks.length - 1)];
-    unawaited(_settings.setInt(AppConstants.keyLastTrackId, started.id));
+    if (started.isPersisted) {
+      unawaited(_settings.setInt(AppConstants.keyLastTrackId, started.id));
+    }
   }
 
   Future<void> addToQueue(Track track) => _engine.addToQueue(track);
@@ -147,7 +156,26 @@ class PlayerController extends StateNotifier<PlayerUiState> {
 
   Future<void> setVolume(double percent) async {
     await _engine.setVolume(percent);
-    await _settings.saveVolume(percent / 100);
+    // Arrastrar el deslizador dispara decenas de eventos por segundo; la
+    // escritura en SQLite se agrupa para no castigar el disco.
+    _pendingVolume = percent / 100;
+    _volumeSaveTimer?.cancel();
+    _volumeSaveTimer = Timer(const Duration(milliseconds: 400), () {
+      final double? value = _pendingVolume;
+      _pendingVolume = null;
+      if (value != null) unawaited(_settings.saveVolume(value));
+    });
+  }
+
+  /// Actualiza el corazón de favoritos de forma inmediata en la UI.
+  ///
+  /// El motor refleja el cambio en la cola al instante y la persistencia en
+  /// Drift se delega en `LibraryRepository` a través del callback inyectado.
+  Future<void> setFavorite(bool value) async {
+    final Track? track = state.track;
+    if (track == null) return;
+    _engine.updateFavorite(track.id, value);
+    await _persistFavorite?.call(track.id, value);
   }
 
   Future<void> setSpeed(double speed) => _engine.setSpeed(speed);
@@ -236,6 +264,9 @@ class PlayerController extends StateNotifier<PlayerUiState> {
     _stateSub?.cancel();
     _sleepTicker?.cancel();
     _sleepTimeout?.cancel();
+    _volumeSaveTimer?.cancel();
+    final double? pending = _pendingVolume;
+    if (pending != null) unawaited(_settings.saveVolume(pending));
     super.dispose();
   }
 }

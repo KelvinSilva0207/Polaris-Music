@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/theme_tokens.dart';
+import '../../../shared/widgets/polaris_logo.dart';
 import '../../library/presentation/library_providers.dart';
 
 /// Introducción de 3 pasos: bienvenida, permisos y selección de carpetas.
@@ -129,7 +130,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       onPageChanged: (int value) =>
                           setState(() => _index = value),
                       children: <Widget>[
-                        _WelcomePage(accent: tokens.accent),
+                        const _WelcomePage(),
                         _PermissionsPage(
                           message: _permissionMessage,
                           busy: _busy,
@@ -217,9 +218,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 }
 
 class _WelcomePage extends StatelessWidget {
-  const _WelcomePage({required this.accent});
-
-  final Color accent;
+  const _WelcomePage();
 
   @override
   Widget build(BuildContext context) {
@@ -227,24 +226,7 @@ class _WelcomePage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(28, 36, 28, 12),
       child: Column(
         children: <Widget>[
-          Container(
-            width: 116,
-            height: 116,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: <Color>[
-                  accent.withValues(alpha: 0.9),
-                  accent.withValues(alpha: 0.15),
-                ],
-              ),
-            ),
-            child: const Icon(
-              Icons.public_rounded,
-              size: 62,
-              color: Colors.white,
-            ),
-          ),
+          const PolarisLogo(size: 118, radius: 59, glow: true),
           const SizedBox(height: 26),
           Text(
             AppConstants.appName,

@@ -2,11 +2,14 @@ import 'package:get_it/get_it.dart';
 
 import '../../features/library/data/library_repository.dart';
 import '../../features/lyrics/data/lyrics_service.dart';
+import '../../features/online_music/data/download_manager.dart';
+import '../../features/online_music/data/online_music_service.dart';
 import '../../features/profiles_backup/domain/profiles_service.dart';
 import '../../features/stats_sync/domain/stats_service.dart';
 import '../database/app_database.dart';
 import '../services/audio_engine_service.dart';
 import '../services/backup_service.dart';
+import '../services/global_hotkey_service.dart';
 import '../services/media_session_service.dart';
 import '../services/permission_service.dart';
 import '../services/playback_stats_recorder.dart';
@@ -46,10 +49,32 @@ class ServiceLocator {
     await engine.initialize();
     sl.registerSingleton<AudioEngineService>(engine);
 
+    // El volumen inicial es 50 %; si el usuario ya eligió otro, se respeta.
+    await engine.setVolume(
+      (settings.volume * 100).clamp(0.0, 100.0).toDouble(),
+    );
+
     AppLog.i('Bootstrap', 'Iniciando sesión multimedia');
     final MediaSessionService mediaSession = MediaSessionService(engine);
     await mediaSession.initialize();
     sl.registerSingleton<MediaSessionService>(mediaSession);
+
+    AppLog.i('Bootstrap', 'Registrando atajos globales');
+    final GlobalHotkeyService hotkeys = GlobalHotkeyService(
+      settings: settings,
+      onAction: (HotkeyAction action) async {
+        switch (action) {
+          case HotkeyAction.playPause:
+            await engine.playOrPause();
+          case HotkeyAction.next:
+            await engine.next();
+          case HotkeyAction.previous:
+            await engine.previous();
+        }
+      },
+    );
+    await hotkeys.initialize();
+    sl.registerSingleton<GlobalHotkeyService>(hotkeys);
 
     final PlaybackStatsRecorder statsRecorder = PlaybackStatsRecorder(
       engine: engine,
@@ -76,16 +101,35 @@ class ServiceLocator {
     sl.registerSingleton<StatsService>(StatsService(database));
     sl.registerSingleton<ProfilesService>(ProfilesService(database));
 
+    AppLog.i('Bootstrap', 'Preparando catálogo online y descargas');
+    sl.registerLazySingleton<OnlineMusicService>(() => OnlineMusicService());
+    sl.registerLazySingleton<DownloadManager>(
+      () => DownloadManager(
+        repository: sl<OnlineMusicService>(),
+        registerDownloaded: sl<LibraryRepository>().registerDownloaded,
+        hasDownloaded: sl<LibraryRepository>().hasExternalId,
+      ),
+    );
+
     AppLog.i('Bootstrap', 'Servicios inicializados');
   }
 
   /// Libera recursos nativos en orden inverso.
   static Future<void> shutdown() async {
+    if (sl.isRegistered<GlobalHotkeyService>()) {
+      await sl<GlobalHotkeyService>().dispose();
+    }
     if (sl.isRegistered<TrayService>()) {
       await sl<TrayService>().dispose();
     }
     if (sl.isRegistered<MediaSessionService>()) {
       await sl<MediaSessionService>().dispose();
+    }
+    if (sl.isRegistered<DownloadManager>()) {
+      await sl<DownloadManager>().dispose();
+    }
+    if (sl.isRegistered<OnlineMusicService>()) {
+      await sl<OnlineMusicService>().dispose();
     }
     if (sl.isRegistered<LibraryRepository>()) {
       await sl<LibraryRepository>().dispose();

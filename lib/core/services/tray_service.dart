@@ -39,7 +39,8 @@ class TrayService with TrayListener {
 
   bool _initialized = false;
   bool _quitting = false;
-  String _lastTitle = '';
+  String _lastTooltip = '';
+  bool _lastPlaying = false;
 
   bool get isSupported => !kIsWeb && Platform.isWindows;
   bool get isInitialized => _initialized;
@@ -66,17 +67,26 @@ class TrayService with TrayListener {
 
   void _onState(PlaybackSnapshot snapshot) {
     final Track? track = snapshot.currentTrack;
-    final String title = track == null
+    final String tooltip = track == null || track.title.isEmpty
         ? AppConstants.appName
-        : '${track.artist} · ${track.title}';
-    if (title == _lastTitle) return;
-    _lastTitle = title;
+        : '${track.artist} - ${track.title}';
 
-    final MenuItem? playPause = _playPauseItem;
-    if (playPause != null) {
-      playPause.label = snapshot.playing ? 'Pausar' : 'Reproducir';
+    if (tooltip != _lastTooltip) {
+      _lastTooltip = tooltip;
+      // Windows limita el tooltip de la bandeja; recortamos con elegancia.
+      final String safe = tooltip.length > 120
+          ? '${tooltip.substring(0, 117)}…'
+          : tooltip;
+      unawaited(trayManager.setToolTip(safe));
     }
-    unawaited(trayManager.setToolTip('${AppConstants.appName}\n$title'));
+
+    if (snapshot.playing != _lastPlaying) {
+      _lastPlaying = snapshot.playing;
+      final MenuItem? playPause = _playPauseItem;
+      if (playPause != null) {
+        playPause.label = snapshot.playing ? 'Pausar' : 'Reproducir';
+      }
+    }
   }
 
   Future<void> _rebuildMenu() async {
@@ -110,8 +120,13 @@ class TrayService with TrayListener {
         MenuItem.separator(),
         MenuItem(
           key: 'show',
-          label: 'Mostrar Polaris Music',
-          onClick: (MenuItem _) => unawaited(_window.show()),
+          label: 'Mostrar ventana principal',
+          onClick: (MenuItem _) => unawaited(_window.restoreNormal()),
+        ),
+        MenuItem(
+          key: 'mini',
+          label: 'Reproductor mini',
+          onClick: (MenuItem _) => unawaited(_window.showTrayMiniPlayer()),
         ),
         MenuItem.submenu(
           key: 'window_mode',
@@ -175,7 +190,8 @@ class TrayService with TrayListener {
 
   @override
   void onTrayIconMouseDown() {
-    unawaited(_window.show());
+    // Clic izquierdo: minirreproductor flotante estilo MusicBee.
+    unawaited(_window.showTrayMiniPlayer());
   }
 
   @override

@@ -34,6 +34,12 @@ class AppPaths {
     return _sub('downloads');
   }
 
+  /// Pistas descargadas desde el catálogo online.
+  ///
+  /// Vive en la carpeta de datos de la app para no requerir permisos extra en
+  /// Android; la biblioteca las registra en Drift y las muestra al instante.
+  static Future<Directory> music() => _sub(p.join('downloads', 'music'));
+
   static Future<Directory> _sub(String name) async {
     final Directory base = await root();
     final Directory dir = Directory(p.join(base.path, name));

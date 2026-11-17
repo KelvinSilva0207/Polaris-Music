@@ -64,6 +64,22 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
   Future<TrackRow?> byPath(String path) =>
       (select(tracks)..where((t) => t.path.equals(path))).getSingleOrNull();
 
+  Future<TrackRow?> byExternalId(String externalId) => (select(
+    tracks,
+  )..where((t) => t.externalId.equals(externalId))).getSingleOrNull();
+
+  Future<bool> hasExternalId(String externalId) async =>
+      await byExternalId(externalId) != null;
+
+  /// Identificadores externos ya descargados, para pintar la nube en la UI.
+  Stream<Set<String>> watchDownloadedExternalIds() =>
+      (select(tracks)..where((t) => t.source.equals('download'))).watch().map(
+        (List<TrackRow> rows) => rows
+            .map((TrackRow row) => row.externalId)
+            .whereType<String>()
+            .toSet(),
+      );
+
   Future<List<String>> favoritePaths() async {
     final List<TypedResult> rows =
         await (selectOnly(tracks)
@@ -109,12 +125,50 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
 
       await (update(tracks)..where((t) => t.id.equals(existing.id))).write(
         companion.copyWith(
-          // Nunca sobrescribir datos de usuario/estadísticas.
+          // Nunca sobrescribir datos de usuario/estadísticas ni el origen.
           addedAt: Value(existing.addedAt),
           isFavorite: Value(existing.isFavorite),
           playCount: Value(existing.playCount),
           skipCount: Value(existing.skipCount),
           lastPlayedAt: Value(existing.lastPlayedAt),
+          source: Value(existing.source),
+          externalId: Value(existing.externalId),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      return existing.id;
+    });
+  }
+
+  /// Inserta o actualiza el registro de una pista descargada.
+  ///
+  /// La deduplicación prioriza el `externalId` y cae a la ruta cuando la fuente
+  /// no expone identificador. Nunca pisa favoritos ni contadores.
+  Future<int> upsertDownloaded(TracksCompanion companion) {
+    return transaction(() async {
+      final String? externalId = companion.externalId.present
+          ? companion.externalId.value
+          : null;
+
+      TrackRow? match;
+      if (externalId != null) {
+        match = await byExternalId(externalId);
+      }
+      match ??= await byPath(companion.path.value);
+
+      if (match == null) {
+        return into(tracks).insert(companion);
+      }
+
+      final TrackRow existing = match;
+      await (update(tracks)..where((t) => t.id.equals(existing.id))).write(
+        companion.copyWith(
+          addedAt: Value(existing.addedAt),
+          isFavorite: Value(existing.isFavorite),
+          playCount: Value(existing.playCount),
+          skipCount: Value(existing.skipCount),
+          lastPlayedAt: Value(existing.lastPlayedAt),
+          source: const Value('download'),
           updatedAt: Value(DateTime.now()),
         ),
       );
@@ -238,7 +292,10 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
   Future<void> deleteMissingPaths(Set<String> existingPaths) async {
     final List<TrackRow> all = await select(tracks).get();
     final List<int> missing = all
-        .where((TrackRow t) => !existingPaths.contains(t.path))
+        .where(
+          (TrackRow t) =>
+              !existingPaths.contains(t.path) && t.source != 'download',
+        )
         .map((TrackRow t) => t.id)
         .toList(growable: false);
     await deleteByIds(missing);

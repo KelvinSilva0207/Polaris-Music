@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../constants/app_constants.dart';
 import '../di/service_locator.dart';
 import '../models/update_info.dart';
+import '../services/global_hotkey_service.dart';
 import '../services/permission_service.dart';
 import '../services/settings_service.dart';
 import '../services/tray_service.dart';
@@ -44,6 +46,15 @@ final Provider<WindowService> windowServiceProvider = Provider<WindowService>(
 final Provider<TrayService> trayServiceProvider = Provider<TrayService>(
   (Ref ref) => sl<TrayService>(),
 );
+
+final Provider<GlobalHotkeyService> globalHotkeyServiceProvider =
+    Provider<GlobalHotkeyService>((Ref ref) => sl<GlobalHotkeyService>());
+
+/// Estado nativo de la ventana, observable por el shell.
+final Provider<ValueNotifier<WindowUiState>> windowStateProvider =
+    Provider<ValueNotifier<WindowUiState>>(
+      (Ref ref) => ref.watch(windowServiceProvider).state,
+    );
 
 final FutureProvider<UpdateInfo?> latestUpdateProvider =
     FutureProvider<UpdateInfo?>((Ref ref) {

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
@@ -9,6 +10,7 @@ import '../../../core/models/update_info.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/services/backup_service.dart';
+import '../../../core/services/global_hotkey_service.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_theme_config.dart';
@@ -16,11 +18,14 @@ import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../features/dynamic_island/domain/dynamic_island_controller.dart';
 import '../../../features/dynamic_island/presentation/island_providers.dart';
+import '../../../features/home/presentation/home_screen.dart';
 import '../../../features/library/presentation/library_providers.dart';
 import '../../../features/player/domain/player_controller.dart';
 import '../../../features/player/presentation/player_providers.dart';
 import '../../../features/profiles_backup/domain/profiles_service.dart';
 import '../../../features/profiles_backup/presentation/profiles_providers.dart';
+import '../../../features/stats_sync/presentation/stats_screen.dart';
+import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import 'customization_screen.dart';
 
@@ -40,7 +45,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final ThemeState theme = ref.watch(themeControllerProvider);
     final AppThemeConfig config = theme.config;
     final Color accent = config.accent;
-    final PlayerUiState player = ref.watch(playerControllerProvider);
+    final bool replayGain = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.replayGainEnabled),
+    );
+    final bool gapless = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.gaplessEnabled),
+    );
+    final bool crossfade = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.crossfadeEnabled),
+    );
+    final int crossfadeMs = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.crossfadeMs),
+    );
     final DynamicIslandState island = ref.watch(
       dynamicIslandControllerProvider,
     );
@@ -132,7 +148,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: const Text(
                 'Normaliza el volumen usando las etiquetas de la pista',
               ),
-              value: player.replayGainEnabled,
+              value: replayGain,
               onChanged: (bool value) => ref
                   .read(playerControllerProvider.notifier)
                   .setReplayGainEnabled(value),
@@ -143,7 +159,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: const Text(
                 'Delegado al motor mpv: une pistas del mismo álbum',
               ),
-              value: player.gaplessEnabled,
+              value: gapless,
               onChanged: (bool value) => ref
                   .read(playerControllerProvider.notifier)
                   .setGaplessEnabled(value),
@@ -154,19 +170,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               subtitle: const Text(
                 'El fundido real requiere dos motores simultáneos; pendiente',
               ),
-              value: player.crossfadeEnabled,
+              value: crossfade,
               onChanged: (bool value) => ref
                   .read(playerControllerProvider.notifier)
                   .setCrossfade(enabled: value),
             ),
-            if (player.crossfadeEnabled)
+            if (crossfade)
               Row(
                 children: <Widget>[
                   const SizedBox(width: 4),
                   const Text('Duración', style: TextStyle(fontSize: 12)),
                   Expanded(
                     child: Slider(
-                      value: player.crossfadeMs.toDouble().clamp(0, 12000),
+                      value: crossfadeMs.toDouble().clamp(0, 12000),
                       min: 0,
                       max: 12000,
                       divisions: 24,
@@ -178,7 +194,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   SizedBox(
                     width: 54,
                     child: Text(
-                      '${(player.crossfadeMs / 1000).toStringAsFixed(1)} s',
+                      '${(crossfadeMs / 1000).toStringAsFixed(1)} s',
                       textAlign: TextAlign.end,
                       style: const TextStyle(fontSize: 12),
                     ),
@@ -212,7 +228,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               runSpacing: 10,
               children: <Widget>[
                 OutlinedButton.icon(
-                  onPressed: () => widget.onNavigate(1),
+                  onPressed: () => widget.onNavigate(0),
                   icon: const Icon(Icons.folder_outlined, size: 18),
                   label: const Text('Gestionar carpetas'),
                 ),
@@ -248,6 +264,52 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         const SizedBox(height: 16),
         _Section(
+          title: 'Inicio y estadísticas',
+          icon: Icons.dashboard_customize_outlined,
+          children: <Widget>[
+            const Text(
+              'Polaris abre directamente en el reproductor. El resumen de '
+              'bienvenida y las estadísticas de escucha están aquí para no '
+              'ocupar la navegación principal.',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: <Widget>[
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (BuildContext context) => Scaffold(
+                        appBar: AppBar(title: const Text('Resumen')),
+                        body: HomeScreen(onNavigate: widget.onNavigate),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                  label: const Text('Resumen y bienvenida'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (BuildContext context) =>
+                          const Scaffold(body: StatsScreen()),
+                    ),
+                  ),
+                  icon: const Icon(Icons.insights_rounded, size: 18),
+                  label: const Text('Estadísticas'),
+                ),
+              ],
+            ),
+          ],
+        ),
+        if (Platform.isWindows) ...<Widget>[
+          const SizedBox(height: 16),
+          const _HotkeysSection(),
+        ],
+        const SizedBox(height: 16),
+        _Section(
           title: 'Isla dinámica',
           icon: Icons.picture_in_picture_alt_rounded,
           children: <Widget>[
@@ -266,76 +328,70 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ),
         if (window.isSupported) ...<Widget>[
           const SizedBox(height: 16),
-          _Section(
-            title: 'Ventana',
-            icon: Icons.desktop_windows_outlined,
-            children: <Widget>[
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Siempre encima'),
-                subtitle: const Text('Mantiene la ventana sobre otras apps'),
-                value: window.alwaysOnTop,
-                onChanged: (bool value) async {
-                  await window.setAlwaysOnTop(value);
-                  setState(() {});
-                },
-              ),
-              const SizedBox(height: 6),
-              const _SettingLabel(
-                title: 'Modo de ventana',
-                subtitle: 'Normal, mini barra o teléfono flotante',
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
+          ValueListenableBuilder<WindowUiState>(
+            valueListenable: ref.watch(windowStateProvider),
+            builder: (BuildContext context, WindowUiState state, Widget? _) {
+              return _Section(
+                title: 'Ventana',
+                icon: Icons.desktop_windows_outlined,
                 children: <Widget>[
-                  _ModeButton(
-                    icon: Icons.crop_square_rounded,
-                    label: 'Normal',
-                    selected: window.mode == WindowMode.normal,
-                    onPressed: () async {
-                      await window.setMode(WindowMode.normal);
-                      setState(() {});
-                    },
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Siempre encima'),
+                    subtitle: const Text(
+                      'Mantiene la ventana sobre otras apps',
+                    ),
+                    value: state.alwaysOnTop,
+                    onChanged: window.setAlwaysOnTop,
                   ),
-                  _ModeButton(
-                    icon: Icons.view_agenda_outlined,
-                    label: 'Mini barra',
-                    selected: window.mode == WindowMode.mini,
-                    onPressed: () async {
-                      await window.setMode(WindowMode.mini);
-                      setState(() {});
-                    },
+                  const SizedBox(height: 6),
+                  const _SettingLabel(
+                    title: 'Modo de ventana',
+                    subtitle: 'Normal, mini barra o teléfono flotante',
                   ),
-                  _ModeButton(
-                    icon: Icons.phone_android_rounded,
-                    label: 'Teléfono',
-                    selected: window.mode == WindowMode.phone,
-                    onPressed: () async {
-                      await window.setMode(WindowMode.phone);
-                      setState(() {});
-                    },
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: <Widget>[
+                      _ModeButton(
+                        icon: Icons.crop_square_rounded,
+                        label: 'Normal',
+                        selected: state.mode == WindowMode.normal,
+                        onPressed: () => window.setMode(WindowMode.normal),
+                      ),
+                      _ModeButton(
+                        icon: Icons.view_agenda_outlined,
+                        label: 'Mini barra',
+                        selected: state.mode == WindowMode.mini,
+                        onPressed: () => window.setMode(WindowMode.mini),
+                      ),
+                      _ModeButton(
+                        icon: Icons.phone_android_rounded,
+                        label: 'Teléfono',
+                        selected: state.mode == WindowMode.phone,
+                        onPressed: () => window.setMode(WindowMode.phone),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: window.toggleSideHidden,
+                    icon: Icon(
+                      state.sideHidden
+                          ? Icons.keyboard_double_arrow_right_rounded
+                          : Icons.keyboard_double_arrow_left_rounded,
+                      size: 18,
+                    ),
+                    label: Text(
+                      state.sideHidden
+                          ? 'Mostrar ventana'
+                          : 'Ocultar al borde (estilo AIMP)',
+                    ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await window.toggleSideHidden();
-                  setState(() {});
-                },
-                icon: const Icon(
-                  Icons.keyboard_double_arrow_left_rounded,
-                  size: 18,
-                ),
-                label: Text(
-                  window.sideHidden
-                      ? 'Mostrar ventana'
-                      : 'Ocultar al borde (estilo AIMP)',
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ],
         const SizedBox(height: 16),
@@ -359,7 +415,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.public_rounded),
+              leading: const PolarisLogo(size: 26, radius: 7),
               title: const Text('Repositorio en GitHub'),
               subtitle: Text(
                 '${AppConstants.githubOwner}/${AppConstants.githubRepo}',
@@ -402,7 +458,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       applicationName: AppConstants.appName,
       applicationVersion: AppConstants.appVersionFallback,
-      applicationIcon: const Icon(Icons.public_rounded, size: 40),
+      applicationIcon: const PolarisLogo(size: 44, radius: 12),
       applicationLegalese:
           '© ${DateTime.now().year} Kelvin Silva · Hecho con cariño para '
           'escuchar música como se merece.',
@@ -622,6 +678,243 @@ class _ModeButton extends StatelessWidget {
             icon: Icon(icon, size: 18, color: tokens.accent),
             label: Text(label),
           );
+  }
+}
+
+/// Atajos globales de Windows: funcionan aunque Polaris esté minimizado.
+class _HotkeysSection extends ConsumerWidget {
+  const _HotkeysSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final GlobalHotkeyService service = ref.watch(globalHotkeyServiceProvider);
+    if (!service.isSupported) return const SizedBox.shrink();
+
+    return ValueListenableBuilder<Map<HotkeyAction, HotkeyBinding>>(
+      valueListenable: service.bindings,
+      builder:
+          (
+            BuildContext context,
+            Map<HotkeyAction, HotkeyBinding> bindings,
+            Widget? _,
+          ) {
+            return ValueListenableBuilder<String?>(
+              valueListenable: service.lastError,
+              builder: (BuildContext context, String? error, Widget? _) {
+                final PolarisTokens tokens = context.tokens;
+                return _Section(
+                  title: 'Atajos de teclado',
+                  icon: Icons.keyboard_alt_outlined,
+                  children: <Widget>[
+                    const Text(
+                      'Funcionan con Polaris minimizado o en la bandeja. '
+                      'Dentro de la app, la barra espaciadora reproduce o '
+                      'pausa.',
+                      style: TextStyle(fontSize: 12, color: Colors.white54),
+                    ),
+                    const SizedBox(height: 6),
+                    for (final HotkeyAction action in HotkeyAction.values)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(switch (action) {
+                          HotkeyAction.playPause =>
+                            Icons.play_circle_outline_rounded,
+                          HotkeyAction.next => Icons.skip_next_rounded,
+                          HotkeyAction.previous => Icons.skip_previous_rounded,
+                        }, color: tokens.accent),
+                        title: Text(GlobalHotkeyService.labelFor(action)),
+                        subtitle: Text(
+                          (bindings[action] ?? service.bindingFor(action))
+                              .label,
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => _capture(context, service, action),
+                          child: const Text('Cambiar'),
+                        ),
+                      ),
+                    if (error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          children: <Widget>[
+                            const Icon(
+                              Icons.warning_amber_rounded,
+                              size: 16,
+                              color: Colors.orangeAccent,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                error,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orangeAccent,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 4),
+                    OutlinedButton.icon(
+                      onPressed: service.resetDefaults,
+                      icon: const Icon(Icons.restore_rounded, size: 18),
+                      label: const Text('Restablecer atajos'),
+                    ),
+                  ],
+                );
+              },
+            );
+          },
+    );
+  }
+
+  Future<void> _capture(
+    BuildContext context,
+    GlobalHotkeyService service,
+    HotkeyAction action,
+  ) async {
+    final HotkeyBinding? binding = await showDialog<HotkeyBinding>(
+      context: context,
+      builder: (BuildContext context) => _HotkeyCaptureDialog(action: action),
+    );
+    if (binding != null) await service.setBinding(action, binding);
+  }
+}
+
+/// Diálogo que escucha la siguiente combinación de teclas del usuario.
+class _HotkeyCaptureDialog extends StatefulWidget {
+  const _HotkeyCaptureDialog({required this.action});
+
+  final HotkeyAction action;
+
+  @override
+  State<_HotkeyCaptureDialog> createState() => _HotkeyCaptureDialogState();
+}
+
+class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
+  static final Set<LogicalKeyboardKey> _modifiers = <LogicalKeyboardKey>{
+    LogicalKeyboardKey.controlLeft,
+    LogicalKeyboardKey.controlRight,
+    LogicalKeyboardKey.altLeft,
+    LogicalKeyboardKey.altRight,
+    LogicalKeyboardKey.shiftLeft,
+    LogicalKeyboardKey.shiftRight,
+    LogicalKeyboardKey.metaLeft,
+    LogicalKeyboardKey.metaRight,
+  };
+
+  String? _error;
+
+  /// Modificadores vistos por este diálogo.
+  ///
+  /// Se combinan con el estado global de [HardwareKeyboard] para que la
+  /// captura funcione igual con teclados reales y con entradas sintéticas.
+  final Set<LogicalKeyboardKey> _pressed = <LogicalKeyboardKey>{};
+  bool _done = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final PolarisTokens tokens = context.tokens;
+    return AlertDialog(
+      title: Text('Atajo para ${GlobalHotkeyService.labelFor(widget.action)}'),
+      content: Focus(
+        autofocus: true,
+        onKeyEvent: _onKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text(
+              'Pulsa la combinación que quieras usar. Debe incluir Ctrl, Alt '
+              'o Win para no interferir mientras escribes en otras apps.',
+              style: TextStyle(fontSize: 13),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: tokens.accent.withValues(alpha: 0.5)),
+                color: tokens.accent.withValues(alpha: 0.08),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(Icons.keyboard_rounded, size: 20, color: tokens.accent),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Esperando teclas…',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+            if (_error != null) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.orangeAccent,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+      ],
+    );
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (_done) return KeyEventResult.handled;
+    if (event is KeyUpEvent) {
+      _pressed.remove(event.logicalKey);
+      return KeyEventResult.ignored;
+    }
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+    // Esc cancela sin capturar.
+    if (event.logicalKey == LogicalKeyboardKey.escape) {
+      _done = true;
+      Navigator.of(context).pop();
+      return KeyEventResult.handled;
+    }
+    // Los modificadores solos no forman una combinación.
+    if (_modifiers.contains(event.logicalKey)) {
+      if (event is KeyDownEvent) _pressed.add(event.logicalKey);
+      return KeyEventResult.handled;
+    }
+
+    final HotkeyBinding? binding = HotkeyBinding.fromLogicalKey(
+      event.logicalKey,
+      pressed: <LogicalKeyboardKey>{
+        ...HardwareKeyboard.instance.logicalKeysPressed,
+        ..._pressed,
+      },
+    );
+
+    if (binding == null) {
+      setState(() => _error = 'Esa tecla no se puede usar como atajo global.');
+      return KeyEventResult.handled;
+    }
+    if (!binding.hasModifier) {
+      setState(() => _error = 'Añade Ctrl, Alt o Win a la combinación.');
+      return KeyEventResult.handled;
+    }
+
+    _done = true;
+    Navigator.of(context).pop(binding);
+    return KeyEventResult.handled;
   }
 }
 
@@ -1131,7 +1424,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                     OutlinedButton.icon(
                       onPressed: () =>
                           ref.read(updateServiceProvider).openReleasePage(info),
-                      icon: const Icon(Icons.public_rounded, size: 18),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
                       label: const Text('Ver release'),
                     ),
                   ],

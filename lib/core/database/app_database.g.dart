@@ -177,6 +177,27 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, TrackRow> {
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('local'),
+  );
+  static const VerificationMeta _externalIdMeta = const VerificationMeta(
+    'externalId',
+  );
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+    'external_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _replayGainTrackDbMeta = const VerificationMeta(
     'replayGainTrackDb',
   );
@@ -293,6 +314,8 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, TrackRow> {
     format,
     fileSize,
     artworkPath,
+    source,
+    externalId,
     replayGainTrackDb,
     replayGainAlbumDb,
     isFavorite,
@@ -418,6 +441,18 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, TrackRow> {
           data['artwork_path']!,
           _artworkPathMeta,
         ),
+      );
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    }
+    if (data.containsKey('external_id')) {
+      context.handle(
+        _externalIdMeta,
+        externalId.isAcceptableOrUnknown(data['external_id']!, _externalIdMeta),
       );
     }
     if (data.containsKey('replay_gain_track_db')) {
@@ -550,6 +585,14 @@ class $TracksTable extends Tracks with TableInfo<$TracksTable, TrackRow> {
         DriftSqlType.string,
         data['${effectivePrefix}artwork_path'],
       ),
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      externalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}external_id'],
+      ),
       replayGainTrackDb: attachedDatabase.typeMapping.read(
         DriftSqlType.double,
         data['${effectivePrefix}replay_gain_track_db'],
@@ -609,6 +652,15 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
   final int fileSize;
   final String? artworkPath;
 
+  /// Origen de la fila: `local` (escaneada) o `download` (módulo online).
+  ///
+  /// Se usa para distinguir la etiqueta de nube en la biblioteca y para que el
+  /// escaneo no elimine descargas que no viven en las carpetas vigiladas.
+  final String source;
+
+  /// Identificador en la fuente online (`audius:<id>`), único por descarga.
+  final String? externalId;
+
   /// Ganancia ReplayGain en dB (etiqueta REPLAYGAIN_TRACK_GAIN / APE).
   final double? replayGainTrackDb;
   final double? replayGainAlbumDb;
@@ -635,6 +687,8 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
     this.format,
     required this.fileSize,
     this.artworkPath,
+    required this.source,
+    this.externalId,
     this.replayGainTrackDb,
     this.replayGainAlbumDb,
     required this.isFavorite,
@@ -680,6 +734,10 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
     map['file_size'] = Variable<int>(fileSize);
     if (!nullToAbsent || artworkPath != null) {
       map['artwork_path'] = Variable<String>(artworkPath);
+    }
+    map['source'] = Variable<String>(source);
+    if (!nullToAbsent || externalId != null) {
+      map['external_id'] = Variable<String>(externalId);
     }
     if (!nullToAbsent || replayGainTrackDb != null) {
       map['replay_gain_track_db'] = Variable<double>(replayGainTrackDb);
@@ -732,6 +790,10 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
       artworkPath: artworkPath == null && nullToAbsent
           ? const Value.absent()
           : Value(artworkPath),
+      source: Value(source),
+      externalId: externalId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(externalId),
       replayGainTrackDb: replayGainTrackDb == null && nullToAbsent
           ? const Value.absent()
           : Value(replayGainTrackDb),
@@ -771,6 +833,8 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
       format: serializer.fromJson<String?>(json['format']),
       fileSize: serializer.fromJson<int>(json['fileSize']),
       artworkPath: serializer.fromJson<String?>(json['artworkPath']),
+      source: serializer.fromJson<String>(json['source']),
+      externalId: serializer.fromJson<String?>(json['externalId']),
       replayGainTrackDb: serializer.fromJson<double?>(
         json['replayGainTrackDb'],
       ),
@@ -805,6 +869,8 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
       'format': serializer.toJson<String?>(format),
       'fileSize': serializer.toJson<int>(fileSize),
       'artworkPath': serializer.toJson<String?>(artworkPath),
+      'source': serializer.toJson<String>(source),
+      'externalId': serializer.toJson<String?>(externalId),
       'replayGainTrackDb': serializer.toJson<double?>(replayGainTrackDb),
       'replayGainAlbumDb': serializer.toJson<double?>(replayGainAlbumDb),
       'isFavorite': serializer.toJson<bool>(isFavorite),
@@ -833,6 +899,8 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
     Value<String?> format = const Value.absent(),
     int? fileSize,
     Value<String?> artworkPath = const Value.absent(),
+    String? source,
+    Value<String?> externalId = const Value.absent(),
     Value<double?> replayGainTrackDb = const Value.absent(),
     Value<double?> replayGainAlbumDb = const Value.absent(),
     bool? isFavorite,
@@ -858,6 +926,8 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
     format: format.present ? format.value : this.format,
     fileSize: fileSize ?? this.fileSize,
     artworkPath: artworkPath.present ? artworkPath.value : this.artworkPath,
+    source: source ?? this.source,
+    externalId: externalId.present ? externalId.value : this.externalId,
     replayGainTrackDb: replayGainTrackDb.present
         ? replayGainTrackDb.value
         : this.replayGainTrackDb,
@@ -901,6 +971,10 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
       artworkPath: data.artworkPath.present
           ? data.artworkPath.value
           : this.artworkPath,
+      source: data.source.present ? data.source.value : this.source,
+      externalId: data.externalId.present
+          ? data.externalId.value
+          : this.externalId,
       replayGainTrackDb: data.replayGainTrackDb.present
           ? data.replayGainTrackDb.value
           : this.replayGainTrackDb,
@@ -939,6 +1013,8 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
           ..write('format: $format, ')
           ..write('fileSize: $fileSize, ')
           ..write('artworkPath: $artworkPath, ')
+          ..write('source: $source, ')
+          ..write('externalId: $externalId, ')
           ..write('replayGainTrackDb: $replayGainTrackDb, ')
           ..write('replayGainAlbumDb: $replayGainAlbumDb, ')
           ..write('isFavorite: $isFavorite, ')
@@ -969,6 +1045,8 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
     format,
     fileSize,
     artworkPath,
+    source,
+    externalId,
     replayGainTrackDb,
     replayGainAlbumDb,
     isFavorite,
@@ -998,6 +1076,8 @@ class TrackRow extends DataClass implements Insertable<TrackRow> {
           other.format == this.format &&
           other.fileSize == this.fileSize &&
           other.artworkPath == this.artworkPath &&
+          other.source == this.source &&
+          other.externalId == this.externalId &&
           other.replayGainTrackDb == this.replayGainTrackDb &&
           other.replayGainAlbumDb == this.replayGainAlbumDb &&
           other.isFavorite == this.isFavorite &&
@@ -1025,6 +1105,8 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
   final Value<String?> format;
   final Value<int> fileSize;
   final Value<String?> artworkPath;
+  final Value<String> source;
+  final Value<String?> externalId;
   final Value<double?> replayGainTrackDb;
   final Value<double?> replayGainAlbumDb;
   final Value<bool> isFavorite;
@@ -1050,6 +1132,8 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
     this.format = const Value.absent(),
     this.fileSize = const Value.absent(),
     this.artworkPath = const Value.absent(),
+    this.source = const Value.absent(),
+    this.externalId = const Value.absent(),
     this.replayGainTrackDb = const Value.absent(),
     this.replayGainAlbumDb = const Value.absent(),
     this.isFavorite = const Value.absent(),
@@ -1076,6 +1160,8 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
     this.format = const Value.absent(),
     this.fileSize = const Value.absent(),
     this.artworkPath = const Value.absent(),
+    this.source = const Value.absent(),
+    this.externalId = const Value.absent(),
     this.replayGainTrackDb = const Value.absent(),
     this.replayGainAlbumDb = const Value.absent(),
     this.isFavorite = const Value.absent(),
@@ -1103,6 +1189,8 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
     Expression<String>? format,
     Expression<int>? fileSize,
     Expression<String>? artworkPath,
+    Expression<String>? source,
+    Expression<String>? externalId,
     Expression<double>? replayGainTrackDb,
     Expression<double>? replayGainAlbumDb,
     Expression<bool>? isFavorite,
@@ -1129,6 +1217,8 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
       if (format != null) 'format': format,
       if (fileSize != null) 'file_size': fileSize,
       if (artworkPath != null) 'artwork_path': artworkPath,
+      if (source != null) 'source': source,
+      if (externalId != null) 'external_id': externalId,
       if (replayGainTrackDb != null) 'replay_gain_track_db': replayGainTrackDb,
       if (replayGainAlbumDb != null) 'replay_gain_album_db': replayGainAlbumDb,
       if (isFavorite != null) 'is_favorite': isFavorite,
@@ -1157,6 +1247,8 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
     Value<String?>? format,
     Value<int>? fileSize,
     Value<String?>? artworkPath,
+    Value<String>? source,
+    Value<String?>? externalId,
     Value<double?>? replayGainTrackDb,
     Value<double?>? replayGainAlbumDb,
     Value<bool>? isFavorite,
@@ -1183,6 +1275,8 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
       format: format ?? this.format,
       fileSize: fileSize ?? this.fileSize,
       artworkPath: artworkPath ?? this.artworkPath,
+      source: source ?? this.source,
+      externalId: externalId ?? this.externalId,
       replayGainTrackDb: replayGainTrackDb ?? this.replayGainTrackDb,
       replayGainAlbumDb: replayGainAlbumDb ?? this.replayGainAlbumDb,
       isFavorite: isFavorite ?? this.isFavorite,
@@ -1245,6 +1339,12 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
     if (artworkPath.present) {
       map['artwork_path'] = Variable<String>(artworkPath.value);
     }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
+    }
     if (replayGainTrackDb.present) {
       map['replay_gain_track_db'] = Variable<double>(replayGainTrackDb.value);
     }
@@ -1291,6 +1391,8 @@ class TracksCompanion extends UpdateCompanion<TrackRow> {
           ..write('format: $format, ')
           ..write('fileSize: $fileSize, ')
           ..write('artworkPath: $artworkPath, ')
+          ..write('source: $source, ')
+          ..write('externalId: $externalId, ')
           ..write('replayGainTrackDb: $replayGainTrackDb, ')
           ..write('replayGainAlbumDb: $replayGainAlbumDb, ')
           ..write('isFavorite: $isFavorite, ')
@@ -4561,6 +4663,8 @@ typedef $$TracksTableCreateCompanionBuilder = TracksCompanion Function({
   Value<String?> format,
   Value<int> fileSize,
   Value<String?> artworkPath,
+  Value<String> source,
+  Value<String?> externalId,
   Value<double?> replayGainTrackDb,
   Value<double?> replayGainAlbumDb,
   Value<bool> isFavorite,
@@ -4587,6 +4691,8 @@ typedef $$TracksTableUpdateCompanionBuilder = TracksCompanion Function({
   Value<String?> format,
   Value<int> fileSize,
   Value<String?> artworkPath,
+  Value<String> source,
+  Value<String?> externalId,
   Value<double?> replayGainTrackDb,
   Value<double?> replayGainAlbumDb,
   Value<bool> isFavorite,
@@ -4745,6 +4851,16 @@ class $$TracksTableFilterComposer
 
   ColumnFilters<String> get artworkPath => $composableBuilder(
     column: $table.artworkPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get externalId => $composableBuilder(
+    column: $table.externalId,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -4953,6 +5069,16 @@ class $$TracksTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<double> get replayGainTrackDb => $composableBuilder(
     column: $table.replayGainTrackDb,
     builder: (column) => ColumnOrderings(column),
@@ -5060,6 +5186,14 @@ class $$TracksTableAnnotationComposer
 
   GeneratedColumn<String> get artworkPath => $composableBuilder(
     column: $table.artworkPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get externalId => $composableBuilder(
+    column: $table.externalId,
     builder: (column) => column,
   );
 
@@ -5219,6 +5353,8 @@ class $$TracksTableTableManager
                 Value<String?> format = const Value.absent(),
                 Value<int> fileSize = const Value.absent(),
                 Value<String?> artworkPath = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> externalId = const Value.absent(),
                 Value<double?> replayGainTrackDb = const Value.absent(),
                 Value<double?> replayGainAlbumDb = const Value.absent(),
                 Value<bool> isFavorite = const Value.absent(),
@@ -5244,6 +5380,8 @@ class $$TracksTableTableManager
                 format: format,
                 fileSize: fileSize,
                 artworkPath: artworkPath,
+                source: source,
+                externalId: externalId,
                 replayGainTrackDb: replayGainTrackDb,
                 replayGainAlbumDb: replayGainAlbumDb,
                 isFavorite: isFavorite,
@@ -5271,6 +5409,8 @@ class $$TracksTableTableManager
                 Value<String?> format = const Value.absent(),
                 Value<int> fileSize = const Value.absent(),
                 Value<String?> artworkPath = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String?> externalId = const Value.absent(),
                 Value<double?> replayGainTrackDb = const Value.absent(),
                 Value<double?> replayGainAlbumDb = const Value.absent(),
                 Value<bool> isFavorite = const Value.absent(),
@@ -5296,6 +5436,8 @@ class $$TracksTableTableManager
                 format: format,
                 fileSize: fileSize,
                 artworkPath: artworkPath,
+                source: source,
+                externalId: externalId,
                 replayGainTrackDb: replayGainTrackDb,
                 replayGainAlbumDb: replayGainAlbumDb,
                 isFavorite: isFavorite,

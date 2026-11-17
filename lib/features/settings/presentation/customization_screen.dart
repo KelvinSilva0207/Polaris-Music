@@ -93,21 +93,16 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           _SectionCard(
             title: 'Estilo de contenedores',
             icon: Icons.layers_outlined,
-            child: Row(
+            child: _OptionGrid(
               children: CardStyle.values
                   .map(
-                    (CardStyle style) => Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: _OptionTile(
-                          label: style.label,
-                          description: style.description,
-                          selected: config.cardStyle == style,
-                          onTap: () => ref
-                              .read(themeControllerProvider.notifier)
-                              .setCardStyle(style),
-                        ),
-                      ),
+                    (CardStyle style) => _OptionTile(
+                      label: style.label,
+                      description: style.description,
+                      selected: config.cardStyle == style,
+                      onTap: () => ref
+                          .read(themeControllerProvider.notifier)
+                          .setCardStyle(style),
                     ),
                   )
                   .toList(growable: false),
@@ -117,21 +112,16 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           _SectionCard(
             title: 'Forma de la carátula',
             icon: Icons.album_outlined,
-            child: Row(
+            child: _OptionGrid(
               children: ArtworkShape.values
                   .map(
-                    (ArtworkShape shape) => Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: _OptionTile(
-                          label: shape.label,
-                          description: shape.description,
-                          selected: config.artworkShape == shape,
-                          onTap: () => ref
-                              .read(themeControllerProvider.notifier)
-                              .setArtworkShape(shape),
-                        ),
-                      ),
+                    (ArtworkShape shape) => _OptionTile(
+                      label: shape.label,
+                      description: shape.description,
+                      selected: config.artworkShape == shape,
+                      onTap: () => ref
+                          .read(themeControllerProvider.notifier)
+                          .setArtworkShape(shape),
                     ),
                   )
                   .toList(growable: false),
@@ -141,21 +131,16 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           _SectionCard(
             title: 'Barra de progreso',
             icon: Icons.linear_scale_rounded,
-            child: Row(
+            child: _OptionGrid(
               children: ProgressBarType.values
                   .map(
-                    (ProgressBarType type) => Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: _OptionTile(
-                          label: type.label,
-                          description: type.description,
-                          selected: config.progressBarType == type,
-                          onTap: () => ref
-                              .read(themeControllerProvider.notifier)
-                              .setProgressBarType(type),
-                        ),
-                      ),
+                    (ProgressBarType type) => _OptionTile(
+                      label: type.label,
+                      description: type.description,
+                      selected: config.progressBarType == type,
+                      onTap: () => ref
+                          .read(themeControllerProvider.notifier)
+                          .setProgressBarType(type),
                     ),
                   )
                   .toList(growable: false),
@@ -428,6 +413,43 @@ class _OptionTile extends StatelessWidget {
   }
 }
 
+/// Rejilla adaptable de opciones: una, dos o todas las columnas según ancho.
+class _OptionGrid extends StatelessWidget {
+  const _OptionGrid({required this.children});
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width = constraints.maxWidth;
+        final int columns = switch (width) {
+          >= 880 => children.length,
+          >= 560 => 2,
+          _ => 1,
+        };
+        const double spacing = 8;
+        final int safeColumns = columns <= 0 ? 1 : columns;
+        final double itemWidth =
+            (width - spacing * (safeColumns - 1)) / safeColumns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: children
+              .map(
+                (Widget child) => SizedBox(
+                  width: itemWidth < 0 ? 0 : itemWidth,
+                  child: child,
+                ),
+              )
+              .toList(growable: false),
+        );
+      },
+    );
+  }
+}
+
 class _ProfilesEditor extends ConsumerWidget {
   const _ProfilesEditor({
     required this.profileName,
@@ -539,7 +561,6 @@ class _ThemePreview extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 600),
         curve: Curves.easeOutCubic,
-        height: 356,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -562,8 +583,9 @@ class _ThemePreview extends StatelessWidget {
                 size: 240,
               ),
             ),
-            Center(
-              child: SingleChildScrollView(
+            SizedBox(
+              width: double.infinity,
+              child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -725,16 +747,21 @@ class _PreviewArtwork extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool ring =
+        config.progressBarType == ProgressBarType.circularAroundArtwork;
+    // La carátula se encoge para dejar respirar el anillo (Vinilo incluido).
+    final double artSize = ring ? size * 0.82 : size;
+
     final Widget artwork = switch (config.artworkShape) {
       ArtworkShape.squareRounded => ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        child: _PreviewImage(path: path, accent: accent, size: size),
+        child: _PreviewImage(path: path, accent: accent, size: artSize),
       ),
       ArtworkShape.circleVinyl => _PreviewVinyl(
         path: path,
         accent: accent,
         playing: playing,
-        size: size,
+        size: artSize,
       ),
       ArtworkShape.card3D => Transform(
         alignment: Alignment.center,
@@ -763,15 +790,13 @@ class _PreviewArtwork extends StatelessWidget {
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(18),
-            child: _PreviewImage(path: path, accent: accent, size: size - 8),
+            child: _PreviewImage(path: path, accent: accent, size: artSize - 8),
           ),
         ),
       ),
     };
 
-    if (config.progressBarType != ProgressBarType.circularAroundArtwork) {
-      return artwork;
-    }
+    if (!ring) return artwork;
 
     return SizedBox(
       width: size + 18,

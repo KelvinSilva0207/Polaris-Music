@@ -11,9 +11,10 @@ import '../../../core/providers/theme_provider.dart';
 import '../../../core/theme/app_theme_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../shared/widgets/audio_progress_bar.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/polaris_surface.dart';
-import '../../library/presentation/library_providers.dart';
+import '../../../shared/widgets/track_properties_modal.dart';
 import '../../lyrics/presentation/lyrics_panel.dart';
 import '../domain/player_controller.dart';
 import 'player_providers.dart';
@@ -35,9 +36,13 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final PlayerUiState ui = ref.watch(playerControllerProvider);
+    final Track? track = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.track),
+    );
+    final bool playing = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playing),
+    );
     final AppThemeConfig config = ref.watch(themeConfigProvider);
-    final Track? track = ui.track;
 
     final AsyncValue<Color>? paletteAsync = config.usesDynamicPalette
         ? ref.watch(artworkAccentProvider(track?.artworkPath))
@@ -84,8 +89,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                           track: track,
                           config: config,
                           accent: accent,
-                          playing: ui.playback.playing,
-                          progress: ui.playback.progress,
+                          playing: playing,
                           size: math.min(constraints.maxWidth * 0.30, 400),
                           onSeekFraction: controller.seekFraction,
                         ),
@@ -97,7 +101,6 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: _PlayerColumn(
-                          ui: ui,
                           track: track,
                           config: config,
                           accent: accent,
@@ -122,15 +125,13 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                     track: track,
                     config: config,
                     accent: accent,
-                    playing: ui.playback.playing,
-                    progress: ui.playback.progress,
+                    playing: playing,
                     size: math.min(constraints.maxWidth - 88, 320),
                     onSeekFraction: controller.seekFraction,
                   ),
                 ),
                 const SizedBox(height: 20),
                 _PlayerColumn(
-                  ui: ui,
                   track: track,
                   config: config,
                   accent: accent,
@@ -150,9 +151,11 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 }
 
 /// Columna de información, progreso, controles y panel de cola/letras.
-class _PlayerColumn extends StatelessWidget {
+///
+/// Cada bloque observa solo la porción del estado que necesita para que el
+/// _tick_ de posición (5 veces por segundo) no reconstruya la pantalla entera.
+class _PlayerColumn extends ConsumerWidget {
   const _PlayerColumn({
-    required this.ui,
     required this.track,
     required this.config,
     required this.accent,
@@ -162,7 +165,6 @@ class _PlayerColumn extends StatelessWidget {
     required this.panelHeight,
   });
 
-  final PlayerUiState ui;
   final Track track;
   final AppThemeConfig config;
   final Color accent;
@@ -172,7 +174,16 @@ class _PlayerColumn extends StatelessWidget {
   final double panelHeight;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool sleepActive = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.sleepRemaining != null || s.sleepEndsAtTrack,
+      ),
+    );
+    final String? error = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.error),
+    );
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
@@ -181,22 +192,18 @@ class _PlayerColumn extends StatelessWidget {
         _ProgressSection(
           config: config,
           accent: accent,
-          position: ui.playback.position,
-          duration: ui.playback.duration,
-          onSeek: controller.seek,
           onSeekFraction: controller.seekFraction,
         ),
         const SizedBox(height: 8),
-        _TransportControls(ui: ui, controller: controller, accent: accent),
+        _TransportControls(controller: controller, accent: accent),
         const SizedBox(height: 10),
-        _VolumeRow(ui: ui, controller: controller),
-        if (ui.sleepRemaining != null || ui.sleepEndsAtTrack)
-          _SleepBadge(ui: ui, controller: controller),
-        if (ui.playback.error != null)
+        _VolumeRow(controller: controller, accent: accent),
+        if (sleepActive) _SleepBadge(controller: controller),
+        if (error != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(
-              ui.playback.error!,
+              error,
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.redAccent, fontSize: 12),
             ),
@@ -204,7 +211,6 @@ class _PlayerColumn extends StatelessWidget {
         const SizedBox(height: 18),
         _MediaPanel(
           track: track,
-          ui: ui,
           controller: controller,
           accent: accent,
           tab: panelTab,
@@ -216,14 +222,14 @@ class _PlayerColumn extends StatelessWidget {
   }
 }
 
-class _TrackHeader extends StatelessWidget {
+class _TrackHeader extends ConsumerWidget {
   const _TrackHeader({required this.track, required this.accent});
 
   final Track track;
   final Color accent;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 420),
       switchInCurve: Curves.easeOutCubic,
@@ -270,66 +276,155 @@ class _TrackHeader extends StatelessWidget {
                     style: Theme.of(context).textTheme.bodySmall
                         ?.copyWith(color: Colors.white38),
                   ),
+                const SizedBox(height: 7),
+                _TrackOriginBadge(track: track, accent: accent),
               ],
             ),
           ),
-          IconButton(
-            tooltip: track.isFavorite
-                ? 'Quitar de favoritos'
-                : 'Añadir a favoritos',
-            iconSize: 26,
-            onPressed: () => _toggleFavorite(context),
-            icon: Icon(
-              track.isFavorite
-                  ? Icons.favorite_rounded
-                  : Icons.favorite_border_rounded,
-              color: track.isFavorite ? accent : Colors.white38,
+
+          // Botón de propiedades (accesible con clic derecho en toda la UI)
+          Container(
+            margin: const EdgeInsets.only(left: 8),
+            child: IconButton(
+              onPressed: () => TrackPropertiesModal.show(
+                context: context,
+                track: track,
+                accent: accent,
+              ),
+              iconSize: 20,
+              tooltip: 'Propiedades de la pista',
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      accent.withValues(alpha: 0.2),
+                      accent.withValues(alpha: 0.05),
+                    ],
+                  ),
+                ),
+                child: Icon(
+                  Icons.info_outline_rounded,
+                  color: accent,
+                  size: 18,
+                ),
+              ),
+            ),
+          ),
+
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 260),
+            transitionBuilder: (Widget child, Animation<double> animation) =>
+                ScaleTransition(scale: animation, child: child),
+            child: IconButton(
+              key: ValueKey<bool>(track.isFavorite),
+              tooltip: !track.isPersisted
+                  ? 'Descarga la pista para guardarla'
+                  : track.isFavorite
+                  ? 'Quitar de favoritos'
+                  : 'Añadir a favoritos',
+              iconSize: 26,
+              onPressed: track.isPersisted
+                  ? () => ref
+                        .read(playerControllerProvider.notifier)
+                        .setFavorite(!track.isFavorite)
+                  : null,
+              icon: Icon(
+                track.isFavorite
+                    ? Icons.favorite_rounded
+                    : Icons.favorite_border_rounded,
+                color: !track.isPersisted
+                    ? Colors.white24
+                    : track.isFavorite
+                    ? (accent == Colors.white ? Colors.redAccent : accent)
+                    : Colors.white38,
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  void _toggleFavorite(BuildContext context) {
-    // El contexto de un Consumer se obtiene en el padre; aquí usamos el
-    // repositorio a través del ProviderScope del árbol.
-    ProviderScope.containerOf(context)
-        .read(libraryRepositoryProvider)
-        .setFavorite(track.id, !track.isFavorite);
+/// Badge discreto que distingue streaming, descarga y archivo local.
+class _TrackOriginBadge extends StatelessWidget {
+  const _TrackOriginBadge({required this.track, required this.accent});
+
+  final Track track;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final (IconData icon, String label) = switch (track.origin) {
+      TrackOrigin.local => (Icons.offline_pin_rounded, 'Local'),
+      TrackOrigin.downloaded => (Icons.cloud_done_rounded, 'Descargada'),
+      TrackOrigin.online => (Icons.cloud_queue_rounded, 'Streaming'),
+    };
+    final bool online = track.isOnline;
+    final Color color = online ? accent : Colors.white60;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: (online ? accent : Colors.white).withValues(
+          alpha: online ? 0.14 : 0.06,
+        ),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 11, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
 /// Progreso según el tipo elegido. El anillo circular se dibuja alrededor de
 /// la carátula, así que aquí solo muestra los tiempos y una ayuda.
-class _ProgressSection extends StatelessWidget {
+class _ProgressSection extends ConsumerWidget {
   const _ProgressSection({
     required this.config,
     required this.accent,
-    required this.position,
-    required this.duration,
-    required this.onSeek,
     required this.onSeekFraction,
   });
 
   final AppThemeConfig config;
   final Color accent;
-  final Duration position;
-  final Duration duration;
-  final ValueChanged<Duration> onSeek;
   final ValueChanged<double> onSeekFraction;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     switch (config.progressBarType) {
       case ProgressBarType.linearClassic:
-        return _LinearProgress(
-          position: position,
-          duration: duration,
-          onSeek: onSeek,
-        );
+        return AudioProgressBar(accent: accent, onSeekFraction: onSeekFraction);
 
       case ProgressBarType.waveform:
+        // Keep existing waveform implementation
+        final Duration position = ref.watch(
+          playerControllerProvider.select(
+            (PlayerUiState s) => s.playback.position,
+          ),
+        );
+        final Duration duration = ref.watch(
+          playerControllerProvider.select(
+            (PlayerUiState s) => s.playback.duration,
+          ),
+        );
         return _WaveformProgress(
           position: position,
           duration: duration,
@@ -338,58 +433,19 @@ class _ProgressSection extends StatelessWidget {
         );
 
       case ProgressBarType.circularAroundArtwork:
+        // Keep existing circular implementation
+        final Duration position = ref.watch(
+          playerControllerProvider.select(
+            (PlayerUiState s) => s.playback.position,
+          ),
+        );
+        final Duration duration = ref.watch(
+          playerControllerProvider.select(
+            (PlayerUiState s) => s.playback.duration,
+          ),
+        );
         return _TimeRow(position: position, duration: duration);
     }
-  }
-}
-
-class _LinearProgress extends StatefulWidget {
-  const _LinearProgress({
-    required this.position,
-    required this.duration,
-    required this.onSeek,
-  });
-
-  final Duration position;
-  final Duration duration;
-  final ValueChanged<Duration> onSeek;
-
-  @override
-  State<_LinearProgress> createState() => _LinearProgressState();
-}
-
-class _LinearProgressState extends State<_LinearProgress> {
-  double? _dragMs;
-
-  @override
-  Widget build(BuildContext context) {
-    final double total = widget.duration.inMilliseconds.toDouble();
-    final double current =
-        _dragMs ??
-        widget.position.inMilliseconds.toDouble().clamp(
-          0,
-          total < 0 ? 0 : total,
-        );
-    final Duration shown = Duration(milliseconds: current.round());
-
-    return Column(
-      children: <Widget>[
-        Slider(
-          value: total <= 0 ? 0 : current.clamp(0, total),
-          max: total <= 0 ? 1 : total,
-          onChanged: total <= 0
-              ? null
-              : (double value) => setState(() => _dragMs = value),
-          onChangeEnd: total <= 0
-              ? null
-              : (double value) {
-                  setState(() => _dragMs = null);
-                  widget.onSeek(Duration(milliseconds: value.round()));
-                },
-        ),
-        _TimeRow(position: shown, duration: widget.duration),
-      ],
-    );
   }
 }
 
@@ -519,19 +575,29 @@ class _WaveformPainter extends CustomPainter {
       oldDelegate.progress != progress || oldDelegate.accent != accent;
 }
 
-class _TransportControls extends StatelessWidget {
-  const _TransportControls({
-    required this.ui,
-    required this.controller,
-    required this.accent,
-  });
+class _TransportControls extends ConsumerWidget {
+  const _TransportControls({required this.controller, required this.accent});
 
-  final PlayerUiState ui;
   final PlayerController controller;
   final Color accent;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool playing = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playing),
+    );
+    final bool buffering = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.playback.buffering,
+      ),
+    );
+    final bool shuffle = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.shuffle),
+    );
+    final RepeatMode repeat = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.repeat),
+    );
+
     return Wrap(
       alignment: WrapAlignment.center,
       crossAxisAlignment: WrapCrossAlignment.center,
@@ -543,7 +609,7 @@ class _TransportControls extends StatelessWidget {
           onPressed: controller.toggleShuffle,
           icon: Icon(
             Icons.shuffle_rounded,
-            color: ui.playback.shuffle ? accent : Colors.white54,
+            color: shuffle ? accent : Colors.white54,
           ),
         ),
         IconButton(
@@ -552,34 +618,11 @@ class _TransportControls extends StatelessWidget {
           onPressed: controller.previous,
           icon: const Icon(Icons.skip_previous_rounded),
         ),
-        SizedBox(
-          width: 68,
-          height: 68,
-          child: FilledButton(
-            onPressed: controller.togglePlay,
-            style: FilledButton.styleFrom(
-              shape: const CircleBorder(),
-              padding: EdgeInsets.zero,
-              backgroundColor: accent,
-              foregroundColor: Colors.black,
-              elevation: 0,
-            ),
-            child: ui.playback.buffering
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: Colors.black,
-                    ),
-                  )
-                : Icon(
-                    ui.playback.playing
-                        ? Icons.pause_rounded
-                        : Icons.play_arrow_rounded,
-                    size: 38,
-                  ),
-          ),
+        _PlayPauseButton(
+          playing: playing,
+          buffering: buffering,
+          accent: accent,
+          onPressed: controller.togglePlay,
         ),
         IconButton(
           tooltip: 'Siguiente',
@@ -588,15 +631,13 @@ class _TransportControls extends StatelessWidget {
           icon: const Icon(Icons.skip_next_rounded),
         ),
         IconButton(
-          tooltip: _repeatLabel(ui.playback.repeat),
+          tooltip: _repeatLabel(repeat),
           onPressed: controller.cycleRepeat,
           icon: Icon(
-            ui.playback.repeat == RepeatMode.one
+            repeat == RepeatMode.one
                 ? Icons.repeat_one_rounded
                 : Icons.repeat_rounded,
-            color: ui.playback.repeat == RepeatMode.off
-                ? Colors.white54
-                : accent,
+            color: repeat == RepeatMode.off ? Colors.white54 : accent,
           ),
         ),
       ],
@@ -610,32 +651,133 @@ class _TransportControls extends StatelessWidget {
   };
 }
 
-class _VolumeRow extends StatelessWidget {
-  const _VolumeRow({required this.ui, required this.controller});
+class _PlayPauseButton extends StatefulWidget {
+  const _PlayPauseButton({
+    required this.playing,
+    required this.buffering,
+    required this.accent,
+    required this.onPressed,
+  });
 
-  final PlayerUiState ui;
-  final PlayerController controller;
+  final bool playing;
+  final bool buffering;
+  final Color accent;
+  final VoidCallback onPressed;
+
+  @override
+  State<_PlayPauseButton> createState() => _PlayPauseButtonState();
+}
+
+class _PlayPauseButtonState extends State<_PlayPauseButton> {
+  bool _pressed = false;
+
+  void _setPressed(bool value) {
+    if (_pressed != value) setState(() => _pressed = value);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        Icon(
-          ui.playback.volume <= 0
-              ? Icons.volume_off_rounded
-              : Icons.volume_up_rounded,
-          size: 20,
-          color: Colors.white54,
-        ),
-        Expanded(
-          child: Slider(
-            value: ui.playback.volume.clamp(0.0, 100.0),
-            max: 100,
-            onChanged: controller.setVolume,
+    return Semantics(
+      button: true,
+      label: widget.playing ? 'Pausar' : 'Reproducir',
+      child: AnimatedScale(
+        scale: _pressed ? 0.9 : 1,
+        duration: const Duration(milliseconds: 130),
+        curve: Curves.easeOutCubic,
+        child: GestureDetector(
+          onTapDown: (_) => _setPressed(true),
+          onTapUp: (_) => _setPressed(false),
+          onTapCancel: () => _setPressed(false),
+          onTap: widget.onPressed,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            width: 68,
+            height: 68,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[
+                  Color.lerp(widget.accent, Colors.white, 0.22) ??
+                      widget.accent,
+                  widget.accent,
+                ],
+              ),
+              boxShadow: <BoxShadow>[
+                BoxShadow(
+                  color: widget.accent.withValues(
+                    alpha: _pressed ? 0.30 : 0.48,
+                  ),
+                  blurRadius: _pressed ? 14 : 26,
+                  spreadRadius: _pressed ? 0 : 3,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                transitionBuilder:
+                    (Widget child, Animation<double> animation) =>
+                        ScaleTransition(
+                          scale: Tween<double>(
+                            begin: 0.6,
+                            end: 1,
+                          ).animate(animation),
+                          child: FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                        ),
+                child: widget.buffering
+                    ? const SizedBox(
+                        key: ValueKey<String>('buffering'),
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.black,
+                        ),
+                      )
+                    : Icon(
+                        widget.playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        key: ValueKey<bool>(widget.playing),
+                        size: 38,
+                        color: Colors.black,
+                      ),
+              ),
+            ),
           ),
         ),
-        _SpeedMenu(speed: ui.playback.speed, onChanged: controller.setSpeed),
-        _SleepMenu(ui: ui, controller: controller),
+      ),
+    );
+  }
+}
+
+class _VolumeRow extends ConsumerWidget {
+  const _VolumeRow({required this.controller, required this.accent});
+
+  final PlayerController controller;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final double speed = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.speed),
+    );
+
+    return Row(
+      children: <Widget>[
+        Expanded(
+          child: VolumeSlider(controller: controller, accent: accent),
+        ),
+        const SizedBox(width: 4),
+        _SpeedMenu(speed: speed, onChanged: controller.setSpeed),
+        _SleepMenu(controller: controller),
       ],
     );
   }
@@ -674,15 +816,18 @@ class _SpeedMenu extends StatelessWidget {
   }
 }
 
-class _SleepMenu extends StatelessWidget {
-  const _SleepMenu({required this.ui, required this.controller});
+class _SleepMenu extends ConsumerWidget {
+  const _SleepMenu({required this.controller});
 
-  final PlayerUiState ui;
   final PlayerController controller;
 
   @override
-  Widget build(BuildContext context) {
-    final bool active = ui.sleepRemaining != null || ui.sleepEndsAtTrack;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool active = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.sleepRemaining != null || s.sleepEndsAtTrack,
+      ),
+    );
     return PopupMenuButton<String>(
       tooltip: 'Temporizador de sueño',
       onSelected: (String value) {
@@ -725,14 +870,22 @@ class _SleepMenu extends StatelessWidget {
   }
 }
 
-class _SleepBadge extends StatelessWidget {
-  const _SleepBadge({required this.ui, required this.controller});
+class _SleepBadge extends ConsumerWidget {
+  const _SleepBadge({required this.controller});
 
-  final PlayerUiState ui;
   final PlayerController controller;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Duration? remaining = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.sleepRemaining),
+    );
+    final bool endsAtTrack = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.sleepEndsAtTrack),
+    );
+
+    if (remaining == null && !endsAtTrack) return const SizedBox.shrink();
+
     return Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Row(
@@ -740,11 +893,15 @@ class _SleepBadge extends StatelessWidget {
         children: <Widget>[
           const Icon(Icons.bedtime_rounded, size: 14, color: Colors.white54),
           const SizedBox(width: 6),
-          Text(
-            ui.sleepEndsAtTrack
-                ? 'Se pausará al terminar la pista'
-                : 'Se pausará en ${Formatters.duration(ui.sleepRemaining!)}',
-            style: const TextStyle(fontSize: 12, color: Colors.white54),
+          Flexible(
+            child: Text(
+              endsAtTrack || remaining == null
+                  ? 'Se pausará al terminar la pista'
+                  : 'Se pausará en ${Formatters.duration(remaining)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: Colors.white54),
+            ),
           ),
           TextButton(
             onPressed: controller.cancelSleepTimer,
@@ -757,10 +914,9 @@ class _SleepBadge extends StatelessWidget {
 }
 
 /// Panel inferior con la cola o las letras.
-class _MediaPanel extends StatelessWidget {
+class _MediaPanel extends ConsumerWidget {
   const _MediaPanel({
     required this.track,
-    required this.ui,
     required this.controller,
     required this.accent,
     required this.tab,
@@ -769,7 +925,6 @@ class _MediaPanel extends StatelessWidget {
   });
 
   final Track track;
-  final PlayerUiState ui;
   final PlayerController controller;
   final Color accent;
   final int tab;
@@ -777,7 +932,14 @@ class _MediaPanel extends StatelessWidget {
   final double height;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final List<Track> queue = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.queue),
+    );
+    final int index = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.index),
+    );
+
     return SizedBox(
       height: height,
       child: PolarisSurface(
@@ -811,9 +973,7 @@ class _MediaPanel extends StatelessWidget {
                 if (tab == 0)
                   IconButton(
                     tooltip: 'Vaciar cola',
-                    onPressed: ui.playback.queue.isEmpty
-                        ? null
-                        : controller.clearQueue,
+                    onPressed: queue.isEmpty ? null : controller.clearQueue,
                     icon: const Icon(Icons.delete_sweep_outlined, size: 20),
                   ),
               ],
@@ -821,7 +981,12 @@ class _MediaPanel extends StatelessWidget {
             const SizedBox(height: 4),
             Expanded(
               child: tab == 0
-                  ? _QueueList(ui: ui, controller: controller, accent: accent)
+                  ? _QueueList(
+                      queue: queue,
+                      index: index,
+                      controller: controller,
+                      accent: accent,
+                    )
                   : LyricsPanel(track: track),
             ),
           ],
@@ -833,18 +998,19 @@ class _MediaPanel extends StatelessWidget {
 
 class _QueueList extends StatelessWidget {
   const _QueueList({
-    required this.ui,
+    required this.queue,
+    required this.index,
     required this.controller,
     required this.accent,
   });
 
-  final PlayerUiState ui;
+  final List<Track> queue;
+  final int index;
   final PlayerController controller;
   final Color accent;
 
   @override
   Widget build(BuildContext context) {
-    final List<Track> queue = ui.playback.queue;
     if (queue.isEmpty) {
       return const Center(
         child: Text(
@@ -857,9 +1023,9 @@ class _QueueList extends StatelessWidget {
     return ListView.builder(
       padding: const EdgeInsets.only(bottom: 8),
       itemCount: queue.length,
-      itemBuilder: (BuildContext context, int index) {
-        final Track track = queue[index];
-        final bool current = index == ui.playback.index;
+      itemBuilder: (BuildContext context, int i) {
+        final Track track = queue[i];
+        final bool current = i == index;
         return ListTile(
           dense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 6),
@@ -899,11 +1065,11 @@ class _QueueList extends StatelessWidget {
               IconButton(
                 tooltip: 'Quitar de la cola',
                 icon: const Icon(Icons.close_rounded, size: 16),
-                onPressed: () => controller.removeFromQueue(index),
+                onPressed: () => controller.removeFromQueue(i),
               ),
             ],
           ),
-          onTap: () => controller.playAt(index),
+          onTap: () => controller.playAt(i),
         );
       },
     );
@@ -914,13 +1080,12 @@ class _QueueList extends StatelessWidget {
 // Carátula adaptativa
 // ---------------------------------------------------------------------------
 
-class _ArtworkStage extends StatelessWidget {
+class _ArtworkStage extends ConsumerWidget {
   const _ArtworkStage({
     required this.track,
     required this.config,
     required this.accent,
     required this.playing,
-    required this.progress,
     required this.size,
     required this.onSeekFraction,
   });
@@ -929,35 +1094,47 @@ class _ArtworkStage extends StatelessWidget {
   final AppThemeConfig config;
   final Color accent;
   final bool playing;
-  final double progress;
   final double size;
   final ValueChanged<double> onSeekFraction;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool ring =
+        config.progressBarType == ProgressBarType.circularAroundArtwork;
+    final double progress = ring
+        ? ref.watch(
+            playerControllerProvider.select(
+              (PlayerUiState s) => s.playback.progress,
+            ),
+          )
+        : 0;
+
+    // El anillo ocupa el 84 % interior: la carátula se ajusta para no
+    // desbordar el círculo (el antiguo desajuste del estilo Vinilo).
+    final double artSize = ring ? size * 0.84 : size;
+
     final Widget artwork = switch (config.artworkShape) {
       ArtworkShape.squareRounded => _SquareArtwork(
         path: track.artworkPath,
-        size: size,
+        size: artSize,
         accent: accent,
         radius: config.artworkRadius,
       ),
       ArtworkShape.circleVinyl => _VinylArtwork(
         path: track.artworkPath,
-        size: size,
+        size: artSize,
         accent: accent,
         playing: playing,
       ),
       ArtworkShape.card3D => _Card3DArtwork(
         path: track.artworkPath,
-        size: size,
+        size: artSize,
         accent: accent,
         radius: config.artworkRadius,
       ),
     };
 
-    final Widget body =
-        config.progressBarType == ProgressBarType.circularAroundArtwork
+    final Widget body = ring
         ? _CircularProgressRing(
             size: size,
             progress: progress,
@@ -967,22 +1144,24 @@ class _ArtworkStage extends StatelessWidget {
           )
         : artwork;
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 480),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
-            child: child,
-          ),
-        );
-      },
-      child: KeyedSubtree(
-        key: ValueKey<String>('${track.id}-${config.artworkShape.name}'),
-        child: body,
+    return RepaintBoundary(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 480),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
+              child: child,
+            ),
+          );
+        },
+        child: KeyedSubtree(
+          key: ValueKey<String>('${track.id}-${config.artworkShape.name}'),
+          child: body,
+        ),
       ),
     );
   }
@@ -1027,11 +1206,15 @@ class _ArtworkImage extends StatelessWidget {
         ),
       );
     } else {
+      final double ratio = MediaQuery.devicePixelRatioOf(context);
+      final int decodeWidth = (size * ratio).round().clamp(48, 2048);
       content = Image.file(
         File(artwork),
         width: size,
         height: size,
         fit: BoxFit.cover,
+        cacheWidth: decodeWidth,
+        filterQuality: FilterQuality.medium,
         errorBuilder:
             (BuildContext context, Object error, StackTrace? stackTrace) {
               return Container(

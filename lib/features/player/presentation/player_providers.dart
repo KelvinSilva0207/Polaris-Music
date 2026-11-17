@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/service_locator.dart';
 import '../../../core/models/track.dart';
+import '../../library/data/library_repository.dart';
 import '../domain/player_controller.dart';
 
 /// Estado del reproductor (transporte, cola, temporizador de sueño).
@@ -11,6 +12,7 @@ playerControllerProvider =
       final PlayerController controller = PlayerController(
         engine: sl(),
         settings: sl(),
+        persistFavorite: sl<LibraryRepository>().setFavorite,
       );
       ref.onDispose(controller.dispose);
       return controller;

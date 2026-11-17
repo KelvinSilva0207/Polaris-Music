@@ -42,6 +42,14 @@ class PlaybackStatsRecorder {
     final Track? track = snapshot.currentTrack;
     if (track == null) return;
 
+    if (!track.isPersisted) {
+      // El streaming no se persiste: se cierra la escucha local anterior y no
+      // se abre una fila de historial (rompería la clave foránea).
+      unawaited(_finish(completed: snapshot.completed));
+      _lastPosition = Duration.zero;
+      return;
+    }
+
     if (_track?.id != track.id) {
       unawaited(_finish(completed: snapshot.completed));
       unawaited(_begin(track));

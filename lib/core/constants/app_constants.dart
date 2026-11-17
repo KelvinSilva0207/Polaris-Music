@@ -6,7 +6,7 @@ class AppConstants {
   AppConstants._();
 
   static const String appName = 'Polaris Music';
-  static const String appVersionFallback = '1.0.1';
+  static const String appVersionFallback = '1.0.2';
   static const String githubOwner = 'KelvinSilva0207';
   static const String githubRepo = 'Polaris-Music';
   static const String githubReleasesUrl =
@@ -92,4 +92,16 @@ class AppConstants {
   static const String keyIslandEnabled = 'island.enabled';
   static const String keyScanOnStartup = 'library.scan_on_startup';
   static const String keyLastScanAt = 'library.last_scan_at';
+
+  /// Atajos globales del escritorio (formato `ctrl+alt+space`).
+  static const String keyHotkeyPlayPause = 'hotkey.play_pause';
+  static const String keyHotkeyNext = 'hotkey.next';
+  static const String keyHotkeyPrevious = 'hotkey.previous';
+
+  static const String defaultHotkeyPlayPause = 'ctrl+alt+space';
+  static const String defaultHotkeyNext = 'ctrl+alt+right';
+  static const String defaultHotkeyPrevious = 'ctrl+alt+left';
+
+  /// Logo oficial usado en la interfaz.
+  static const String logoAsset = 'assets/icons/polaris_music_logo.png';
 }

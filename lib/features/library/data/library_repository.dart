@@ -1,6 +1,9 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show Value;
+
 import '../../../core/database/app_database.dart';
+import '../../../core/models/downloaded_track.dart';
 import '../../../core/models/track.dart';
 import '../domain/library_folder.dart';
 import '../domain/library_sort.dart';
@@ -60,6 +63,34 @@ class LibraryRepository {
 
   Future<void> setFavorite(int id, bool value) =>
       _tracks.setFavorite(id, value);
+
+  /// Registra una descarga en la biblioteca local.
+  ///
+  /// El módulo online no conoce Drift: entrega un [DownloadedTrack] y la
+  /// biblioteca decide cómo persistirlo. Devuelve el id de la fila.
+  Future<int> registerDownloaded(DownloadedTrack track) =>
+      _tracks.upsertDownloaded(
+        TracksCompanion.insert(
+          path: track.path,
+          title: track.title,
+          artist: Value(track.artist),
+          album: Value(track.album.isEmpty ? 'Desconocido' : track.album),
+          durationMs: Value(track.durationMs),
+          artworkPath: Value(track.artworkPath),
+          format: Value(track.format),
+          fileSize: Value(track.fileSize),
+          bitrate: Value(track.bitrate),
+          source: const Value('download'),
+          externalId: Value(track.externalId),
+        ),
+      );
+
+  Future<bool> hasExternalId(String externalId) =>
+      _tracks.hasExternalId(externalId);
+
+  /// Ids externos ya descargados, reactivo para la etiqueta de nube.
+  Stream<Set<String>> watchDownloadedExternalIds() =>
+      _tracks.watchDownloadedExternalIds();
 
   Future<void> deleteTracks(List<int> ids) => _tracks.deleteByIds(ids);
 

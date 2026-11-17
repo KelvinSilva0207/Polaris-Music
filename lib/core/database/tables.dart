@@ -29,6 +29,15 @@ class Tracks extends Table {
 
   TextColumn get artworkPath => text().nullable()();
 
+  /// Origen de la fila: `local` (escaneada) o `download` (módulo online).
+  ///
+  /// Se usa para distinguir la etiqueta de nube en la biblioteca y para que el
+  /// escaneo no elimine descargas que no viven en las carpetas vigiladas.
+  TextColumn get source => text().withDefault(const Constant('local'))();
+
+  /// Identificador en la fuente online (`audius:<id>`), único por descarga.
+  TextColumn get externalId => text().nullable()();
+
   /// Ganancia ReplayGain en dB (etiqueta REPLAYGAIN_TRACK_GAIN / APE).
   RealColumn get replayGainTrackDb => real().nullable()();
   RealColumn get replayGainAlbumDb => real().nullable()();

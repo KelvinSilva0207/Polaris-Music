@@ -30,11 +30,12 @@ class AudioEngineService {
   final List<StreamSubscription<dynamic>> _subscriptions =
       <StreamSubscription<dynamic>>[];
 
-  PlaybackSnapshot _state = const PlaybackSnapshot();
-  double _baseVolume = 1.0;
+  PlaybackSnapshot _state = const PlaybackSnapshot(volume: 50);
+  double _baseVolume = 0.5;
   bool _replayGainEnabled = true;
   int _openEpoch = 0;
   bool _initialized = false;
+  DateTime _lastPositionEmit = DateTime.fromMillisecondsSinceEpoch(0);
 
   PlaybackSnapshot get state => _state;
   Stream<PlaybackSnapshot> get states => _states.stream;
@@ -68,7 +69,7 @@ class AudioEngineService {
     if (_initialized) return;
     _initialized = true;
 
-    await _player.setVolume(100);
+    await _player.setVolume(50);
     await _player.setRate(1);
 
     _subscriptions.addAll(<StreamSubscription<dynamic>>[
@@ -76,9 +77,7 @@ class AudioEngineService {
       _player.stream.playing.listen(
         (bool value) => _emit(_state.copyWith(playing: value)),
       ),
-      _player.stream.position.listen(
-        (Duration value) => _emit(_state.copyWith(position: value)),
-      ),
+      _player.stream.position.listen(_onPositionChanged),
       _player.stream.duration.listen(
         (Duration value) => _emit(_state.copyWith(duration: value)),
       ),
@@ -97,6 +96,54 @@ class AudioEngineService {
     ]);
 
     AppLog.i(_tag, 'Motor inicializado (${_player.platform.runtimeType})');
+  }
+
+  /// La UI solo necesita ~5 posiciones por segundo para animar con suavidad.
+  ///
+  /// libmpv puede entregar decenas por segundo; filtrarlas aquí evita que toda
+  /// la app (isla, estadísticas, barra mini) se reconstruya de más.
+  void _onPositionChanged(Duration value) {
+    final DateTime now = DateTime.now();
+    if (now.difference(_lastPositionEmit) < const Duration(milliseconds: 200)) {
+      return;
+    }
+    _lastPositionEmit = now;
+    _emit(_state.copyWith(position: value));
+  }
+
+  /// Refleja el estado de favorito en la cola y en la pista actual.
+  ///
+  /// La persistencia vive en `LibraryRepository`; este método mantiene la
+  /// instantánea que consume la UI en sintonía para que el corazón cambie al
+  /// instante sin esperar al siguiente evento del motor.
+  void updateFavorite(int trackId, bool value) {
+    final Track? current = _state.currentTrack;
+    if (current != null &&
+        current.id == trackId &&
+        current.isFavorite != value) {
+      _state = _state.copyWith(
+        currentTrack: current.copyWith(isFavorite: value),
+      );
+    }
+
+    bool queueChanged = false;
+    final List<Track> queue = _state.queue
+        .map((Track track) {
+          if (track.id == trackId && track.isFavorite != value) {
+            queueChanged = true;
+            return track.copyWith(isFavorite: value);
+          }
+          return track;
+        })
+        .toList(growable: false);
+
+    if (queueChanged) {
+      _state = _state.copyWith(
+        queue: List<Track>.unmodifiable(queue),
+        currentTrack: _state.currentTrack,
+      );
+    }
+    _emit(_state);
   }
 
   void _onPlaylistChanged(Playlist playlist) {
@@ -212,7 +259,7 @@ class AudioEngineService {
   }
 
   Future<void> clearQueue() async {
-    _state = const PlaybackSnapshot(volume: 100);
+    _state = PlaybackSnapshot(volume: _baseVolume * 100);
     _emit(_state);
     await _player.stop();
   }
