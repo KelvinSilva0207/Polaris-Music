@@ -6,7 +6,7 @@ class AppConstants {
   AppConstants._();
 
   static const String appName = 'Polaris Music';
-  static const String appVersionFallback = '1.0.2';
+  static const String appVersionFallback = '1.0.3';
   static const String githubOwner = 'KelvinSilva0207';
   static const String githubRepo = 'Polaris-Music';
   static const String githubReleasesUrl =
