@@ -14,16 +14,6 @@ class AppTheme {
   static const Color defaultAccent = Color(0xFF8B5CF6);
   static const Color background = Color(0xFF0B0710);
   static const Color surface = Color(0xFF151020);
-  static const List<Color> accentChoices = <Color>[
-    Color(0xFF8B5CF6), // violeta Polaris
-    Color(0xFF6366F1), // índigo
-    Color(0xFF22D3EE), // cian
-    Color(0xFFEC4899), // magenta
-    Color(0xFF10B981), // esmeralda
-    Color(0xFFF59E0B), // ámbar
-    Color(0xFFC98B4B), // bronce
-  ];
-
   static ThemeData fromConfig(AppThemeConfig config) {
     final Color accent = config.accent;
     final ColorScheme scheme =
@@ -57,15 +47,16 @@ class AppTheme {
           panelRadius: config.panelRadius,
           artworkRadius: config.artworkRadius,
           glassBlur: config.glassBlur,
+          progressColor: config.progressColor,
+          volumeColor: config.volumeColor,
+          karaokeColor: config.karaokeColor,
           borderColor: config.borderColor,
           shadowColor: config.shadowColor,
           shadowOpacity: config.shadowOpacity,
           neumorphicLight: config.neumorphicLight,
           neumorphicDark: config.neumorphicDark,
           glassEnabled: config.isGlass,
-          glassOpacity: config.cardStyle == CardStyle.glassmorphic
-              ? 0.10
-              : 0.08,
+          glassOpacity: config.glassOpacity,
         ),
       ],
       textTheme: const TextTheme(

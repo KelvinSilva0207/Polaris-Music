@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polaris_music/core/theme/app_theme_config.dart';
+import 'package:polaris_music/core/theme/color_math.dart';
 import 'package:polaris_music/core/theme/theme_tokens.dart';
 
 void main() {
@@ -176,6 +177,125 @@ void main() {
       expect(restored.id, profile.id);
       expect(restored.name, profile.name);
       expect(restored.config, profile.config);
+    });
+
+    test('los nuevos colores y opacidades sobreviven al viaje JSON', () {
+      final AppThemeConfig original = AppThemeConfig.polarisVioletGlass
+          .copyWith(
+            progressColor: const Color(0xFF00E5FF),
+            volumeColor: const Color(0xFFFF5252),
+            karaokeColor: const Color(0xFFFFD740),
+            glassOpacity: 0.42,
+            glassBlur: 12,
+          );
+
+      final AppThemeConfig restored = AppThemeConfig.fromJson(
+        original.toJson(),
+      );
+
+      expect(restored, original);
+      expect(restored.progressColor, const Color(0xFF00E5FF));
+      expect(restored.volumeColor, const Color(0xFFFF5252));
+      expect(restored.karaokeColor, const Color(0xFFFFD740));
+      expect(restored.glassOpacity, 0.42);
+      expect(
+        restored.colorFor(ThemeColorTarget.progress),
+        restored.progressColor,
+      );
+    });
+
+    test('JSON con valores fuera de rango se normaliza', () {
+      final AppThemeConfig restored = AppThemeConfig.fromJson(<String, Object?>{
+        'preset': 'polarisVioletGlass',
+        'glassOpacity': -3,
+        'glassBlur': 999,
+      });
+
+      expect(restored.glassOpacity, 0.0);
+      expect(restored.glassBlur, 32.0);
+    });
+  });
+
+  group('Motor RGB / HSV / HEX', () {
+    test('HSV hace round-trip con RGB', () {
+      for (final Color color in <Color>[
+        const Color(0xFFFF0000),
+        const Color(0xFF00FF00),
+        const Color(0xFF0000FF),
+        const Color(0xFFFFFFFF),
+        const Color(0xFF000000),
+        const Color(0xFF8B5CF6),
+      ]) {
+        expect(
+          HsvColor.fromColor(color).toColor().toARGB32(),
+          color.toARGB32(),
+        );
+      }
+    });
+
+    test('los deslizadores HSV son independientes', () {
+      final HsvColor original = HsvColor.fromColor(const Color(0xFF8B5CF6));
+      final HsvColor cambiado = original.copyWith(s: 0.0);
+      final Color gris = cambiado.toColor();
+
+      expect(gris.r, gris.g);
+      expect(gris.g, gris.b);
+      expect(cambiado.h, original.h);
+    });
+
+    test('HEX acepta 3, 6 y 8 dígitos y siempre se formatea igual', () {
+      expect(ColorMath.tryParseHex('#fff'), const Color(0xFFFFFFFF));
+      expect(ColorMath.tryParseHex('#8B5CF6'), const Color(0xFF8B5CF6));
+      expect(ColorMath.tryParseHex('#FF8B5CF6'), const Color(0xFF8B5CF6));
+      expect(ColorMath.tryParseHex('zzz'), isNull);
+      expect(
+        ColorMath.toHex(const Color(0xFF8B5CF6), withAlpha: true),
+        '#FF8B5CF6',
+      );
+    });
+
+    test('onColor elige texto legible sobre el fondo', () {
+      expect(
+        ColorMath.onColor(const Color(0xFFFFFFFF)),
+        const Color(0xFF0B0B12),
+      );
+      expect(
+        ColorMath.onColor(const Color(0xFF000000)),
+        const Color(0xFFFFFFFF),
+      );
+    });
+  });
+
+  group('Objetivos de color editables', () {
+    test('withColor expande el degradado hasta la parada solicitada', () {
+      final AppThemeConfig base = AppThemeConfig.polarisVioletGlass;
+      expect(base.backdrop.length, 2);
+
+      final AppThemeConfig editado = base.withColor(
+        ThemeColorTarget.backdropEnd,
+        const Color(0xFF123456),
+      );
+
+      expect(editado.backdrop.length, 3);
+      expect(editado.backdrop.last, const Color(0xFF123456));
+      expect(editado.backdrop.first, base.backdrop.first);
+    });
+
+    test('cada objetivo lee su color propio', () {
+      final AppThemeConfig config = AppThemeConfig.monolithMinimal.copyWith(
+        progressColor: const Color(0xFF112233),
+        volumeColor: const Color(0xFF445566),
+        karaokeColor: const Color(0xFF778899),
+      );
+
+      expect(config.colorFor(ThemeColorTarget.background), config.background);
+      expect(config.colorFor(ThemeColorTarget.progress), config.progressColor);
+      expect(config.colorFor(ThemeColorTarget.volume), config.volumeColor);
+      expect(config.colorFor(ThemeColorTarget.karaoke), config.karaokeColor);
+      expect(
+        config.colorFor(ThemeColorTarget.backdropMiddle),
+        config.backdrop[1],
+      );
     });
   });
 }

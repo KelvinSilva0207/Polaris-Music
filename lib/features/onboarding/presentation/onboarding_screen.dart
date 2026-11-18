@@ -226,7 +226,7 @@ class _WelcomePage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(28, 36, 28, 12),
       child: Column(
         children: <Widget>[
-          const PolarisLogo(size: 118, radius: 59, glow: true),
+          const PolarisLogo(size: 118, glow: true),
           const SizedBox(height: 26),
           Text(
             AppConstants.appName,

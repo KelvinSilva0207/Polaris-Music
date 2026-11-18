@@ -20,9 +20,14 @@ import '../utils/replay_gain.dart';
 /// - Crossfade: requiere dos decks simultáneos; se expone el ajuste y queda
 ///   pendiente de implementación (ver README).
 class AudioEngineService {
-  AudioEngineService({Player? player}) : _player = player ?? Player();
+  AudioEngineService({Player? player, this.isBackgrounded})
+    : _player = player ?? Player();
 
   static const String _tag = 'AudioEngine';
+
+  /// Lo inyecta el DI para saber si la UI está en segundo plano. Nunca se usa
+  /// para pausar la reproducción: solo reduce la frecuencia de eventos de UI.
+  final bool Function()? isBackgrounded;
 
   final Player _player;
   final StreamController<PlaybackSnapshot> _states =
@@ -98,15 +103,18 @@ class AudioEngineService {
     AppLog.i(_tag, 'Motor inicializado (${_player.platform.runtimeType})');
   }
 
-  /// La UI solo necesita ~5 posiciones por segundo para animar con suavidad.
+  /// La UI solo necesita ~5 posiciones por segundo para animar con suavidad
+  /// (1 por segundo cuando está en segundo plano).
   ///
   /// libmpv puede entregar decenas por segundo; filtrarlas aquí evita que toda
-  /// la app (isla, estadísticas, barra mini) se reconstruya de más.
+  /// la app (isla, estadísticas, barra mini) se reconstruya de más. El audio lo
+  /// decide libmpv, así que este filtro nunca interrumpe la reproducción.
   void _onPositionChanged(Duration value) {
     final DateTime now = DateTime.now();
-    if (now.difference(_lastPositionEmit) < const Duration(milliseconds: 200)) {
-      return;
-    }
+    final Duration interval = (isBackgrounded?.call() ?? false)
+        ? const Duration(milliseconds: 1000)
+        : const Duration(milliseconds: 200);
+    if (now.difference(_lastPositionEmit) < interval) return;
     _lastPositionEmit = now;
     _emit(_state.copyWith(position: value));
   }

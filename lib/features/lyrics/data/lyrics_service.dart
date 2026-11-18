@@ -98,6 +98,60 @@ class LyricsService {
     return result;
   }
 
+  /// Descarga la letra desde LRCLIB, sustituyendo la caché en memoria.
+  Future<LyricsResult?> download(Track track) async {
+    invalidate(track.id);
+    final _OnlineLyrics? online = await _fetchOnline(track);
+    if (online == null) return null;
+    final String content = online.synced && online.syncedLyrics.isNotEmpty
+        ? online.syncedLyrics
+        : online.plainLyrics;
+    if (content.trim().isEmpty) return null;
+    final LrcDocument document = LrcDocument.parse(content);
+    await saveLyrics(track, document, source: 'lrclib', synced: online.synced);
+    return LyricsResult(document: document, source: 'lrclib');
+  }
+
+  /// Importa un archivo `.lrc` local y lo asocia a la pista.
+  Future<LyricsResult?> importLrc(Track track, String path) async {
+    if (!FileUtils.isLrcFile(path)) {
+      throw const FormatException('El archivo debe tener extensión .lrc');
+    }
+    final String raw = await File(path).readAsString();
+    if (raw.trim().isEmpty) return null;
+    final LrcDocument document = LrcDocument.parse(raw);
+    await saveLyrics(track, document, source: 'local', synced: document.synced);
+    return LyricsResult(document: document, source: 'local');
+  }
+
+  /// Guarda una letra creada o sincronizada por el usuario.
+  Future<void> saveLyrics(
+    Track track,
+    LrcDocument document, {
+    String source = 'user',
+    bool? synced,
+  }) async {
+    if (track.isPersisted) {
+      await _dao.save(
+        track.id,
+        document.toLrc(),
+        synced: synced ?? document.synced,
+        source: source,
+      );
+    }
+    _memory[track.id] = LyricsResult(
+      document: document,
+      source: source,
+      fromCache: true,
+    );
+  }
+
+  /// Exporta el documento a un archivo `.lrc`.
+  Future<File> exportLrc(Track track, LrcDocument document, String path) {
+    final String target = FileUtils.isLrcFile(path) ? path : '$path.lrc';
+    return File(target).writeAsString(document.toLrc());
+  }
+
   Future<_OnlineLyrics?> _fetchOnline(Track track) async {
     try {
       final Map<String, dynamic>? exact = await _request(<String, dynamic>{

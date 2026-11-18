@@ -260,11 +260,7 @@ class HotkeyBinding {
 /// que funciona con la ventana minimizada o en la bandeja. Si la plataforma no
 /// es Windows el servicio queda inerte y la UI oculta la sección.
 class GlobalHotkeyService {
-  GlobalHotkeyService({
-    required SettingsService settings,
-    required void Function(HotkeyAction action) onAction,
-  }) : _settings = settings,
-       _onAction = onAction;
+  GlobalHotkeyService({required this._settings, required this._onAction});
 
   static const String _tag = 'Hotkeys';
 

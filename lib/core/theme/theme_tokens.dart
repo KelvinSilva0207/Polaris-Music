@@ -15,6 +15,9 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     this.artworkRadius = 24,
     this.glassOpacity = 0.10,
     this.glassBlur = 24,
+    this.progressColor = const Color(0xFF8B5CF6),
+    this.volumeColor = const Color(0xFF8B5CF6),
+    this.karaokeColor = const Color(0xFF8B5CF6),
     this.islandRadius = 28,
     this.glassEnabled = false,
     this.cardStyle = CardStyle.glassmorphic,
@@ -40,6 +43,16 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   final double artworkRadius;
   final double glassOpacity;
   final double glassBlur;
+
+  /// Color exclusivo del progreso musical.
+  final Color progressColor;
+
+  /// Color exclusivo del volumen.
+  final Color volumeColor;
+
+  /// Color de la línea activa del karaoke.
+  final Color karaokeColor;
+
   final double islandRadius;
   final bool glassEnabled;
   final CardStyle cardStyle;
@@ -169,6 +182,9 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     double? artworkRadius,
     double? glassOpacity,
     double? glassBlur,
+    Color? progressColor,
+    Color? volumeColor,
+    Color? karaokeColor,
     double? islandRadius,
     bool? glassEnabled,
     CardStyle? cardStyle,
@@ -189,6 +205,9 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     artworkRadius: artworkRadius ?? this.artworkRadius,
     glassOpacity: glassOpacity ?? this.glassOpacity,
     glassBlur: glassBlur ?? this.glassBlur,
+    progressColor: progressColor ?? this.progressColor,
+    volumeColor: volumeColor ?? this.volumeColor,
+    karaokeColor: karaokeColor ?? this.karaokeColor,
     islandRadius: islandRadius ?? this.islandRadius,
     glassEnabled: glassEnabled ?? this.glassEnabled,
     cardStyle: cardStyle ?? this.cardStyle,
@@ -214,6 +233,11 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
       artworkRadius: lerpDouble(artworkRadius, other.artworkRadius, t),
       glassOpacity: lerpDouble(glassOpacity, other.glassOpacity, t),
       glassBlur: lerpDouble(glassBlur, other.glassBlur, t),
+      progressColor:
+          Color.lerp(progressColor, other.progressColor, t) ?? progressColor,
+      volumeColor: Color.lerp(volumeColor, other.volumeColor, t) ?? volumeColor,
+      karaokeColor:
+          Color.lerp(karaokeColor, other.karaokeColor, t) ?? karaokeColor,
       islandRadius: lerpDouble(islandRadius, other.islandRadius, t),
       glassEnabled: t < 0.5 ? glassEnabled : other.glassEnabled,
       cardStyle: t < 0.5 ? cardStyle : other.cardStyle,

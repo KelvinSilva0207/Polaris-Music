@@ -44,6 +44,11 @@ kotlin {
     }
 }
 
+dependencies {
+    // FileProvider e Intent compatibles usados por el instalador del updater.
+    implementation("androidx.core:core-ktx:1.13.1")
+}
+
 flutter {
     source = "../.."
 }

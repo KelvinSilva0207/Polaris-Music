@@ -7,6 +7,7 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/models/playback_state.dart';
 import '../../../core/models/track.dart';
 import '../../../core/services/audio_engine_service.dart';
+import '../../../core/services/playback_session_service.dart';
 import '../../../core/services/settings_service.dart';
 import '../../../core/utils/logger.dart';
 
@@ -24,6 +25,7 @@ class PlayerUiState {
     this.crossfadeMs = 3000,
     this.replayGainEnabled = true,
     this.gaplessEnabled = true,
+    this.activePlaylistId,
   });
 
   final PlaybackSnapshot playback;
@@ -33,6 +35,9 @@ class PlayerUiState {
   final int crossfadeMs;
   final bool replayGainEnabled;
   final bool gaplessEnabled;
+
+  /// Playlist que originó la cola actual, si la hubo. Se persiste con la sesión.
+  final int? activePlaylistId;
 
   Track? get track => playback.currentTrack;
   bool get hasTrack => playback.hasTrack;
@@ -47,6 +52,7 @@ class PlayerUiState {
     int? crossfadeMs,
     bool? replayGainEnabled,
     bool? gaplessEnabled,
+    Object? activePlaylistId = _unset,
   }) => PlayerUiState(
     playback: playback ?? this.playback,
     sleepRemaining: identical(sleepRemaining, _unset)
@@ -57,6 +63,9 @@ class PlayerUiState {
     crossfadeMs: crossfadeMs ?? this.crossfadeMs,
     replayGainEnabled: replayGainEnabled ?? this.replayGainEnabled,
     gaplessEnabled: gaplessEnabled ?? this.gaplessEnabled,
+    activePlaylistId: identical(activePlaylistId, _unset)
+        ? this.activePlaylistId
+        : activePlaylistId as int?,
   );
 }
 
@@ -69,30 +78,54 @@ const Object _unset = Object();
 class PlayerController extends StateNotifier<PlayerUiState> {
   PlayerController({
     required AudioEngineService engine,
-    required SettingsService settings,
-    Future<void> Function(int id, bool value)? persistFavorite,
+    required this._settings,
+    required this._session,
+    this._resolveTracks,
+    this._persistFavorite,
+    this.isBackgrounded,
   }) : _engine = engine,
-       _settings = settings,
-       _persistFavorite = persistFavorite,
        super(
          PlayerUiState(
            playback: engine.state,
-           replayGainEnabled: settings.replayGainEnabled,
-           gaplessEnabled: settings.gaplessEnabled,
-           crossfadeEnabled: settings.crossfadeEnabled,
-           crossfadeMs: settings.crossfadeMs,
+           replayGainEnabled: _settings.replayGainEnabled,
+           gaplessEnabled: _settings.gaplessEnabled,
+           crossfadeEnabled: _settings.crossfadeEnabled,
+           crossfadeMs: _settings.crossfadeMs,
          ),
        ) {
     _stateSub = _engine.states.listen(_onEngineState);
+    _session.registerFlush(_saveSession);
+    // Guardado periódico: captura la posición aunque la app se cierre de forma
+    // brusca. Los cambios de pista/transporte se vuelcan además al instante.
+    _sessionTimer = Timer.periodic(const Duration(seconds: 3), (Timer _) {
+      _sessionTicks++;
+      // En segundo plano bajamos de 20 a 2 escrituras de Drift por minuto.
+      // Los cambios de pista y transporte ya vuelcan al instante.
+      if ((isBackgrounded?.call() ?? false) && _sessionTicks % 10 != 0) {
+        return;
+      }
+      unawaited(_saveSession());
+    });
   }
 
   static const String _tag = 'Player';
 
   final AudioEngineService _engine;
   final SettingsService _settings;
+  final PlaybackSessionService _session;
+
+  /// Resuelve las rutas guardadas a pistas de la biblioteca. Lo inyecta la capa
+  /// de presentación para que el dominio no conozca Drift.
+  final Future<List<Track>> Function(List<String> paths)? _resolveTracks;
   final Future<void> Function(int id, bool value)? _persistFavorite;
 
+  /// Inyectado por la capa de presentación para espaciar el guardado en
+  /// segundo plano. Nunca controla `play()`/`pause()`.
+  final bool Function()? isBackgrounded;
+
   StreamSubscription<PlaybackSnapshot>? _stateSub;
+  int _sessionTicks = 0;
+  Timer? _sessionTimer;
   Timer? _sleepTicker;
   DateTime? _sleepDeadline;
   Timer? _sleepTimeout;
@@ -104,7 +137,17 @@ class PlayerController extends StateNotifier<PlayerUiState> {
       unawaited(_engine.pause());
       _clearSleep();
     }
+    final PlaybackSnapshot previous = state.playback;
     state = state.copyWith(playback: snapshot);
+    // La posición cambia cada segundo: no la escribimos en SQLite cada vez.
+    // Sí volcamos al instante cualquier cambio estructural de la sesión.
+    if (previous.currentTrack?.id != snapshot.currentTrack?.id ||
+        previous.playing != snapshot.playing ||
+        previous.shuffle != snapshot.shuffle ||
+        previous.repeat != snapshot.repeat ||
+        previous.queue.length != snapshot.queue.length) {
+      unawaited(_saveSession());
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -136,13 +179,20 @@ class PlayerController extends StateNotifier<PlayerUiState> {
 
   Future<void> removeFromQueue(int index) => _engine.removeAt(index);
 
-  Future<void> clearQueue() => _engine.clearQueue();
+  Future<void> clearQueue() async {
+    await _engine.clearQueue();
+    // Cola vacía intencional: no debe reaparecer al reiniciar.
+    await _session.save(const PlaybackSession());
+  }
 
   Future<void> togglePlay() => _engine.playOrPause();
 
   Future<void> play() => _engine.play();
 
-  Future<void> pause() => _engine.pause();
+  Future<void> pause() async {
+    await _engine.pause();
+    await _saveSession();
+  }
 
   Future<void> next() => _engine.next();
 
@@ -150,7 +200,10 @@ class PlayerController extends StateNotifier<PlayerUiState> {
 
   Future<void> playAt(int index) => _engine.playIndex(index);
 
-  Future<void> seek(Duration position) => _engine.seek(position);
+  Future<void> seek(Duration position) async {
+    await _engine.seek(position);
+    await _saveSession();
+  }
 
   Future<void> seekFraction(double value) => _engine.seekToProgress(value);
 
@@ -185,6 +238,68 @@ class PlayerController extends StateNotifier<PlayerUiState> {
   Future<void> cycleRepeat() => _engine.cycleRepeat();
 
   Future<void> setRepeat(RepeatMode mode) => _engine.setRepeat(mode);
+
+  // ---------------------------------------------------------------------------
+  // Sesión persistida
+  // ---------------------------------------------------------------------------
+
+  /// Marca la playlist que originó la cola actual y la incluye en la sesión.
+  void setActivePlaylist(int? id) {
+    state = state.copyWith(activePlaylistId: id);
+    unawaited(_saveSession());
+  }
+
+  /// Restaura la última sesión al arrancar: cola, índice, posición exacta,
+  /// reproducción, aleatorio, repetición y playlist activa.
+  Future<void> restoreSession() async {
+    final PlaybackSession session = _session.current;
+    if (session.isEmpty || _resolveTracks == null || !mounted) return;
+    final List<Track> tracks = await _resolveTracks(session.paths);
+    if (tracks.isEmpty || !mounted) return;
+
+    final int start = session.index.clamp(0, tracks.length - 1);
+    await _engine.setQueue(
+      tracks,
+      startIndex: start,
+      autoPlay: session.playing,
+    );
+    await _engine.setShuffle(session.shuffle);
+    await _engine.setRepeat(session.repeat);
+    if (session.positionMs > 0) {
+      await _engine.seek(Duration(milliseconds: session.positionMs));
+    }
+    if (!mounted) return;
+    state = state.copyWith(
+      playback: _engine.state,
+      activePlaylistId: session.playlistId,
+    );
+    await _saveSession();
+    AppLog.i(
+      _tag,
+      'Sesión restaurada: ${tracks.length} pistas, índice $start, '
+      '${session.positionMs} ms',
+    );
+  }
+
+  /// Vuelca el estado actual a `settings`.
+  Future<void> _saveSession() async {
+    final PlaybackSnapshot playback = state.playback;
+    // Nunca sobrescribimos una sesión guardada con el estado vacío del arranque.
+    if (!playback.hasTrack && state.activePlaylistId == null) return;
+    await _session.save(
+      PlaybackSession(
+        paths: playback.queue
+            .map((Track track) => track.path)
+            .toList(growable: false),
+        index: playback.index,
+        positionMs: playback.position.inMilliseconds,
+        playing: playback.playing,
+        shuffle: playback.shuffle,
+        repeat: playback.repeat,
+        playlistId: state.activePlaylistId,
+      ),
+    );
+  }
 
   // ---------------------------------------------------------------------------
   // Ajustes de audio
@@ -262,11 +377,14 @@ class PlayerController extends StateNotifier<PlayerUiState> {
   @override
   void dispose() {
     _stateSub?.cancel();
+    _sessionTimer?.cancel();
     _sleepTicker?.cancel();
     _sleepTimeout?.cancel();
     _volumeSaveTimer?.cancel();
     final double? pending = _pendingVolume;
     if (pending != null) unawaited(_settings.saveVolume(pending));
+    unawaited(_saveSession());
+    _session.unregisterFlush();
     super.dispose();
   }
 }

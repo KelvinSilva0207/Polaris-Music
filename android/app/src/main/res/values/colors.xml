@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fondo de la pantalla de arranque y del icono adaptativo. -->
+    <color name="polaris_splash">#FF08080C</color>
+    <color name="ic_launcher_background">#FF131935</color>
+</resources>

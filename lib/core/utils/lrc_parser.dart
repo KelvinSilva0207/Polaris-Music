@@ -125,6 +125,30 @@ class LrcDocument {
   }
 
   String get plainText => lines.map((LyricLine l) => l.text).join('\n');
+
+  /// Serializa el documento a LRC para guardarlo en Drift o exportarlo.
+  String toLrc() {
+    final StringBuffer buffer = StringBuffer();
+    if (title.isNotEmpty) buffer.writeln('[ti:$title]');
+    if (artist.isNotEmpty) buffer.writeln('[ar:$artist]');
+    if (offset != Duration.zero) {
+      buffer.writeln('[offset:${offset.inMilliseconds}]');
+    }
+    for (final LyricLine line in lines) {
+      buffer.writeln('[${formatTimestamp(line.time)}]${line.text}');
+    }
+    return buffer.toString();
+  }
+
+  /// Marca de tiempo LRC con centésimas: `[mm:ss.xx]`.
+  static String formatTimestamp(Duration time) {
+    final int minutes = time.inMinutes;
+    final int seconds = time.inSeconds.remainder(60);
+    final int hundredths = time.inMilliseconds.remainder(1000) ~/ 10;
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}.'
+        '${hundredths.toString().padLeft(2, '0')}';
+  }
 }
 
 /// `LineSplitter` local para no arrastrar `dart:convert` en tests puros.

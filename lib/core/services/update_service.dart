@@ -4,10 +4,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/app_constants.dart';
-import '../constants/app_paths.dart';
 import '../models/update_info.dart';
 import '../utils/file_utils.dart';
 import '../utils/logger.dart';
@@ -192,7 +192,10 @@ class UpdateService {
     if (url == null || url.isEmpty) return null;
 
     try {
-      final Directory dir = await AppPaths.downloads();
+      // Los binarios de actualización son temporales: el instalador se lanza
+      // desde aquí y Android copia el APK a su propio `cacheDir` antes de
+      // compartirlo con el instalador del sistema.
+      final Directory dir = await getTemporaryDirectory();
       final String rawName = info.assetName ?? p.basename(Uri.parse(url).path);
       final String safeName = FileUtils.sanitizeFileName(
         rawName.isEmpty ? 'polaris_update' : rawName,
@@ -213,8 +216,19 @@ class UpdateService {
         onReceiveProgress: onProgress,
       );
 
-      AppLog.i(_tag, 'Actualización descargada en $target');
-      return target;
+      final String? resolved = _resolveDownloadedBinary(dir, target);
+      if (resolved == null) {
+        AppLog.w(_tag, 'No se encontró un binario válido en ${dir.path}');
+        return null;
+      }
+      final int size = File(resolved).lengthSync();
+      if (size <= 0) {
+        AppLog.w(_tag, 'La descarga está vacía: $resolved');
+        return null;
+      }
+
+      AppLog.i(_tag, 'Actualización descargada en $resolved ($size bytes)');
+      return resolved;
     } on DioException catch (error, stack) {
       AppLog.w(_tag, 'Falló la descarga de la actualización', error, stack);
       return null;
@@ -222,6 +236,52 @@ class UpdateService {
       AppLog.w(_tag, 'Error inesperado al descargar', error, stack);
       return null;
     }
+  }
+
+  /// Busca el binario descargado dentro del directorio temporal.
+  ///
+  /// En Windows se prefieren los instaladores `*-Setup-*.exe`, pero se acepta
+  /// cualquier `.exe` por si la release cambia el patrón de nombres. En Android
+  /// se busca un `.apk`.
+  String? _resolveDownloadedBinary(Directory dir, String downloaded) {
+    final File direct = File(downloaded);
+    if (direct.existsSync() &&
+        direct.lengthSync() > 0 &&
+        _isInstallerCandidate(direct.path)) {
+      return direct.path;
+    }
+
+    final List<File> candidates = dir
+        .listSync()
+        .whereType<File>()
+        .where((File file) => _isInstallerCandidate(file.path))
+        .where((File file) {
+          try {
+            return file.lengthSync() > 0;
+          } catch (_) {
+            return false;
+          }
+        })
+        .toList();
+    if (candidates.isEmpty) return null;
+    candidates.sort((File a, File b) {
+      final DateTime aTime = a.statSync().modified;
+      final DateTime bTime = b.statSync().modified;
+      return bTime.compareTo(aTime);
+    });
+    return candidates.first.path;
+  }
+
+  bool _isInstallerCandidate(String path) {
+    final String name = p.basename(path).toLowerCase();
+    if (!kIsWeb && Platform.isAndroid) return name.endsWith('.apk');
+    if (!kIsWeb && Platform.isWindows) {
+      return name.endsWith('.exe') &&
+          (name.contains('-setup-') ||
+              name.contains('setup') ||
+              name.startsWith('polaris'));
+    }
+    return true;
   }
 
   /// `true` si la actualización puede instalarse sin salir de la app.
@@ -247,6 +307,7 @@ class UpdateService {
         '/SUPPRESSMSGBOXES',
         '/NORESTART',
         '/CLOSEAPPLICATIONS',
+        '/RESTARTAPPLICATIONS',
         '/LOG',
         '/AUTOUPDATE',
         _installScopeArgument(),
@@ -305,7 +366,7 @@ class UpdateService {
   /// Abre la carpeta de descargas en el explorador (Windows).
   Future<bool> openDownloadsFolder() async {
     try {
-      final Directory dir = await AppPaths.downloads();
+      final Directory dir = await getTemporaryDirectory();
       if (!kIsWeb && Platform.isWindows) {
         await Process.run('explorer.exe', <String>[dir.path]);
         return true;

@@ -7,11 +7,14 @@ import '../../features/online_music/data/online_music_service.dart';
 import '../../features/profiles_backup/domain/profiles_service.dart';
 import '../../features/stats_sync/domain/stats_service.dart';
 import '../database/app_database.dart';
+import '../database/database_guard.dart';
+import '../services/app_updater_service.dart';
 import '../services/audio_engine_service.dart';
 import '../services/backup_service.dart';
 import '../services/global_hotkey_service.dart';
 import '../services/media_session_service.dart';
 import '../services/permission_service.dart';
+import '../services/playback_session_service.dart';
 import '../services/playback_stats_recorder.dart';
 import '../services/settings_service.dart';
 import '../services/tray_service.dart';
@@ -35,17 +38,49 @@ class ServiceLocator {
   static Future<void> bootstrap() async {
     if (sl.isRegistered<AppDatabase>()) return;
 
+    AppLog.i('Bootstrap', 'Verificando base de datos');
+    final DatabaseGuardOutcome guard = await DatabaseGuard.prepare(
+      targetSchemaVersion: 3,
+    );
+    if (guard == DatabaseGuardOutcome.recovered) {
+      AppLog.w(
+        'Bootstrap',
+        'La base de datos estaba dañada: se ha aislado y se regenerará',
+      );
+    }
+
     AppLog.i('Bootstrap', 'Abriendo base de datos');
-    final AppDatabase database = AppDatabase();
+    AppDatabase database;
+    try {
+      database = await _openDatabase();
+    } on DatabaseCorruptionException catch (error, stack) {
+      AppLog.e(
+        'Bootstrap',
+        'Corrupción detectada al abrir: $error',
+        error,
+        stack,
+      );
+      await DatabaseGuard.quarantine(
+        await DatabaseGuard.databaseFile(),
+        reason: '$error',
+      );
+      database = await _openDatabase();
+    }
     sl.registerSingleton<AppDatabase>(database);
 
     AppLog.i('Bootstrap', 'Cargando preferencias');
     final SettingsService settings = SettingsService(database.settingsDao);
     await settings.load();
     sl.registerSingleton<SettingsService>(settings);
+    sl.registerSingleton<PlaybackSessionService>(
+      PlaybackSessionService(settings),
+    );
 
     AppLog.i('Bootstrap', 'Iniciando motor de audio');
-    final AudioEngineService engine = AudioEngineService();
+    final AudioEngineService engine = AudioEngineService(
+      isBackgrounded: () =>
+          sl.isRegistered<WindowService>() && sl<WindowService>().backgrounded,
+    );
     await engine.initialize();
     sl.registerSingleton<AudioEngineService>(engine);
 
@@ -94,7 +129,9 @@ class ServiceLocator {
     window.hideOnClose = tray.isInitialized;
 
     sl.registerSingleton<PermissionService>(PermissionService());
-    sl.registerSingleton<UpdateService>(UpdateService());
+    final AppUpdaterService updater = AppUpdaterService();
+    sl.registerSingleton<AppUpdaterService>(updater);
+    sl.registerSingleton<UpdateService>(updater);
     sl.registerSingleton<BackupService>(BackupService(database));
     sl.registerSingleton<LibraryRepository>(LibraryRepository(database));
     sl.registerSingleton<LyricsService>(LyricsService(database.lyricsDao));
@@ -114,8 +151,24 @@ class ServiceLocator {
     AppLog.i('Bootstrap', 'Servicios inicializados');
   }
 
+  /// Crea la base de datos y fuerza la apertura para que las migraciones y el
+  /// `beforeOpen` se ejecuten dentro del `try` del bootstrap.
+  static Future<AppDatabase> _openDatabase() async {
+    final AppDatabase database = AppDatabase();
+    try {
+      await database.customSelect('SELECT 1').get();
+      return database;
+    } catch (error, stack) {
+      await database.close();
+      Error.throwWithStackTrace(error, stack);
+    }
+  }
+
   /// Libera recursos nativos en orden inverso.
   static Future<void> shutdown() async {
+    if (sl.isRegistered<PlaybackSessionService>()) {
+      await sl<PlaybackSessionService>().flush();
+    }
     if (sl.isRegistered<GlobalHotkeyService>()) {
       await sl<GlobalHotkeyService>().dispose();
     }

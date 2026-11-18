@@ -47,7 +47,7 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
   @override
   Widget build(BuildContext context) {
     final PolarisTokens tokens = context.tokens;
-    final Color accent = widget.accent ?? tokens.accent;
+    final Color accent = widget.accent ?? tokens.progressColor;
     final Duration position = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.position),
     );
@@ -339,7 +339,7 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
   @override
   Widget build(BuildContext context) {
     final PolarisTokens tokens = context.tokens;
-    final Color accent = widget.accent ?? tokens.accent;
+    final Color accent = widget.accent ?? tokens.volumeColor;
     final double volume = ref
         .watch(
           playerControllerProvider.select(

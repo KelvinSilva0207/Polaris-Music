@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../constants/app_constants.dart';
 import '../di/service_locator.dart';
 import '../models/update_info.dart';
+import '../services/app_updater_service.dart';
 import '../services/global_hotkey_service.dart';
 import '../services/permission_service.dart';
 import '../services/settings_service.dart';
@@ -38,6 +39,10 @@ final Provider<PermissionService> permissionServiceProvider =
 final Provider<UpdateService> updateServiceProvider = Provider<UpdateService>(
   (Ref ref) => sl<UpdateService>(),
 );
+
+/// Proveedor concreto del updater (necesario para el diálogo y Android).
+final Provider<AppUpdaterService> appUpdaterServiceProvider =
+    Provider<AppUpdaterService>((Ref ref) => sl<AppUpdaterService>());
 
 final Provider<WindowService> windowServiceProvider = Provider<WindowService>(
   (Ref ref) => sl<WindowService>(),

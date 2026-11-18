@@ -60,113 +60,123 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
     final AppThemeConfig config = ref.watch(themeConfigProvider);
     final Color accent = config.accent;
 
-    if (playing && !_spin.isAnimating) {
-      _spin.repeat();
-    } else if (!playing && _spin.isAnimating) {
-      _spin.stop();
-    }
-
     final PlayerController controller = ref.read(
       playerControllerProvider.notifier,
     );
     final PolarisTokens tokens = context.tokens;
 
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: <Color>[
-              Color.lerp(config.background, accent, 0.30) ?? config.background,
-              config.background,
-              Color.lerp(config.background, accent, 0.14) ?? config.background,
-            ],
+    // El vinilo deja de girar cuando la ventana pasa a segundo plano, pero el
+    // reproductor sigue sonando: el estado de audio y el de UI son independientes.
+    return ValueListenableBuilder<WindowUiState>(
+      valueListenable: ref.watch(windowStateProvider),
+      builder: (BuildContext context, WindowUiState state, Widget? child) {
+        final bool active = playing && !state.backgrounded;
+        if (active && !_spin.isAnimating) {
+          _spin.repeat();
+        } else if (!active && _spin.isAnimating) {
+          _spin.stop();
+        }
+        return child ?? const SizedBox.shrink();
+      },
+      child: Scaffold(
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: <Color>[
+                Color.lerp(config.background, accent, 0.30) ??
+                    config.background,
+                config.background,
+                Color.lerp(config.background, accent, 0.14) ??
+                    config.background,
+              ],
+            ),
           ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: <Widget>[
-              _PhoneTopBar(accent: accent),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
-                  children: <Widget>[
-                    const SizedBox(height: 4),
-                    Center(
-                      child: _PhoneArtwork(
-                        track: track,
+          child: SafeArea(
+            child: Column(
+              children: <Widget>[
+                _PhoneTopBar(accent: accent),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
+                    children: <Widget>[
+                      const SizedBox(height: 4),
+                      Center(
+                        child: _PhoneArtwork(
+                          track: track,
+                          accent: accent,
+                          rotation: _spin,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Text(
+                        track?.title ?? 'Polaris Music',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 19,
+                          fontWeight: FontWeight.w800,
+                          height: 1.15,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        track?.artist ?? 'Tu universo sonoro',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white60,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const _PhoneProgress(),
+                      const SizedBox(height: 8),
+                      _PhoneControls(
+                        playing: playing,
+                        buffering: buffering,
                         accent: accent,
-                        rotation: _spin,
+                        controller: controller,
                       ),
-                    ),
-                    const SizedBox(height: 18),
-                    Text(
-                      track?.title ?? 'Polaris Music',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 19,
-                        fontWeight: FontWeight.w800,
-                        height: 1.15,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      track?.artist ?? 'Tu universo sonoro',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.white60,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const _PhoneProgress(),
-                    const SizedBox(height: 8),
-                    _PhoneControls(
-                      playing: playing,
-                      buffering: buffering,
-                      accent: accent,
-                      controller: controller,
-                    ),
-                    const SizedBox(height: 18),
-                    _GlassCard(
-                      tokens: tokens,
-                      child: Row(
-                        children: <Widget>[
-                          Icon(
-                            volume <= 0
-                                ? Icons.volume_off_rounded
-                                : Icons.volume_up_rounded,
-                            size: 18,
-                            color: Colors.white60,
-                          ),
-                          Expanded(
-                            child: Slider(
-                              value: volume.clamp(0.0, 100.0).toDouble(),
-                              max: 100,
-                              onChanged: controller.setVolume,
+                      const SizedBox(height: 18),
+                      _GlassCard(
+                        tokens: tokens,
+                        child: Row(
+                          children: <Widget>[
+                            Icon(
+                              volume <= 0
+                                  ? Icons.volume_off_rounded
+                                  : Icons.volume_up_rounded,
+                              size: 18,
+                              color: Colors.white60,
                             ),
-                          ),
-                          Text(
-                            '${volume.round()}%',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Colors.white38,
+                            Expanded(
+                              child: Slider(
+                                value: volume.clamp(0.0, 100.0).toDouble(),
+                                max: 100,
+                                onChanged: controller.setVolume,
+                              ),
                             ),
-                          ),
-                        ],
+                            Text(
+                              '${volume.round()}%',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.white38,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 14),
-                    _QuickActions(accent: accent),
-                  ],
+                      const SizedBox(height: 14),
+                      _QuickActions(accent: accent),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

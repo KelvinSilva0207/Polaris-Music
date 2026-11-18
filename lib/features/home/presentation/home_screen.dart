@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/app_navigation.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/models/track.dart';
 import '../../../core/theme/theme_tokens.dart';
@@ -17,7 +18,7 @@ import '../../stats_sync/presentation/stats_providers.dart';
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key, required this.onNavigate});
 
-  final ValueChanged<int> onNavigate;
+  final ValueChanged<AppSection> onNavigate;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -47,7 +48,7 @@ class HomeScreen extends ConsumerWidget {
                   'Añade una carpeta con música para empezar. Polaris indexa '
                   'MP3, FLAC, WAV, OGG, Opus, M4A y más.',
               action: FilledButton.icon(
-                onPressed: () => onNavigate(1),
+                onPressed: () => onNavigate(AppSection.online),
                 icon: const Icon(Icons.create_new_folder_outlined),
                 label: const Text('Añadir música'),
               ),
@@ -94,7 +95,7 @@ class HomeScreen extends ConsumerWidget {
 class _Greeting extends StatelessWidget {
   const _Greeting({required this.onNavigate});
 
-  final ValueChanged<int> onNavigate;
+  final ValueChanged<AppSection> onNavigate;
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +133,7 @@ class _Greeting extends StatelessWidget {
         ),
         IconButton.filledTonal(
           tooltip: 'Buscar en la biblioteca',
-          onPressed: () => onNavigate(1),
+          onPressed: () => onNavigate(AppSection.online),
           icon: const Icon(Icons.search_rounded),
         ),
       ],

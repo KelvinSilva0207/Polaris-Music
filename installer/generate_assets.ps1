@@ -136,11 +136,31 @@ if (-not (Test-Path -LiteralPath $LogoPath)) {
 }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
-$iconObject = $null
 $fullLogoPath = [System.IO.Path]::GetFullPath($LogoPath)
 if ([System.IO.Path]::GetExtension($fullLogoPath) -ieq '.ico') {
-    $iconObject = New-Object System.Drawing.Icon($fullLogoPath, 256, 256)
-    $logo = $iconObject.ToBitmap()
+    # Los ICO modernos guardan cada frame como PNG incrustado. System.Drawing
+    # no puede convertirlos con ToBitmap(), asi que leemos el frame mas grande
+    # directamente desde el directorio del archivo.
+    $iconBytes = [System.IO.File]::ReadAllBytes($fullLogoPath)
+    $frameCount = [BitConverter]::ToUInt16($iconBytes, 4)
+    $bestWidth = -1
+    $bestOffset = 0
+    $bestLength = 0
+    for ($i = 0; $i -lt $frameCount; $i++) {
+        $entry = 6 + (16 * $i)
+        $width = $iconBytes[$entry]
+        if ($width -eq 0) { $width = 256 }
+        $length = [BitConverter]::ToUInt32($iconBytes, $entry + 8)
+        if ($width -gt $bestWidth) {
+            $bestWidth = $width
+            $bestOffset = [BitConverter]::ToUInt32($iconBytes, $entry + 12)
+            $bestLength = $length
+        }
+    }
+    $stream = New-Object System.IO.MemoryStream
+    $stream.Write($iconBytes, [int]$bestOffset, [int]$bestLength)
+    $stream.Position = 0
+    $logo = [System.Drawing.Image]::FromStream($stream)
 }
 else {
     $logo = [System.Drawing.Image]::FromFile($fullLogoPath)

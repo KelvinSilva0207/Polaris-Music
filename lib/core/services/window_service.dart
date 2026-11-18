@@ -14,7 +14,7 @@ import '../constants/app_constants.dart';
 import '../utils/logger.dart';
 
 /// Modos de presentación de escritorio.
-enum WindowMode { normal, mini, phone }
+enum WindowMode { normal, mini, phone, island }
 
 /// Instantánea que la interfaz observa para adaptarse al modo de ventana.
 @immutable
@@ -25,6 +25,7 @@ class WindowUiState {
     this.sideHidden = false,
     this.maximized = false,
     this.visible = true,
+    this.backgrounded = false,
   });
 
   final WindowMode mode;
@@ -33,18 +34,24 @@ class WindowUiState {
   final bool maximized;
   final bool visible;
 
+  /// `true` cuando la ventana está minimizada, oculta o sin foco. Se usa para
+  /// reducir animaciones y timers de UI. Nunca afecta a la reproducción.
+  final bool backgrounded;
+
   WindowUiState copyWith({
     WindowMode? mode,
     bool? alwaysOnTop,
     bool? sideHidden,
     bool? maximized,
     bool? visible,
+    bool? backgrounded,
   }) => WindowUiState(
     mode: mode ?? this.mode,
     alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
     sideHidden: sideHidden ?? this.sideHidden,
     maximized: maximized ?? this.maximized,
     visible: visible ?? this.visible,
+    backgrounded: backgrounded ?? this.backgrounded,
   );
 }
 
@@ -63,6 +70,7 @@ class WindowService with WindowListener {
   bool _sideHidden = false;
   bool _quitting = false;
   bool _maximized = false;
+  bool _backgrounded = false;
   WindowMode _mode = WindowMode.normal;
   Rect? _savedBounds;
 
@@ -77,6 +85,7 @@ class WindowService with WindowListener {
   WindowMode get mode => _mode;
   bool get sideHidden => _sideHidden;
   bool get maximized => _maximized;
+  bool get backgrounded => _backgrounded;
 
   /// Si la bandeja está disponible, cerrar la ventana la oculta en lugar de
   /// terminar el proceso.
@@ -86,6 +95,7 @@ class WindowService with WindowListener {
   static const Size normalMinimum = Size(940, 620);
   static const Size miniSize = Size(430, 152);
   static const Size phoneSize = Size(412, 820);
+  static const Size islandSize = Size(400, 128);
 
   Future<void> initialize() async {
     if (!isSupported || _initialized) return;
@@ -120,12 +130,23 @@ class WindowService with WindowListener {
       sideHidden: _sideHidden,
       maximized: _maximized,
       visible: state.value.visible,
+      backgrounded: _backgrounded,
     );
   }
 
   void _setVisible(bool value) {
     state.value = state.value.copyWith(visible: value);
   }
+
+  void _setBackgrounded(bool value) {
+    if (_backgrounded == value) return;
+    _backgrounded = value;
+    state.value = state.value.copyWith(backgrounded: value);
+  }
+
+  /// Lo usa el ciclo de vida de Flutter (Android/iOS y casos que
+  /// `window_manager` no reporta). No detiene la reproducción.
+  void setBackgrounded(bool value) => _setBackgrounded(value);
 
   Future<void> setAlwaysOnTop(bool value) async {
     if (!isSupported) return;
@@ -152,6 +173,7 @@ class WindowService with WindowListener {
 
     switch (mode) {
       case WindowMode.normal:
+        await windowManager.setBackgroundColor(const Color(0xFF08080C));
         await windowManager.setResizable(true);
         await windowManager.setSkipTaskbar(false);
         await windowManager.setMaximumSize(const Size(10000, 10000));
@@ -162,6 +184,7 @@ class WindowService with WindowListener {
         await windowManager.setBounds(bounds);
         await windowManager.setAlwaysOnTop(_alwaysOnTop);
       case WindowMode.mini:
+        await windowManager.setBackgroundColor(const Color(0xFF08080C));
         await windowManager.setResizable(false);
         await windowManager.setMinimumSize(Size.zero);
         await windowManager.setSize(miniSize);
@@ -170,6 +193,7 @@ class WindowService with WindowListener {
         await windowManager.setSkipTaskbar(true);
         await windowManager.setAlignment(Alignment.bottomRight);
       case WindowMode.phone:
+        await windowManager.setBackgroundColor(const Color(0xFF08080C));
         await windowManager.setResizable(false);
         await windowManager.setMinimumSize(Size.zero);
         await windowManager.setSize(phoneSize);
@@ -182,17 +206,29 @@ class WindowService with WindowListener {
           Offset(current.left - 18, current.top),
           animate: false,
         );
+      case WindowMode.island:
+        // Fondo transparente: la tarjeta de Flutter dibuja la isla y el resto
+        // de la ventana deja ver el escritorio.
+        await windowManager.setBackgroundColor(const Color(0x00000000));
+        await windowManager.setResizable(false);
+        await windowManager.setMinimumSize(Size.zero);
+        await windowManager.setSize(islandSize);
+        await windowManager.setAlignment(Alignment.topCenter, animate: true);
+        await windowManager.setAlwaysOnTop(true);
+        await windowManager.setSkipTaskbar(true);
     }
 
     if (!state.value.visible) {
       await windowManager.show();
       _setVisible(true);
+      _setBackgrounded(false);
     }
     AppLog.i(_tag, 'Modo de ventana: ${mode.name}');
   }
 
   Future<void> cycleMode() => setMode(switch (_mode) {
-    WindowMode.normal => WindowMode.mini,
+    WindowMode.normal => WindowMode.island,
+    WindowMode.island => WindowMode.mini,
     WindowMode.mini => WindowMode.phone,
     WindowMode.phone => WindowMode.normal,
   });
@@ -210,6 +246,7 @@ class WindowService with WindowListener {
   /// Minimiza a la barra de tareas tradicional.
   Future<void> minimize() async {
     if (!isSupported) return;
+    _setBackgrounded(true);
     await windowManager.minimize();
   }
 
@@ -219,7 +256,20 @@ class WindowService with WindowListener {
     await windowManager.setSkipTaskbar(true);
     await windowManager.hide();
     _setVisible(false);
+    _setBackgrounded(true);
     AppLog.i(_tag, 'Ventana oculta en la bandeja');
+  }
+
+  /// Transforma la ventana en una isla flotante Always-on-Top centrada arriba.
+  Future<void> showIsland() async {
+    if (!isSupported) return;
+    await _applyMode(WindowMode.island);
+    await windowManager.show();
+    await windowManager.focus();
+    _setVisible(true);
+    _setBackgrounded(false);
+    _publish();
+    AppLog.i(_tag, 'Isla dinámica activada');
   }
 
   /// Restaura la ventana principal en modo normal.
@@ -231,6 +281,7 @@ class WindowService with WindowListener {
     await windowManager.show();
     await windowManager.focus();
     _setVisible(true);
+    _setBackgrounded(false);
     _publish();
   }
 
@@ -244,6 +295,7 @@ class WindowService with WindowListener {
     await windowManager.show();
     await windowManager.focus();
     _setVisible(true);
+    _setBackgrounded(false);
     _publish();
   }
 
@@ -277,12 +329,14 @@ class WindowService with WindowListener {
     await windowManager.show();
     await windowManager.focus();
     _setVisible(true);
+    _setBackgrounded(false);
   }
 
   Future<void> hide() async {
     if (!isSupported) return;
     await windowManager.hide();
     _setVisible(false);
+    _setBackgrounded(true);
   }
 
   Future<void> setTitle(String title) async {
@@ -312,6 +366,22 @@ class WindowService with WindowListener {
   Future<void> quit() => close();
 
   @override
+  void onWindowMinimize() {
+    _setBackgrounded(true);
+  }
+
+  @override
+  void onWindowFocus() {
+    _setBackgrounded(false);
+  }
+
+  @override
+  void onWindowBlur() {
+    // No pausamos audio: solo marcamos la UI como en segundo plano.
+    _setBackgrounded(true);
+  }
+
+  @override
   void onWindowMaximize() {
     _maximized = true;
     _publish();
@@ -326,6 +396,7 @@ class WindowService with WindowListener {
   @override
   void onWindowRestore() {
     _maximized = false;
+    _setBackgrounded(false);
     _publish();
   }
 

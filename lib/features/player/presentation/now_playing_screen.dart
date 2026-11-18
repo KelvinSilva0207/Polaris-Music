@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -5,9 +6,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/app_navigation.dart';
 import '../../../core/models/playback_state.dart';
 import '../../../core/models/track.dart';
+import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/theme_provider.dart';
+import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
@@ -15,8 +19,11 @@ import '../../../shared/widgets/audio_progress_bar.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import '../../../shared/widgets/track_properties_modal.dart';
-import '../../lyrics/presentation/lyrics_panel.dart';
+import '../../dynamic_island/presentation/island_providers.dart';
+import '../../equalizer/presentation/equalizer_screen.dart';
+import '../../lyrics/presentation/immersive_lyrics_view.dart';
 import '../domain/player_controller.dart';
+import 'artwork_gestures.dart';
 import 'player_providers.dart';
 
 /// Pantalla de reproducción dinámica.
@@ -33,6 +40,25 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
   int _panelTab = 0;
+  bool _lyricsImmersive = false;
+
+  /// Deslizar abajo: en escritorio se transforma en isla o se minimiza; en
+  /// móvil el reproductor pasa a la mini barra persistente de la Biblioteca.
+  void _minimizePlayer() {
+    if (Platform.isWindows) {
+      final WindowService window = ref.read(windowServiceProvider);
+      final bool island = ref.read(dynamicIslandControllerProvider).enabled;
+      if (island) {
+        unawaited(window.showIsland());
+      } else {
+        unawaited(window.minimize());
+      }
+      return;
+    }
+    ref.read(appSectionProvider.notifier).state = AppSection.library;
+  }
+
+  void _openLyrics() => setState(() => _lyricsImmersive = true);
 
   @override
   Widget build(BuildContext context) {
@@ -73,34 +99,101 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       fit: StackFit.expand,
       children: <Widget>[
         _DynamicBackdrop(config: config, accent: accent),
-        LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            final bool wide = constraints.maxWidth >= 980;
-            if (wide) {
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: <Widget>[
-                    Expanded(
-                      flex: 5,
-                      child: SingleChildScrollView(
-                        child: _ArtworkStage(
-                          track: track,
-                          config: config,
-                          accent: accent,
-                          playing: playing,
-                          size: math.min(constraints.maxWidth * 0.30, 400),
-                          onSeekFraction: controller.seekFraction,
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 340),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.97, end: 1).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: _lyricsImmersive
+              ? ImmersiveLyricsView(
+                  key: const ValueKey<String>('immersive-lyrics'),
+                  track: track,
+                  onClose: () => setState(() => _lyricsImmersive = false),
+                )
+              : LayoutBuilder(
+                  key: const ValueKey<String>('player'),
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final bool wide = constraints.maxWidth >= 980;
+                    if (wide) {
+                      return Padding(
+                        padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: <Widget>[
+                            Expanded(
+                              flex: 5,
+                              child: SingleChildScrollView(
+                                child: _ArtworkStage(
+                                  track: track,
+                                  config: config,
+                                  accent: accent,
+                                  playing: playing,
+                                  size: math.min(
+                                    math.min(constraints.maxWidth * 0.30, 400),
+                                    math.max(constraints.maxHeight * 0.58, 220),
+                                  ),
+                                  onSeekFraction: controller.seekFraction,
+                                  onPrevious: controller.previous,
+                                  onNext: controller.next,
+                                  onLyrics: _openLyrics,
+                                  onMinimize: _minimizePlayer,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 26),
+                            Expanded(
+                              flex: 5,
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: _PlayerColumn(
+                                  track: track,
+                                  config: config,
+                                  accent: accent,
+                                  controller: controller,
+                                  panelTab: _panelTab,
+                                  onPanelChanged: (int value) =>
+                                      setState(() => _panelTab = value),
+                                  panelHeight: 360,
+                                  onOpenLyrics: () =>
+                                      setState(() => _lyricsImmersive = true),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 26),
-                    Expanded(
-                      flex: 5,
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: _PlayerColumn(
+                      );
+                    }
+
+                    return ListView(
+                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 140),
+                      children: <Widget>[
+                        Center(
+                          child: _ArtworkStage(
+                            track: track,
+                            config: config,
+                            accent: accent,
+                            playing: playing,
+                            size: math.min(
+                              math.min(constraints.maxWidth - 88, 320),
+                              math.max(constraints.maxHeight * 0.5, 200),
+                            ),
+                            onSeekFraction: controller.seekFraction,
+                            onPrevious: controller.previous,
+                            onNext: controller.next,
+                            onLyrics: _openLyrics,
+                            onMinimize: _minimizePlayer,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        _PlayerColumn(
                           track: track,
                           config: config,
                           accent: accent,
@@ -108,42 +201,14 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                           panelTab: _panelTab,
                           onPanelChanged: (int value) =>
                               setState(() => _panelTab = value),
-                          panelHeight: 360,
+                          panelHeight: 380,
+                          onOpenLyrics: () =>
+                              setState(() => _lyricsImmersive = true),
                         ),
-                      ),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
-              );
-            }
-
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 140),
-              children: <Widget>[
-                Center(
-                  child: _ArtworkStage(
-                    track: track,
-                    config: config,
-                    accent: accent,
-                    playing: playing,
-                    size: math.min(constraints.maxWidth - 88, 320),
-                    onSeekFraction: controller.seekFraction,
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _PlayerColumn(
-                  track: track,
-                  config: config,
-                  accent: accent,
-                  controller: controller,
-                  panelTab: _panelTab,
-                  onPanelChanged: (int value) =>
-                      setState(() => _panelTab = value),
-                  panelHeight: 380,
-                ),
-              ],
-            );
-          },
         ),
       ],
     );
@@ -163,6 +228,7 @@ class _PlayerColumn extends ConsumerWidget {
     required this.panelTab,
     required this.onPanelChanged,
     required this.panelHeight,
+    required this.onOpenLyrics,
   });
 
   final Track track;
@@ -172,6 +238,7 @@ class _PlayerColumn extends ConsumerWidget {
   final int panelTab;
   final ValueChanged<int> onPanelChanged;
   final double panelHeight;
+  final VoidCallback onOpenLyrics;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -191,13 +258,18 @@ class _PlayerColumn extends ConsumerWidget {
         const SizedBox(height: 14),
         _ProgressSection(
           config: config,
-          accent: accent,
+          accent: config.usesDynamicPalette ? accent : config.progressColor,
           onSeekFraction: controller.seekFraction,
         ),
         const SizedBox(height: 8),
         _TransportControls(controller: controller, accent: accent),
         const SizedBox(height: 10),
-        _VolumeRow(controller: controller, accent: accent),
+        _VolumeRow(
+          controller: controller,
+          accent: config.usesDynamicPalette ? accent : config.volumeColor,
+        ),
+        const SizedBox(height: 6),
+        _QuickActions(accent: accent, onOpenLyrics: onOpenLyrics),
         if (sleepActive) _SleepBadge(controller: controller),
         if (error != null)
           Padding(
@@ -216,6 +288,7 @@ class _PlayerColumn extends ConsumerWidget {
           tab: panelTab,
           onTabChanged: onPanelChanged,
           height: panelHeight,
+          onOpenLyrics: onOpenLyrics,
         ),
       ],
     );
@@ -339,7 +412,7 @@ class _TrackHeader extends ConsumerWidget {
                 color: !track.isPersisted
                     ? Colors.white24
                     : track.isFavorite
-                    ? (accent == Colors.white ? Colors.redAccent : accent)
+                    ? Colors.redAccent
                     : Colors.white38,
               ),
             ),
@@ -914,6 +987,49 @@ class _SleepBadge extends ConsumerWidget {
 }
 
 /// Panel inferior con la cola o las letras.
+/// Accesos rápidos junto a los controles: ecualizador y letras inmersivas.
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({required this.accent, required this.onOpenLyrics});
+
+  final Color accent;
+  final VoidCallback onOpenLyrics;
+
+  @override
+  Widget build(BuildContext context) {
+    final ButtonStyle style = OutlinedButton.styleFrom(
+      foregroundColor: accent,
+      side: BorderSide(color: accent.withValues(alpha: 0.35)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    );
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 10,
+      runSpacing: 8,
+      children: <Widget>[
+        OutlinedButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (BuildContext context) => Scaffold(
+                appBar: AppBar(title: const Text('Ecualizador')),
+                body: const EqualizerScreen(),
+              ),
+            ),
+          ),
+          icon: const Icon(Icons.graphic_eq_rounded, size: 18),
+          label: const Text('Ecualizador'),
+          style: style,
+        ),
+        OutlinedButton.icon(
+          onPressed: onOpenLyrics,
+          icon: const Icon(Icons.lyrics_outlined, size: 18),
+          label: const Text('Letras'),
+          style: style,
+        ),
+      ],
+    );
+  }
+}
+
 class _MediaPanel extends ConsumerWidget {
   const _MediaPanel({
     required this.track,
@@ -922,6 +1038,7 @@ class _MediaPanel extends ConsumerWidget {
     required this.tab,
     required this.onTabChanged,
     required this.height,
+    required this.onOpenLyrics,
   });
 
   final Track track;
@@ -930,6 +1047,7 @@ class _MediaPanel extends ConsumerWidget {
   final int tab;
   final ValueChanged<int> onTabChanged;
   final double height;
+  final VoidCallback onOpenLyrics;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -964,10 +1082,15 @@ class _MediaPanel extends ConsumerWidget {
                         icon: Icon(Icons.lyrics_outlined, size: 18),
                       ),
                     ],
-                    selected: <int>{tab},
+                    selected: const <int>{0},
                     showSelectedIcon: false,
-                    onSelectionChanged: (Set<int> value) =>
-                        onTabChanged(value.first),
+                    onSelectionChanged: (Set<int> value) {
+                      if (value.first == 1) {
+                        onOpenLyrics();
+                      } else {
+                        onTabChanged(0);
+                      }
+                    },
                   ),
                 ),
                 if (tab == 0)
@@ -980,14 +1103,12 @@ class _MediaPanel extends ConsumerWidget {
             ),
             const SizedBox(height: 4),
             Expanded(
-              child: tab == 0
-                  ? _QueueList(
-                      queue: queue,
-                      index: index,
-                      controller: controller,
-                      accent: accent,
-                    )
-                  : LyricsPanel(track: track),
+              child: _QueueList(
+                queue: queue,
+                index: index,
+                controller: controller,
+                accent: accent,
+              ),
             ),
           ],
         ),
@@ -1088,6 +1209,10 @@ class _ArtworkStage extends ConsumerWidget {
     required this.playing,
     required this.size,
     required this.onSeekFraction,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onLyrics,
+    required this.onMinimize,
   });
 
   final Track track;
@@ -1096,6 +1221,10 @@ class _ArtworkStage extends ConsumerWidget {
   final bool playing;
   final double size;
   final ValueChanged<double> onSeekFraction;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onLyrics;
+  final VoidCallback onMinimize;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1113,54 +1242,70 @@ class _ArtworkStage extends ConsumerWidget {
     // desbordar el círculo (el antiguo desajuste del estilo Vinilo).
     final double artSize = ring ? size * 0.84 : size;
 
-    final Widget artwork = switch (config.artworkShape) {
-      ArtworkShape.squareRounded => _SquareArtwork(
-        path: track.artworkPath,
-        size: artSize,
-        accent: accent,
-        radius: config.artworkRadius,
-      ),
-      ArtworkShape.circleVinyl => _VinylArtwork(
-        path: track.artworkPath,
-        size: artSize,
-        accent: accent,
-        playing: playing,
-      ),
-      ArtworkShape.card3D => _Card3DArtwork(
-        path: track.artworkPath,
-        size: artSize,
-        accent: accent,
-        radius: config.artworkRadius,
-      ),
-    };
+    final ValueNotifier<WindowUiState> windowNotifier = ref.watch(
+      windowStateProvider,
+    );
+    final Widget artwork = ValueListenableBuilder<WindowUiState>(
+      valueListenable: windowNotifier,
+      builder: (BuildContext context, WindowUiState state, Widget? _) {
+        return switch (config.artworkShape) {
+          ArtworkShape.squareRounded => _SquareArtwork(
+            path: track.artworkPath,
+            size: artSize,
+            accent: accent,
+            radius: config.artworkRadius,
+          ),
+          ArtworkShape.circleVinyl => _VinylArtwork(
+            path: track.artworkPath,
+            size: artSize,
+            accent: accent,
+            playing: playing,
+            paused: state.backgrounded,
+          ),
+          ArtworkShape.card3D => _Card3DArtwork(
+            path: track.artworkPath,
+            size: artSize,
+            accent: accent,
+            radius: config.artworkRadius,
+          ),
+        };
+      },
+    );
 
     final Widget body = ring
         ? _CircularProgressRing(
             size: size,
             progress: progress,
             accent: accent,
-            onSeekFraction: onSeekFraction,
             child: artwork,
           )
         : artwork;
 
-    return RepaintBoundary(
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 480),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          return FadeTransition(
-            opacity: animation,
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
-              child: child,
-            ),
-          );
-        },
-        child: KeyedSubtree(
-          key: ValueKey<String>('${track.id}-${config.artworkShape.name}'),
-          child: body,
+    return ArtworkGestures(
+      size: size,
+      onSeekFraction: onSeekFraction,
+      onPrevious: onPrevious,
+      onNext: onNext,
+      onLyrics: onLyrics,
+      onMinimize: onMinimize,
+      child: RepaintBoundary(
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 480),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          transitionBuilder: (Widget child, Animation<double> animation) {
+            return FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
+                child: child,
+              ),
+            );
+          },
+          child: KeyedSubtree(
+            key: ValueKey<String>('${track.id}-${config.artworkShape.name}'),
+            child: body,
+          ),
         ),
       ),
     );
@@ -1363,12 +1508,14 @@ class _VinylArtwork extends StatefulWidget {
     required this.size,
     required this.accent,
     required this.playing,
+    this.paused = false,
   });
 
   final String? path;
   final double size;
   final Color accent;
   final bool playing;
+  final bool paused;
 
   @override
   State<_VinylArtwork> createState() => _VinylArtworkState();
@@ -1390,13 +1537,16 @@ class _VinylArtworkState extends State<_VinylArtwork>
   @override
   void didUpdateWidget(covariant _VinylArtwork oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.playing != widget.playing) _syncPlayback();
+    if (oldWidget.playing != widget.playing ||
+        oldWidget.paused != widget.paused) {
+      _syncPlayback();
+    }
   }
 
   void _syncPlayback() {
-    if (widget.playing) {
-      _spin.repeat();
-    } else {
+    if (widget.playing && !widget.paused) {
+      if (!_spin.isAnimating) _spin.repeat();
+    } else if (_spin.isAnimating) {
       _spin.stop();
     }
   }
@@ -1533,60 +1683,38 @@ class _VinylGroovesPainter extends CustomPainter {
   bool shouldRepaint(covariant _VinylGroovesPainter oldDelegate) => false;
 }
 
-/// Anillo de progreso que envuelve la carátula; se puede tocar para buscar.
+/// Anillo de progreso que envuelve la carátula. La búsqueda y los deslizamientos
+/// los gestiona [ArtworkGestures] por encima de todo el conjunto.
 class _CircularProgressRing extends StatelessWidget {
   const _CircularProgressRing({
     required this.size,
     required this.progress,
     required this.accent,
-    required this.onSeekFraction,
     required this.child,
   });
 
   final double size;
   final double progress;
   final Color accent;
-  final ValueChanged<double> onSeekFraction;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: (TapDownDetails details) {
-          final Offset center = Offset(size / 2, size / 2);
-          final Offset local = details.localPosition;
-          final double angle = math.atan2(
-            local.dy - center.dy,
-            local.dx - center.dx,
-          );
-          final double fraction = ((angle + math.pi / 2) / (2 * math.pi)) % 1;
-          onSeekFraction(fraction);
-        },
-        onPanUpdate: (DragUpdateDetails details) {
-          final Offset center = Offset(size / 2, size / 2);
-          final Offset local = details.localPosition;
-          final double angle = math.atan2(
-            local.dy - center.dy,
-            local.dx - center.dx,
-          );
-          final double fraction = ((angle + math.pi / 2) / (2 * math.pi)) % 1;
-          onSeekFraction(fraction);
-        },
-        child: SizedBox(
-          width: size,
-          height: size,
-          child: Stack(
-            alignment: Alignment.center,
-            children: <Widget>[
-              CustomPaint(
-                size: Size.square(size),
-                painter: _RingPainter(progress: progress, accent: accent),
-              ),
-              SizedBox(width: size * 0.84, height: size * 0.84, child: child),
-            ],
-          ),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          alignment: Alignment.center,
+          children: <Widget>[
+            CustomPaint(
+              size: Size.square(size),
+              painter: _RingPainter(progress: progress, accent: accent),
+            ),
+            // La carátula ya llega reducida desde _ArtworkStage (84 %):
+            // volver a encogerla aquí producía el desajuste del vinilo.
+            child,
+          ],
         ),
       ),
     );

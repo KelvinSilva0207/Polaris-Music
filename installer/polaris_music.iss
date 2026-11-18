@@ -72,8 +72,11 @@ ShowLanguageDialog=no
 Compression=lzma2/ultra64
 SolidCompression=yes
 LZMAUseSeparateProcess=yes
+; La app mantiene este mutex en main.dart, también cuando queda en la bandeja.
+; Así el instalador puede liberar el ejecutable antes de reemplazarlo.
+AppMutex=PolarisMusicMutex
 CloseApplications=yes
-RestartApplications=no
+RestartApplications=yes
 SetupLogging=no
 
 [Languages]

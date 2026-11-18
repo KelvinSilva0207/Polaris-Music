@@ -78,6 +78,7 @@ class AppConstants {
   static const String keyNormalizeVolume = 'audio.normalize';
   static const String keyVolume = 'audio.volume';
   static const String keyLastTrackId = 'player.last_track_id';
+  static const String keyPlaybackSession = 'player.session';
   static const String keySleepTimerDefault = 'player.sleep_timer_min';
   static const String keyEqEnabled = 'eq.enabled';
   static const String keyEqPreset = 'eq.preset';

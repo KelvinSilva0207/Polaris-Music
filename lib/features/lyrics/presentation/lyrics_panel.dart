@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/track.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/lrc_parser.dart';
+import '../../player/domain/player_controller.dart';
 import '../../player/presentation/player_providers.dart';
 import '../data/lyrics_service.dart';
 import 'lyrics_providers.dart';
@@ -11,12 +12,25 @@ import 'lyrics_providers.dart';
 /// Panel de letras con resaltado tipo karaoke de la línea activa.
 ///
 /// La sincronía se apoya en el LRC (local, caché o LRCLIB) y en la posición del
-/// motor de reproducción. Si la letra no está sincronizada se muestra como
-/// texto plano sin resaltado.
+/// motor de reproducción. En [immersive] se usa tipografía protagonista y se
+/// muestran las herramientas de descarga, importación y edición.
 class LyricsPanel extends ConsumerStatefulWidget {
-  const LyricsPanel({super.key, required this.track});
+  const LyricsPanel({
+    super.key,
+    required this.track,
+    this.immersive = false,
+    this.showTools = false,
+    this.onDownload,
+    this.onImport,
+    this.onEdit,
+  });
 
   final Track track;
+  final bool immersive;
+  final bool showTools;
+  final VoidCallback? onDownload;
+  final VoidCallback? onImport;
+  final VoidCallback? onEdit;
 
   @override
   ConsumerState<LyricsPanel> createState() => _LyricsPanelState();
@@ -50,11 +64,11 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
     final AsyncValue<LyricsResult?> lyrics = ref.watch(
       lyricsForTrackProvider(widget.track),
     );
-    final int positionMs = ref
-        .watch(playerControllerProvider)
-        .playback
-        .position
-        .inMilliseconds;
+    final int positionMs = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.playback.position.inMilliseconds,
+      ),
+    );
 
     return lyrics.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -71,13 +85,21 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
       data: (LyricsResult? result) {
         if (result == null || result.isEmpty) {
           return _LyricsEmpty(
+            showTools: widget.showTools,
             onRetry: () => ref.invalidate(lyricsForTrackProvider(widget.track)),
+            onDownload: widget.onDownload,
+            onImport: widget.onImport,
+            onEdit: widget.onEdit,
           );
         }
 
         final LrcDocument document = result.document;
         if (!document.synced) {
-          return _PlainLyrics(text: document.plainText, source: result.source);
+          return _PlainLyrics(
+            text: document.plainText,
+            source: result.source,
+            immersive: widget.immersive,
+          );
         }
 
         final int? active = _karaoke
@@ -90,43 +112,65 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
         }
 
         final PolarisTokens tokens = context.tokens;
+        final double activeSize = widget.immersive ? 36 : 22;
+        final double normalSize = widget.immersive ? 25 : 17;
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            _LyricsToolbar(
-              source: result.source,
-              synced: document.synced,
-              karaoke: _karaoke,
-              onKaraokeChanged: (bool value) =>
-                  setState(() => _karaoke = value),
-            ),
+            if (widget.showTools || !widget.immersive)
+              _LyricsToolbar(
+                source: result.source,
+                synced: document.synced,
+                karaoke: _karaoke,
+                showTools: widget.showTools,
+                onDownload: widget.onDownload,
+                onImport: widget.onImport,
+                onEdit: widget.onEdit,
+                onKaraokeChanged: (bool value) =>
+                    setState(() => _karaoke = value),
+              ),
             const Divider(height: 1),
             Expanded(
               child: ListView.builder(
                 controller: _scroll,
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 40),
+                padding: widget.immersive
+                    ? const EdgeInsets.fromLTRB(24, 28, 24, 96)
+                    : const EdgeInsets.fromLTRB(20, 18, 20, 40),
                 itemCount: document.lines.length,
                 itemBuilder: (BuildContext context, int index) {
                   final LyricLine line = document.lines[index];
                   final bool isActive = index == active;
                   final bool isPast = active != null && index < active;
                   return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    padding: EdgeInsets.symmetric(
+                      vertical: widget.immersive ? 12 : 6,
+                    ),
                     child: AnimatedDefaultTextStyle(
                       duration: const Duration(milliseconds: 220),
                       style: TextStyle(
-                        fontSize: isActive ? 22 : 17,
-                        height: 1.35,
+                        fontSize: isActive ? activeSize : normalSize,
+                        height: 1.32,
                         fontWeight: isActive
                             ? FontWeight.w800
-                            : FontWeight.w500,
+                            : FontWeight.w600,
                         color: isActive
-                            ? tokens.accent
+                            ? tokens.karaokeColor
                             : isPast
-                            ? Colors.white.withValues(alpha: 0.42)
-                            : Colors.white.withValues(alpha: 0.78),
+                            ? Colors.white.withValues(alpha: 0.38)
+                            : Colors.white.withValues(alpha: 0.80),
+                        shadows: isActive
+                            ? <Shadow>[
+                                Shadow(
+                                  color: tokens.karaokeColor.withValues(
+                                    alpha: 0.45,
+                                  ),
+                                  blurRadius: widget.immersive ? 26 : 12,
+                                ),
+                              ]
+                            : null,
                       ),
-                      textAlign: TextAlign.left,
+                      textAlign: TextAlign.center,
                       child: Text(line.text.isEmpty ? '♪' : line.text),
                     ),
                   );
@@ -146,12 +190,20 @@ class _LyricsToolbar extends StatelessWidget {
     required this.synced,
     required this.karaoke,
     required this.onKaraokeChanged,
+    this.showTools = false,
+    this.onDownload,
+    this.onImport,
+    this.onEdit,
   });
 
   final String source;
   final bool synced;
   final bool karaoke;
   final ValueChanged<bool> onKaraokeChanged;
+  final bool showTools;
+  final VoidCallback? onDownload;
+  final VoidCallback? onImport;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -160,6 +212,7 @@ class _LyricsToolbar extends StatelessWidget {
       'embedded' => 'Letra embebida',
       'lrclib' => 'LRCLIB',
       'backup' => 'Respaldo',
+      'user' => 'Tu letra',
       _ => source,
     };
     return Padding(
@@ -175,6 +228,23 @@ class _LyricsToolbar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (showTools) ...<Widget>[
+            IconButton(
+              tooltip: 'Descargar de LRCLIB',
+              onPressed: onDownload,
+              icon: const Icon(Icons.cloud_download_outlined, size: 18),
+            ),
+            IconButton(
+              tooltip: 'Importar archivo .lrc',
+              onPressed: onImport,
+              icon: const Icon(Icons.file_open_outlined, size: 18),
+            ),
+            IconButton(
+              tooltip: 'Crear o sincronizar letra',
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_note_rounded, size: 18),
+            ),
+          ],
           if (synced)
             FilterChip(
               label: const Text('Karaoke'),
@@ -189,10 +259,15 @@ class _LyricsToolbar extends StatelessWidget {
 }
 
 class _PlainLyrics extends StatelessWidget {
-  const _PlainLyrics({required this.text, required this.source});
+  const _PlainLyrics({
+    required this.text,
+    required this.source,
+    this.immersive = false,
+  });
 
   final String text;
   final String source;
+  final bool immersive;
 
   @override
   Widget build(BuildContext context) {
@@ -205,21 +280,35 @@ class _PlainLyrics extends StatelessWidget {
               ?.copyWith(color: Colors.white38),
         ),
         const SizedBox(height: 16),
-        SelectableText(text, style: const TextStyle(fontSize: 18, height: 1.5)),
+        SelectableText(
+          text,
+          textAlign: immersive ? TextAlign.center : TextAlign.start,
+          style: TextStyle(fontSize: immersive ? 24 : 18, height: 1.5),
+        ),
       ],
     );
   }
 }
 
 class _LyricsEmpty extends StatelessWidget {
-  const _LyricsEmpty({required this.onRetry});
+  const _LyricsEmpty({
+    required this.onRetry,
+    this.showTools = false,
+    this.onDownload,
+    this.onImport,
+    this.onEdit,
+  });
 
   final VoidCallback onRetry;
+  final bool showTools;
+  final VoidCallback? onDownload;
+  final VoidCallback? onImport;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -238,10 +327,34 @@ class _LyricsEmpty extends StatelessWidget {
               style: TextStyle(color: Colors.white54, fontSize: 12),
             ),
             const SizedBox(height: 16),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Buscar de nuevo'),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 10,
+              runSpacing: 10,
+              children: <Widget>[
+                OutlinedButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh_rounded, size: 18),
+                  label: const Text('Buscar de nuevo'),
+                ),
+                if (showTools) ...<Widget>[
+                  OutlinedButton.icon(
+                    onPressed: onDownload,
+                    icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                    label: const Text('Descargar'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: onImport,
+                    icon: const Icon(Icons.file_open_outlined, size: 18),
+                    label: const Text('Importar .lrc'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: onEdit,
+                    icon: const Icon(Icons.edit_note_rounded, size: 18),
+                    label: const Text('Crear letra'),
+                  ),
+                ],
+              ],
             ),
           ],
         ),

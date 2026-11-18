@@ -8,10 +8,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
+import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/theme_provider.dart';
+import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme_config.dart';
+import '../../../core/theme/color_math.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../shared/widgets/polaris_surface.dart';
+import 'color_picker_dialog.dart';
 import '../../player/domain/player_controller.dart';
 import '../../player/presentation/player_providers.dart';
 
@@ -182,6 +186,58 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                 Text(
                   config.paletteMode.description,
                   style: const TextStyle(fontSize: 12, color: Colors.white54),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Colores libres (RGB / HSV / HEX)',
+            icon: Icons.colorize_rounded,
+            child: _ColorEditorList(
+              config: config,
+              onPick: (ThemeColorTarget target, Color current) async {
+                final Color? picked = await ColorPickerDialog.show(
+                  context,
+                  title: target.label,
+                  initial: current,
+                );
+                if (picked == null || !mounted) return;
+                await ref
+                    .read(themeControllerProvider.notifier)
+                    .setColor(target, picked);
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Vidrio y transparencia',
+            icon: Icons.blur_on_rounded,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _ThemeSlider(
+                  label: 'Desenfoque de tarjetas',
+                  value: config.glassBlur.clamp(0, 32),
+                  max: 32,
+                  suffix: 'px',
+                  onChanged: (double value) => ref
+                      .read(themeControllerProvider.notifier)
+                      .setGlassBlur(value),
+                ),
+                _ThemeSlider(
+                  label: 'Opacidad del cristal',
+                  value: config.glassOpacity.clamp(0, 1),
+                  max: 1,
+                  suffix: '%',
+                  onChanged: (double value) => ref
+                      .read(themeControllerProvider.notifier)
+                      .setGlassOpacity(value),
+                ),
+                const Text(
+                  'Un desenfoque alto y mucha transparencia aumentan el coste '
+                  'de CPU/GPU en Windows. El rango está limitado a 32 px.',
+                  style: TextStyle(fontSize: 10.5, color: Colors.white38),
                 ),
               ],
             ),
@@ -450,6 +506,136 @@ class _OptionGrid extends StatelessWidget {
   }
 }
 
+/// Rejilla con todos los objetivos cromáticos editables.
+class _ColorEditorList extends StatelessWidget {
+  const _ColorEditorList({required this.config, required this.onPick});
+
+  final AppThemeConfig config;
+  final Future<void> Function(ThemeColorTarget target, Color current) onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final int columns = constraints.maxWidth >= 900
+            ? 3
+            : (constraints.maxWidth >= 560 ? 2 : 1);
+        const double spacing = 8;
+        final double width =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: ThemeColorTarget.values
+              .map((ThemeColorTarget target) {
+                final Color color = config.colorFor(target);
+                return SizedBox(
+                  width: width < 0 ? 0 : width,
+                  child: InkWell(
+                    onTap: () => onPick(target, color),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.03),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: color.withValues(alpha: 0.55),
+                        ),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: color,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.white24),
+                            ),
+                          ),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: <Widget>[
+                                Text(
+                                  target.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  ColorMath.toHex(color),
+                                  style: const TextStyle(
+                                    fontSize: 9,
+                                    color: Colors.white54,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              })
+              .toList(growable: false),
+        );
+      },
+    );
+  }
+}
+
+class _ThemeSlider extends StatelessWidget {
+  const _ThemeSlider({
+    required this.label,
+    required this.value,
+    required this.max,
+    required this.suffix,
+    required this.onChanged,
+  });
+
+  final String label;
+  final double value;
+  final double max;
+  final String suffix;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = Theme.of(context).colorScheme.primary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Text(label, style: const TextStyle(fontSize: 11)),
+            const Spacer(),
+            Text(
+              suffix == '%'
+                  ? '${(value * 100).round()} %'
+                  : '${value.round()} $suffix',
+              style: const TextStyle(fontSize: 10, color: Colors.white54),
+            ),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: 0,
+          max: max,
+          activeColor: accent,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
 class _ProfilesEditor extends ConsumerWidget {
   const _ProfilesEditor({
     required this.profileName,
@@ -555,6 +741,9 @@ class _ThemePreview extends StatelessWidget {
     final String title = track?.title ?? 'Canción de ejemplo';
     final String artist = track?.artist ?? 'Polaris Music';
     final double artworkSize = 118;
+    final Color progressColor = config.usesDynamicPalette
+        ? accent
+        : config.progressColor;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
@@ -593,7 +782,7 @@ class _ThemePreview extends StatelessWidget {
                     _PreviewArtwork(
                       config: config,
                       path: track?.artworkPath,
-                      accent: accent,
+                      accent: progressColor,
                       playing: playing,
                       size: artworkSize,
                       progress: progress,
@@ -627,6 +816,15 @@ class _ThemePreview extends StatelessWidget {
                                 color: Colors.white60,
                               ),
                             ),
+                            const SizedBox(height: 6),
+                            Text(
+                              'Letra activa · karaoke',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: config.karaokeColor,
+                              ),
+                            ),
                             const SizedBox(height: 10),
                             if (config.progressBarType ==
                                 ProgressBarType.linearClassic)
@@ -639,7 +837,7 @@ class _ThemePreview extends StatelessWidget {
                                     alpha: 0.10,
                                   ),
                                   valueColor: AlwaysStoppedAnimation<Color>(
-                                    accent,
+                                    progressColor,
                                   ),
                                 ),
                               )
@@ -648,7 +846,9 @@ class _ThemePreview extends StatelessWidget {
                               SizedBox(
                                 height: 26,
                                 child: CustomPaint(
-                                  painter: _PreviewWaveform(accent: accent),
+                                  painter: _PreviewWaveform(
+                                    accent: progressColor,
+                                  ),
                                   size: const Size(double.infinity, 26),
                                 ),
                               )
@@ -757,11 +957,21 @@ class _PreviewArtwork extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         child: _PreviewImage(path: path, accent: accent, size: artSize),
       ),
-      ArtworkShape.circleVinyl => _PreviewVinyl(
-        path: path,
-        accent: accent,
-        playing: playing,
-        size: artSize,
+      ArtworkShape.circleVinyl => Consumer(
+        builder: (BuildContext context, WidgetRef ref, Widget? child) {
+          return ValueListenableBuilder<WindowUiState>(
+            valueListenable: ref.watch(windowStateProvider),
+            builder: (BuildContext context, WindowUiState state, Widget? _) {
+              return _PreviewVinyl(
+                path: path,
+                accent: accent,
+                playing: playing,
+                paused: state.backgrounded,
+                size: artSize,
+              );
+            },
+          );
+        },
       ),
       ArtworkShape.card3D => Transform(
         alignment: Alignment.center,
@@ -874,12 +1084,14 @@ class _PreviewVinyl extends StatefulWidget {
     required this.accent,
     required this.playing,
     required this.size,
+    this.paused = false,
   });
 
   final String? path;
   final Color accent;
   final bool playing;
   final double size;
+  final bool paused;
 
   @override
   State<_PreviewVinyl> createState() => _PreviewVinylState();
@@ -901,13 +1113,16 @@ class _PreviewVinylState extends State<_PreviewVinyl>
   @override
   void didUpdateWidget(covariant _PreviewVinyl oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.playing != widget.playing) _sync();
+    if (oldWidget.playing != widget.playing ||
+        oldWidget.paused != widget.paused) {
+      _sync();
+    }
   }
 
   void _sync() {
-    if (widget.playing) {
-      _spin.repeat();
-    } else {
+    if (widget.playing && !widget.paused) {
+      if (!_spin.isAnimating) _spin.repeat();
+    } else if (_spin.isAnimating) {
       _spin.stop();
     }
   }

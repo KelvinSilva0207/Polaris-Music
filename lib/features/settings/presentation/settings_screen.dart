@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -5,19 +6,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/app_navigation.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/update_info.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/providers/update_prompt_provider.dart';
 import '../../../core/providers/theme_provider.dart';
+import '../../../core/services/app_updater_service.dart';
 import '../../../core/services/backup_service.dart';
 import '../../../core/services/global_hotkey_service.dart';
 import '../../../core/services/window_service.dart';
-import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/app_theme_config.dart';
+import '../../../core/theme/color_math.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../features/dynamic_island/domain/dynamic_island_controller.dart';
 import '../../../features/dynamic_island/presentation/island_providers.dart';
+import '../../../features/equalizer/presentation/equalizer_screen.dart';
 import '../../../features/home/presentation/home_screen.dart';
 import '../../../features/library/presentation/library_providers.dart';
 import '../../../features/player/domain/player_controller.dart';
@@ -27,13 +31,14 @@ import '../../../features/profiles_backup/presentation/profiles_providers.dart';
 import '../../../features/stats_sync/presentation/stats_screen.dart';
 import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/polaris_surface.dart';
+import 'color_picker_dialog.dart';
 import 'customization_screen.dart';
 
 /// Ajustes de Polaris Music: apariencia, audio, ventana, respaldos y más.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key, required this.onNavigate});
 
-  final ValueChanged<int> onNavigate;
+  final ValueChanged<AppSection> onNavigate;
 
   @override
   ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
@@ -57,8 +62,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final int crossfadeMs = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.crossfadeMs),
     );
-    final DynamicIslandState island = ref.watch(
-      dynamicIslandControllerProvider,
+    final bool islandEnabled = ref.watch(
+      dynamicIslandControllerProvider.select((s) => s.enabled),
     );
     final WindowService window = ref.watch(windowServiceProvider);
     final bool scanOnStartup = ref
@@ -106,23 +111,54 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             const SizedBox(height: 18),
             const _SettingLabel(
               title: 'Color de acento',
-              subtitle: 'Se aplica al instante en toda la app',
+              subtitle: 'Rueda cromática libre con HEX, HSL/HSV y RGB',
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: AppTheme.accentChoices
-                  .map(
-                    (Color color) => _AccentDot(
-                      color: color,
-                      selected: color.toARGB32() == accent.toARGB32(),
-                      onTap: () => ref
-                          .read(themeControllerProvider.notifier)
-                          .setAccent(color),
+            InkWell(
+              onTap: () async {
+                final Color? picked = await ColorPickerDialog.show(
+                  context,
+                  title: 'Color de acento',
+                  initial: accent,
+                );
+                if (picked != null && mounted) {
+                  await ref
+                      .read(themeControllerProvider.notifier)
+                      .setAccent(picked);
+                }
+              },
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: accent.withValues(alpha: 0.55)),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    Container(
+                      width: 30,
+                      height: 30,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
                     ),
-                  )
-                  .toList(growable: false),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        ColorMath.toHex(accent, withAlpha: true),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.colorize_rounded, size: 18),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 14),
             OutlinedButton.icon(
@@ -228,7 +264,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               runSpacing: 10,
               children: <Widget>[
                 OutlinedButton.icon(
-                  onPressed: () => widget.onNavigate(0),
+                  onPressed: () => widget.onNavigate(AppSection.library),
                   icon: const Icon(Icons.folder_outlined, size: 18),
                   label: const Text('Gestionar carpetas'),
                 ),
@@ -304,6 +340,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ],
         ),
+        const SizedBox(height: 16),
+        _Section(
+          title: 'Ecualizador',
+          icon: Icons.graphic_eq_rounded,
+          children: <Widget>[
+            const Text(
+              'Diez bandas de estudio, preamplificador y curvas guardadas. '
+              'También disponible desde los controles del reproductor.',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => Scaffold(
+                    appBar: AppBar(title: const Text('Ecualizador')),
+                    body: const EqualizerScreen(),
+                  ),
+                ),
+              ),
+              icon: const Icon(Icons.equalizer_rounded, size: 18),
+              label: const Text('Abrir ecualizador'),
+            ),
+          ],
+        ),
         if (Platform.isWindows) ...<Widget>[
           const SizedBox(height: 16),
           const _HotkeysSection(),
@@ -315,11 +376,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: <Widget>[
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Mostrar isla flotante'),
+              title: const Text('Minimizar a isla flotante'),
               subtitle: const Text(
-                'Muestra la pista actual y controles rápidos sobre la interfaz',
+                'Al minimizar, la ventana se transforma en una isla siempre '
+                'encima con carátula y controles rápidos',
               ),
-              value: island.enabled,
+              value: islandEnabled,
               onChanged: (bool value) => ref
                   .read(dynamicIslandControllerProvider.notifier)
                   .setEnabled(value),
@@ -347,7 +409,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   const SizedBox(height: 6),
                   const _SettingLabel(
                     title: 'Modo de ventana',
-                    subtitle: 'Normal, mini barra o teléfono flotante',
+                    subtitle: 'Normal, isla, mini barra o teléfono flotante',
                   ),
                   const SizedBox(height: 10),
                   Wrap(
@@ -359,6 +421,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         label: 'Normal',
                         selected: state.mode == WindowMode.normal,
                         onPressed: () => window.setMode(WindowMode.normal),
+                      ),
+                      _ModeButton(
+                        icon: Icons.picture_in_picture_alt_rounded,
+                        label: 'Isla',
+                        selected: state.mode == WindowMode.island,
+                        onPressed: () => window.showIsland(),
                       ),
                       _ModeButton(
                         icon: Icons.view_agenda_outlined,
@@ -415,7 +483,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const PolarisLogo(size: 26, radius: 7),
+              leading: const PolarisLogo(size: 26),
               title: const Text('Repositorio en GitHub'),
               subtitle: Text(
                 '${AppConstants.githubOwner}/${AppConstants.githubRepo}',
@@ -458,7 +526,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       context: context,
       applicationName: AppConstants.appName,
       applicationVersion: AppConstants.appVersionFallback,
-      applicationIcon: const PolarisLogo(size: 44, radius: 12),
+      applicationIcon: const PolarisLogo(size: 44),
       applicationLegalese:
           '© ${DateTime.now().year} Kelvin Silva · Hecho con cariño para '
           'escuchar música como se merece.',
@@ -552,43 +620,6 @@ class _SettingLabel extends StatelessWidget {
           style: const TextStyle(fontSize: 12, color: Colors.white54),
         ),
       ],
-    );
-  }
-}
-
-class _AccentDot extends StatelessWidget {
-  const _AccentDot({
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      customBorder: const CircleBorder(),
-      child: Container(
-        width: 38,
-        height: 38,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: selected
-                ? Colors.white
-                : Colors.white.withValues(alpha: 0.15),
-            width: selected ? 3 : 1,
-          ),
-        ),
-        child: selected
-            ? const Icon(Icons.check_rounded, size: 20, color: Colors.white)
-            : null,
-      ),
     );
   }
 }
@@ -1400,11 +1431,13 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                   ] else ...<Widget>[
                     const SizedBox(height: 6),
                     OutlinedButton.icon(
-                      onPressed: () => ref
-                          .read(updateServiceProvider)
-                          .openDownloadedFile(_downloaded!),
+                      onPressed: () => unawaited(_openOrInstall(_downloaded!)),
                       icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                      label: const Text('Abrir instalador'),
+                      label: Text(
+                        Platform.isAndroid
+                            ? 'Instalar APK'
+                            : 'Abrir instalador',
+                      ),
                     ),
                   ],
                 ],
@@ -1442,6 +1475,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
               onPressed: () {
                 ref.invalidate(latestUpdateProvider);
                 ref.invalidate(currentVersionProvider);
+                ref.read(updatePromptProvider.notifier).check();
               },
               icon: const Icon(Icons.refresh_rounded, size: 18),
               label: const Text('Buscar actualizaciones'),
@@ -1450,7 +1484,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
               onPressed: () =>
                   ref.read(updateServiceProvider).openDownloadsFolder(),
               icon: const Icon(Icons.folder_open_rounded, size: 18),
-              label: const Text('Carpeta de descargas'),
+              label: const Text('Carpeta del instalador'),
             ),
           ],
         ),
@@ -1482,6 +1516,30 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
         const SnackBar(content: Text('La descarga no se pudo completar')),
       );
     }
+  }
+
+  /// Abre el instalador en escritorio o lanza el intent de instalación de APK
+  /// en Android, usando el mismo canal nativo que el aviso automático.
+  Future<void> _openOrInstall(String path) async {
+    if (Platform.isAndroid && path.toLowerCase().endsWith('.apk')) {
+      final AppUpdaterService updater = ref.read(appUpdaterServiceProvider);
+      final bool started = await updater.installApk(path);
+      if (!mounted) return;
+      if (!started) {
+        await updater.openInstallPermissionSettings();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Permite instalar aplicaciones desconocidas y vuelve a pulsar '
+              '«Instalar APK».',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    await ref.read(updateServiceProvider).openDownloadedFile(path);
   }
 
   Future<void> _install(UpdateInfo info) async {

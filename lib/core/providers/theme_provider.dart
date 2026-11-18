@@ -98,8 +98,40 @@ class ThemeController extends StateNotifier<ThemeState> {
   Future<void> setPaletteMode(ColorPaletteMode mode) =>
       _persist(_touch(config.copyWith(paletteMode: mode)));
 
-  Future<void> setAccent(Color color) =>
-      _persist(_touch(config.copyWith(accent: color)));
+  /// Cambia cualquier objetivo cromático desde el editor RGB/HSV/HEX.
+  ///
+  /// Tono, saturación, brillo y opacidad se resuelven en el widget; aquí solo
+  /// se recibe el [Color] final y se persiste una vez.
+  Future<void> setColor(ThemeColorTarget target, Color color) =>
+      _persist(_touch(config.withColor(target, color)));
+
+  Future<void> setGlassBlur(double value) => _persist(
+    _touch(config.copyWith(glassBlur: value.isNaN ? 0 : value.clamp(0, 32))),
+  );
+
+  Future<void> setGlassOpacity(double value) => _persist(
+    _touch(config.copyWith(glassOpacity: value.isNaN ? 0 : value.clamp(0, 1))),
+  );
+
+  Future<void> setAccent(Color color) {
+    final AppThemeConfig current = config;
+    // Los colores derivados acompañan al acento mientras el usuario no los
+    // haya editado por separado: así el preset sigue coherente al cambiar el
+    // acento rápido desde Ajustes.
+    final bool progressLinked = current.progressColor == current.accent;
+    final bool volumeLinked = current.volumeColor == current.accent;
+    final bool karaokeLinked = current.karaokeColor == current.accent;
+    return _persist(
+      _touch(
+        current.copyWith(
+          accent: color,
+          progressColor: progressLinked ? color : null,
+          volumeColor: volumeLinked ? color : null,
+          karaokeColor: karaokeLinked ? color : null,
+        ),
+      ),
+    );
+  }
 
   /// Guarda la configuración actual como perfil con nombre.
   Future<CustomThemeProfile> saveProfile(String name) async {

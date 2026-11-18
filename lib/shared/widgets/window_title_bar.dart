@@ -8,6 +8,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/providers/app_providers.dart';
 import '../../core/services/window_service.dart';
 import '../../core/theme/theme_tokens.dart';
+import '../../features/dynamic_island/presentation/island_providers.dart';
 import 'polaris_logo.dart';
 
 /// Barra de título personalizada de Windows.
@@ -23,6 +24,9 @@ class WindowTitleBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final WindowService window = ref.watch(windowServiceProvider);
+    final bool islandEnabled = ref.watch(
+      dynamicIslandControllerProvider.select((s) => s.enabled),
+    );
     final ValueNotifier<WindowUiState> notifier = ref.watch(
       windowStateProvider,
     );
@@ -65,9 +69,9 @@ class WindowTitleBar extends ConsumerWidget {
               ),
               if (!compact && !isPhone) ...<Widget>[
                 _TitleBarButton(
-                  tooltip: 'Minimizar',
+                  tooltip: islandEnabled ? 'Minimizar a isla' : 'Minimizar',
                   icon: Icons.remove_rounded,
-                  onTap: window.minimize,
+                  onTap: islandEnabled ? window.showIsland : window.minimize,
                 ),
                 _TitleBarButton(
                   tooltip: state.maximized ? 'Restaurar' : 'Maximizar',

@@ -1,3 +1,4 @@
+import 'dart:io' show exit;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import 'app/app.dart';
 import 'core/constants/app_constants.dart';
 import 'core/di/service_locator.dart';
+import 'core/services/app_mutex.dart';
 import 'core/services/tray_service.dart';
 import 'core/services/window_service.dart';
 import 'core/utils/logger.dart';
@@ -39,6 +41,11 @@ Future<void> main() async {
 }
 
 Future<void> _start() async {
+  // El instalador usa AppMutex para cerrar también el proceso de la bandeja.
+  if (!AppMutex.acquire()) {
+    exit(0);
+  }
+
   // media_kit necesita sus binarios nativos antes de crear ningún Player.
   MediaKit.ensureInitialized();
 

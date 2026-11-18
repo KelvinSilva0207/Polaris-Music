@@ -128,6 +128,11 @@ class TrayService with TrayListener {
           label: 'Reproductor mini',
           onClick: (MenuItem _) => unawaited(_window.showTrayMiniPlayer()),
         ),
+        MenuItem(
+          key: 'island',
+          label: 'Isla dinámica',
+          onClick: (MenuItem _) => unawaited(_window.showIsland()),
+        ),
         MenuItem.submenu(
           key: 'window_mode',
           label: 'Modo de ventana',
@@ -138,6 +143,11 @@ class TrayService with TrayListener {
                 label: 'Normal',
                 onClick: (MenuItem _) =>
                     unawaited(_window.setMode(WindowMode.normal)),
+              ),
+              MenuItem(
+                key: 'mode_island',
+                label: 'Isla',
+                onClick: (MenuItem _) => unawaited(_window.showIsland()),
               ),
               MenuItem(
                 key: 'mode_mini',

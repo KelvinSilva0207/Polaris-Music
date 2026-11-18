@@ -5,6 +5,8 @@ import 'package:drift_flutter/drift_flutter.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import '../utils/logger.dart';
+import 'database_guard.dart';
 import 'tables.dart';
 
 part 'app_database.g.dart';
@@ -47,34 +49,126 @@ part 'daos/track_dao.dart';
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor])
-    : super(executor ?? driftDatabase(name: 'polaris_music'));
+    : _manageBackups = true,
+      super(
+        executor ??
+            driftDatabase(
+              name: DatabaseGuard.databaseName,
+              native: DriftNativeOptions(
+                databasePath: () async =>
+                    (await DatabaseGuard.databaseFile()).path,
+              ),
+            ),
+      );
 
-  /// Constructor para tests (en memoria).
-  AppDatabase.forTesting(super.executor);
+  /// Constructor para tests (en memoria): no toca copias de seguridad.
+  AppDatabase.forTesting(super.executor) : _manageBackups = false;
 
+  final bool _manageBackups;
+
+  /// v3 añade índices para búsquedas/filtros de biblioteca sin perder filas.
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
+
+  static final List<Index> _libraryIndexes = <Index>[
+    Index(
+      'idx_tracks_genre',
+      'CREATE INDEX IF NOT EXISTS idx_tracks_genre ON tracks (genre)',
+    ),
+    Index(
+      'idx_tracks_year',
+      'CREATE INDEX IF NOT EXISTS idx_tracks_year ON tracks (year)',
+    ),
+    Index(
+      'idx_tracks_play_count',
+      'CREATE INDEX IF NOT EXISTS idx_tracks_play_count ON tracks (play_count)',
+    ),
+    Index(
+      'idx_tracks_added_at',
+      'CREATE INDEX IF NOT EXISTS idx_tracks_added_at ON tracks (added_at)',
+    ),
+    Index(
+      'idx_tracks_external_id',
+      'CREATE INDEX IF NOT EXISTS idx_tracks_external_id ON tracks (external_id)',
+    ),
+    Index(
+      'idx_playlist_entries_position',
+      'CREATE INDEX IF NOT EXISTS idx_playlist_entries_position '
+          'ON playlist_entries (playlist_id, position)',
+    ),
+  ];
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
       await m.createAll();
+      await _createIndexes(m);
       await _seedDefaults();
     },
     onUpgrade: (m, from, to) async {
+      // La copia va ANTES de cualquier ALTER TABLE: es el punto en el que un
+      // fallo de migración todavía puede recuperarse con el archivo original.
+      if (_manageBackups) {
+        try {
+          await customStatement('PRAGMA wal_checkpoint(TRUNCATE)');
+        } catch (error, stack) {
+          AppLog.w(
+            'Database',
+            'No se pudo hacer checkpoint antes de la copia de migración',
+            error,
+            stack,
+          );
+        }
+        await DatabaseGuard.backupBeforeMigration();
+      }
+
       if (from < 2) {
         // v2: origen de la pista y vínculo con la fuente online.
         await m.addColumn(tracks, tracks.source);
         await m.addColumn(tracks, tracks.externalId);
       }
+      if (from < 3) {
+        // v3: índices de biblioteca (CREATE INDEX IF NOT EXISTS, no destructivo).
+        await _createIndexes(m);
+      }
     },
     beforeOpen: (details) async {
       await customStatement('PRAGMA foreign_keys = ON');
+      await _assertHealthy();
       if (details.wasCreated) {
         await _seedDefaults();
       }
     },
   );
+
+  /// Drift ejecuta `beforeOpen` después de las migraciones, así que aquí solo
+  /// podemos detectar daños residuales; el bootstrap ya hizo un `quick_check`
+  /// antes de abrir (ver [DatabaseGuard.prepare]).
+  Future<void> _assertHealthy() async {
+    try {
+      final List<QueryRow> rows = await customSelect('PRAGMA quick_check(1)')
+          .get();
+      final Object? status = rows.isEmpty ? null : rows.first.data.values.first;
+      if (status == null || '$status' != 'ok') {
+        throw DatabaseCorruptionException('$status');
+      }
+    } on DatabaseCorruptionException {
+      rethrow;
+    } catch (error, stack) {
+      AppLog.w(
+        'Database',
+        'No se pudo verificar la integridad; se continúa con cautela',
+        error,
+        stack,
+      );
+    }
+  }
+
+  Future<void> _createIndexes(Migrator m) async {
+    for (final Index index in _libraryIndexes) {
+      await m.create(index);
+    }
+  }
 
   /// Datos iniciales: perfil por defecto y presets de ecualización de estudio.
   Future<void> _seedDefaults() async {

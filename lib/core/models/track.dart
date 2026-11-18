@@ -39,6 +39,8 @@ class Track {
     this.isFavorite = false,
     this.playCount = 0,
     this.lastPlayedAt,
+    this.addedAt,
+    this.updatedAt,
     this.origin = TrackOrigin.local,
     this.externalId,
     this.sourceLabel,
@@ -107,6 +109,8 @@ class Track {
   final bool isFavorite;
   final int playCount;
   final DateTime? lastPlayedAt;
+  final DateTime? addedAt;
+  final DateTime? updatedAt;
   final TrackOrigin origin;
 
   /// Identificador en la fuente online; `null` para pistas locales puras.
@@ -150,6 +154,8 @@ class Track {
     isFavorite: row.isFavorite,
     playCount: row.playCount,
     lastPlayedAt: row.lastPlayedAt,
+    addedAt: row.addedAt,
+    updatedAt: row.updatedAt,
     origin: row.source == 'download'
         ? TrackOrigin.downloaded
         : TrackOrigin.local,
@@ -164,6 +170,8 @@ class Track {
     bool? isFavorite,
     int? playCount,
     DateTime? lastPlayedAt,
+    DateTime? addedAt,
+    DateTime? updatedAt,
     double? replayGainTrackDb,
     double? replayGainAlbumDb,
   }) => Track(
@@ -189,6 +197,8 @@ class Track {
     isFavorite: isFavorite ?? this.isFavorite,
     playCount: playCount ?? this.playCount,
     lastPlayedAt: lastPlayedAt ?? this.lastPlayedAt,
+    addedAt: addedAt ?? this.addedAt,
+    updatedAt: updatedAt ?? this.updatedAt,
     origin: origin,
     externalId: externalId,
     sourceLabel: sourceLabel,
