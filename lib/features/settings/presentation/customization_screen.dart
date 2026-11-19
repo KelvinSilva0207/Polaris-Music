@@ -16,6 +16,7 @@ import '../../../core/theme/color_math.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import 'color_picker_dialog.dart';
+import 'typography_screen.dart';
 import '../../player/domain/player_controller.dart';
 import '../../player/presentation/player_providers.dart';
 
@@ -92,6 +93,16 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
               playing: ui.playback.playing,
               progress: ui.playback.progress,
             ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => const TypographyScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.text_fields_rounded, size: 18),
+            label: const Text('Tipografía, tamaño y fuentes propias'),
           ),
           const SizedBox(height: 16),
           _SectionCard(

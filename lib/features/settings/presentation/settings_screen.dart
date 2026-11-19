@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_navigation.dart';
 import '../../../core/constants/app_constants.dart';
+import '../../../core/di/service_locator.dart';
 import '../../../core/models/update_info.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/update_prompt_provider.dart';
@@ -15,12 +16,14 @@ import '../../../core/providers/theme_provider.dart';
 import '../../../core/services/app_updater_service.dart';
 import '../../../core/services/backup_service.dart';
 import '../../../core/services/global_hotkey_service.dart';
+import '../../../core/services/settings_service.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme_config.dart';
 import '../../../core/theme/color_math.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../features/dynamic_island/presentation/island_providers.dart';
+import '../../../features/equalizer/presentation/equalizer_providers.dart';
 import '../../../features/equalizer/presentation/equalizer_screen.dart';
 import '../../../features/home/presentation/home_screen.dart';
 import '../../../features/library/presentation/library_providers.dart';
@@ -32,7 +35,9 @@ import '../../../features/stats_sync/presentation/stats_screen.dart';
 import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import 'color_picker_dialog.dart';
+import 'compact_styles_screen.dart';
 import 'customization_screen.dart';
+import 'typography_screen.dart';
 
 /// Ajustes de Polaris Music: apariencia, audio, ventana, respaldos y más.
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -62,13 +67,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final int crossfadeMs = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.crossfadeMs),
     );
+    final bool silenceTrim = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.silenceTrimEnabled,
+      ),
+    );
+    final int trimStartMs = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.silenceTrimStartMs,
+      ),
+    );
+    final int trimEndMs = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.silenceTrimEndMs),
+    );
     final bool islandEnabled = ref.watch(
       dynamicIslandControllerProvider.select((s) => s.enabled),
     );
     final WindowService window = ref.watch(windowServiceProvider);
-    final bool scanOnStartup = ref
-        .watch(settingsServiceProvider)
-        .boolOr(AppConstants.keyScanOnStartup, fallback: true);
+    final SettingsService settings = ref.watch(settingsServiceProvider);
+    // Suscripción reactiva: los interruptores se actualizan al persistir.
+    ref.watch(settingsValuesProvider);
+    final bool scanOnStartup = settings.boolOr(
+      AppConstants.keyScanOnStartup,
+      fallback: true,
+    );
+    final bool pauseOnHeadphonesDisconnect =
+        settings.pauseOnHeadphonesDisconnect;
+    final bool pauseOnVolumeZero = settings.pauseOnVolumeZero;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
@@ -171,6 +196,27 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               icon: const Icon(Icons.tune_rounded, size: 18),
               label: const Text('Personalización avanzada'),
             ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) =>
+                      const CompactStylesScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
+              label: const Text('Diseños compactos (isla, mini, teléfono…)'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => const TypographyScreen(),
+                ),
+              ),
+              icon: const Icon(Icons.text_fields_rounded, size: 18),
+              label: const Text('Tipografía y fuentes propias'),
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -191,6 +237,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
+              title: const Text('Pausar al desconectar auriculares'),
+              subtitle: const Text(
+                'Detecta la desconexión o el cambio de salida de audio',
+              ),
+              value: pauseOnHeadphonesDisconnect,
+              onChanged: (bool value) => settings.setBool(
+                AppConstants.keyPauseOnHeadphonesDisconnect,
+                value,
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Pausar si el volumen llega a cero'),
+              subtitle: const Text(
+                'Tanto el deslizador de la app como el volumen multimedia',
+              ),
+              value: pauseOnVolumeZero,
+              onChanged: (bool value) =>
+                  settings.setBool(AppConstants.keyPauseOnVolumeZero, value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
               title: const Text('Reproducción sin pausas (gapless)'),
               subtitle: const Text(
                 'Delegado al motor mpv: une pistas del mismo álbum',
@@ -204,7 +272,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               contentPadding: EdgeInsets.zero,
               title: const Text('Crossfade entre pistas'),
               subtitle: const Text(
-                'El fundido real requiere dos motores simultáneos; pendiente',
+                'Dos decks mpv: la pista entrante se funde con la saliente',
               ),
               value: crossfade,
               onChanged: (bool value) => ref
@@ -237,6 +305,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ],
               ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Omitir silencios largos'),
+              subtitle: const Text(
+                'Recorta el inicio y el final de cada pista (offsets de mpv)',
+              ),
+              value: silenceTrim,
+              onChanged: (bool value) => ref
+                  .read(playerControllerProvider.notifier)
+                  .setSilenceTrim(enabled: value),
+            ),
+            if (silenceTrim) ...<Widget>[
+              _TrimSlider(
+                label: 'Inicio',
+                value: trimStartMs,
+                onChanged: (int ms) => ref
+                    .read(playerControllerProvider.notifier)
+                    .setSilenceTrim(enabled: true, startMs: ms),
+              ),
+              _TrimSlider(
+                label: 'Final',
+                value: trimEndMs,
+                onChanged: (int ms) => ref
+                    .read(playerControllerProvider.notifier)
+                    .setSilenceTrim(enabled: true, endMs: ms),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 16),
@@ -466,6 +561,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const _ProfilesSection(),
         const SizedBox(height: 16),
         const _PermissionsSection(),
+        if (Platform.isAndroid) ...<Widget>[
+          const SizedBox(height: 16),
+          _Section(
+            title: 'Cierre de la aplicación',
+            icon: Icons.power_settings_new_rounded,
+            children: <Widget>[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.power_off_rounded),
+                title: const Text('Cerrar aplicación completamente'),
+                subtitle: const Text(
+                  'Detiene el audio, quita la notificación y finaliza Polaris.',
+                ),
+                onTap: _confirmFullExit,
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         const _UpdateSection(),
         const SizedBox(height: 16),
@@ -521,6 +634,33 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
+  Future<void> _confirmFullExit() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Cerrar Polaris por completo'),
+        content: const Text(
+          'Se detendrá la reproducción y desaparecerá la notificación '
+          'persistente de Android. ¿Continuar?',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Cerrar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    await ServiceLocator.shutdownAndroid();
+    exit(0);
+  }
+
   void _showCredits(BuildContext context) {
     showAboutDialog(
       context: context,
@@ -558,6 +698,48 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           'Windows y Android. El crossfade sigue pendiente porque requiere dos '
           'motores reproduciendo a la vez.',
           style: TextStyle(fontSize: 12, color: Colors.white60),
+        ),
+      ],
+    );
+  }
+}
+
+class _TrimSlider extends StatelessWidget {
+  const _TrimSlider({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 42,
+          child: Text(label, style: const TextStyle(fontSize: 12)),
+        ),
+        Expanded(
+          child: Slider(
+            value: value.toDouble().clamp(0, 15000),
+            min: 0,
+            max: 15000,
+            divisions: 30,
+            onChanged: (double v) => onChanged(v.round()),
+          ),
+        ),
+        SizedBox(
+          width: 54,
+          child: Text(
+            '${(value / 1000).toStringAsFixed(1)} s',
+            textAlign: TextAlign.end,
+            style: const TextStyle(fontSize: 12),
+          ),
         ),
       ],
     );
@@ -1042,9 +1224,11 @@ class _ProfilesSection extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         const Text(
-          'El respaldo incluye preferencias, presets de EQ, listas, favoritos, '
-          'letras y perfiles. Las pistas se referencian por ruta, así que la '
-          'música debe estar en la misma ubicación para restaurarlas.',
+          'El respaldo v2 incluye preferencias (también las de cada salida de '
+          'audio), perfiles, presets de EQ con DSP completo, listas, favoritos, '
+          'letras y temas RGB/HSL. Los respaldos v1 también se pueden importar. '
+          'Las pistas se referencian por ruta, así que la música debe estar en '
+          'la misma ubicación para restaurarlas.',
           style: TextStyle(fontSize: 11, color: Colors.white38),
         ),
       ],
@@ -1161,18 +1345,50 @@ class _ProfilesSection extends ConsumerWidget {
       final BackupSummary summary = await ref
           .read(backupActionsProvider)
           .import(File(path), merge: true);
+
+      // Los controladores leen la caché de SettingsService al construirse, así
+      // que se reciclan para reflejar temas, EQ y audio sin reiniciar la app.
+      ref.invalidate(themeControllerProvider);
+      ref.invalidate(equalizerControllerProvider);
+      ref.invalidate(playerControllerProvider);
+
       if (!context.mounted) return;
       await showDialog<void>(
         context: context,
         builder: (BuildContext context) => AlertDialog(
           title: const Text('Respaldo importado'),
-          content: Text(
-            '${summary.settings} preferencias · '
-            '${summary.profiles} perfiles · '
-            '${summary.eqPresets} presets de EQ · '
-            '${summary.playlists} listas · '
-            '${summary.favorites} favoritos · '
-            '${summary.lyrics} letras',
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '${summary.settings} preferencias · '
+                  '${summary.profiles} perfiles · '
+                  '${summary.eqPresets} presets de EQ · '
+                  '${summary.playlists} listas · '
+                  '${summary.favorites} favoritos · '
+                  '${summary.lyrics} letras · '
+                  '${summary.themes} temas',
+                ),
+                if (summary.warnings.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Avisos:',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  ...summary.warnings.map(
+                    (String warning) => Text(
+                      '• $warning',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Colors.orangeAccent,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
           actions: <Widget>[
             TextButton(

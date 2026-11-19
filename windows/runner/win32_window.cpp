@@ -144,6 +144,18 @@ bool Win32Window::Create(const std::wstring& title,
     return false;
   }
 
+  // El icono del recurso se usa tanto para la ventana como para la barra de
+  // tareas. WNDCLASS::hIcon no basta en todas las versiones de Windows, así que
+  // se asigna explícitamente en ambos tamaños (grande y pequeño).
+  HICON app_icon =
+      LoadIcon(GetModuleHandle(nullptr), MAKEINTRESOURCE(IDI_APP_ICON));
+  if (app_icon != nullptr) {
+    SendMessage(window, WM_SETICON, ICON_BIG,
+                reinterpret_cast<LPARAM>(app_icon));
+    SendMessage(window, WM_SETICON, ICON_SMALL,
+                reinterpret_cast<LPARAM>(app_icon));
+  }
+
   UpdateTheme(window);
 
   return OnCreate();

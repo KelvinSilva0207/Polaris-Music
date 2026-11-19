@@ -44,7 +44,7 @@ void main() {
     expect(await swipe(tester, const Offset(60, 0)), 'previous');
   });
 
-  testWidgets('deslizar arriba abre las letras inmersivas', (
+  testWidgets('deslizar arriba alterna las letras en la carátula', (
     WidgetTester tester,
   ) async {
     expect(await swipe(tester, const Offset(0, -60)), 'lyrics');

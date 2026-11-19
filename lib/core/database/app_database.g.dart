@@ -2889,6 +2889,17 @@ class $EqPresetsTable extends EqPresets
     requiredDuringInsert: false,
     defaultValue: const Constant(0),
   );
+  static const VerificationMeta _configJsonMeta = const VerificationMeta(
+    'configJson',
+  );
+  @override
+  late final GeneratedColumn<String> configJson = GeneratedColumn<String>(
+    'config_json',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -2908,6 +2919,7 @@ class $EqPresetsTable extends EqPresets
     isBuiltIn,
     bandsJson,
     preampDb,
+    configJson,
     createdAt,
   ];
   @override
@@ -2953,6 +2965,12 @@ class $EqPresetsTable extends EqPresets
         preampDb.isAcceptableOrUnknown(data['preamp_db']!, _preampDbMeta),
       );
     }
+    if (data.containsKey('config_json')) {
+      context.handle(
+        _configJsonMeta,
+        configJson.isAcceptableOrUnknown(data['config_json']!, _configJsonMeta),
+      );
+    }
     if (data.containsKey('created_at')) {
       context.handle(
         _createdAtMeta,
@@ -2988,6 +3006,10 @@ class $EqPresetsTable extends EqPresets
         DriftSqlType.double,
         data['${effectivePrefix}preamp_db'],
       )!,
+      configJson: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}config_json'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -3007,6 +3029,7 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
   final bool isBuiltIn;
   final String bandsJson;
   final double preampDb;
+  final String? configJson;
   final DateTime createdAt;
   const EqPresetRow({
     required this.id,
@@ -3014,6 +3037,7 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
     required this.isBuiltIn,
     required this.bandsJson,
     required this.preampDb,
+    this.configJson,
     required this.createdAt,
   });
   @override
@@ -3024,6 +3048,9 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
     map['is_built_in'] = Variable<bool>(isBuiltIn);
     map['bands_json'] = Variable<String>(bandsJson);
     map['preamp_db'] = Variable<double>(preampDb);
+    if (!nullToAbsent || configJson != null) {
+      map['config_json'] = Variable<String>(configJson);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     return map;
   }
@@ -3035,6 +3062,9 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
       isBuiltIn: Value(isBuiltIn),
       bandsJson: Value(bandsJson),
       preampDb: Value(preampDb),
+      configJson: configJson == null && nullToAbsent
+          ? const Value.absent()
+          : Value(configJson),
       createdAt: Value(createdAt),
     );
   }
@@ -3050,6 +3080,7 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
       isBuiltIn: serializer.fromJson<bool>(json['isBuiltIn']),
       bandsJson: serializer.fromJson<String>(json['bandsJson']),
       preampDb: serializer.fromJson<double>(json['preampDb']),
+      configJson: serializer.fromJson<String?>(json['configJson']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
   }
@@ -3062,6 +3093,7 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
       'isBuiltIn': serializer.toJson<bool>(isBuiltIn),
       'bandsJson': serializer.toJson<String>(bandsJson),
       'preampDb': serializer.toJson<double>(preampDb),
+      'configJson': serializer.toJson<String?>(configJson),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
@@ -3072,6 +3104,7 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
     bool? isBuiltIn,
     String? bandsJson,
     double? preampDb,
+    Value<String?> configJson = const Value.absent(),
     DateTime? createdAt,
   }) => EqPresetRow(
     id: id ?? this.id,
@@ -3079,6 +3112,7 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
     isBuiltIn: isBuiltIn ?? this.isBuiltIn,
     bandsJson: bandsJson ?? this.bandsJson,
     preampDb: preampDb ?? this.preampDb,
+    configJson: configJson.present ? configJson.value : this.configJson,
     createdAt: createdAt ?? this.createdAt,
   );
   EqPresetRow copyWithCompanion(EqPresetsCompanion data) {
@@ -3088,6 +3122,9 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
       isBuiltIn: data.isBuiltIn.present ? data.isBuiltIn.value : this.isBuiltIn,
       bandsJson: data.bandsJson.present ? data.bandsJson.value : this.bandsJson,
       preampDb: data.preampDb.present ? data.preampDb.value : this.preampDb,
+      configJson: data.configJson.present
+          ? data.configJson.value
+          : this.configJson,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
     );
   }
@@ -3100,14 +3137,22 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
           ..write('isBuiltIn: $isBuiltIn, ')
           ..write('bandsJson: $bandsJson, ')
           ..write('preampDb: $preampDb, ')
+          ..write('configJson: $configJson, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, isBuiltIn, bandsJson, preampDb, createdAt);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    isBuiltIn,
+    bandsJson,
+    preampDb,
+    configJson,
+    createdAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3117,6 +3162,7 @@ class EqPresetRow extends DataClass implements Insertable<EqPresetRow> {
           other.isBuiltIn == this.isBuiltIn &&
           other.bandsJson == this.bandsJson &&
           other.preampDb == this.preampDb &&
+          other.configJson == this.configJson &&
           other.createdAt == this.createdAt);
 }
 
@@ -3126,6 +3172,7 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
   final Value<bool> isBuiltIn;
   final Value<String> bandsJson;
   final Value<double> preampDb;
+  final Value<String?> configJson;
   final Value<DateTime> createdAt;
   const EqPresetsCompanion({
     this.id = const Value.absent(),
@@ -3133,6 +3180,7 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
     this.isBuiltIn = const Value.absent(),
     this.bandsJson = const Value.absent(),
     this.preampDb = const Value.absent(),
+    this.configJson = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
   EqPresetsCompanion.insert({
@@ -3141,6 +3189,7 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
     this.isBuiltIn = const Value.absent(),
     required String bandsJson,
     this.preampDb = const Value.absent(),
+    this.configJson = const Value.absent(),
     this.createdAt = const Value.absent(),
   }) : name = Value(name),
        bandsJson = Value(bandsJson);
@@ -3150,6 +3199,7 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
     Expression<bool>? isBuiltIn,
     Expression<String>? bandsJson,
     Expression<double>? preampDb,
+    Expression<String>? configJson,
     Expression<DateTime>? createdAt,
   }) {
     return RawValuesInsertable({
@@ -3158,6 +3208,7 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
       if (isBuiltIn != null) 'is_built_in': isBuiltIn,
       if (bandsJson != null) 'bands_json': bandsJson,
       if (preampDb != null) 'preamp_db': preampDb,
+      if (configJson != null) 'config_json': configJson,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
@@ -3168,6 +3219,7 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
     Value<bool>? isBuiltIn,
     Value<String>? bandsJson,
     Value<double>? preampDb,
+    Value<String?>? configJson,
     Value<DateTime>? createdAt,
   }) {
     return EqPresetsCompanion(
@@ -3176,6 +3228,7 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
       isBuiltIn: isBuiltIn ?? this.isBuiltIn,
       bandsJson: bandsJson ?? this.bandsJson,
       preampDb: preampDb ?? this.preampDb,
+      configJson: configJson ?? this.configJson,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -3198,6 +3251,9 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
     if (preampDb.present) {
       map['preamp_db'] = Variable<double>(preampDb.value);
     }
+    if (configJson.present) {
+      map['config_json'] = Variable<String>(configJson.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -3212,6 +3268,7 @@ class EqPresetsCompanion extends UpdateCompanion<EqPresetRow> {
           ..write('isBuiltIn: $isBuiltIn, ')
           ..write('bandsJson: $bandsJson, ')
           ..write('preampDb: $preampDb, ')
+          ..write('configJson: $configJson, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
         .toString();
@@ -6773,6 +6830,7 @@ typedef $$EqPresetsTableCreateCompanionBuilder = EqPresetsCompanion Function({
   Value<bool> isBuiltIn,
   required String bandsJson,
   Value<double> preampDb,
+  Value<String?> configJson,
   Value<DateTime> createdAt,
 });
 typedef $$EqPresetsTableUpdateCompanionBuilder = EqPresetsCompanion Function({
@@ -6781,6 +6839,7 @@ typedef $$EqPresetsTableUpdateCompanionBuilder = EqPresetsCompanion Function({
   Value<bool> isBuiltIn,
   Value<String> bandsJson,
   Value<double> preampDb,
+  Value<String?> configJson,
   Value<DateTime> createdAt,
 });
 
@@ -6815,6 +6874,11 @@ class $$EqPresetsTableFilterComposer
 
   ColumnFilters<double> get preampDb => $composableBuilder(
     column: $table.preampDb,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get configJson => $composableBuilder(
+    column: $table.configJson,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6858,6 +6922,11 @@ class $$EqPresetsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get configJson => $composableBuilder(
+    column: $table.configJson,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -6887,6 +6956,11 @@ class $$EqPresetsTableAnnotationComposer
 
   GeneratedColumn<double> get preampDb =>
       $composableBuilder(column: $table.preampDb, builder: (column) => column);
+
+  GeneratedColumn<String> get configJson => $composableBuilder(
+    column: $table.configJson,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -6928,6 +7002,7 @@ class $$EqPresetsTableTableManager
                 Value<bool> isBuiltIn = const Value.absent(),
                 Value<String> bandsJson = const Value.absent(),
                 Value<double> preampDb = const Value.absent(),
+                Value<String?> configJson = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => EqPresetsCompanion(
                 id: id,
@@ -6935,6 +7010,7 @@ class $$EqPresetsTableTableManager
                 isBuiltIn: isBuiltIn,
                 bandsJson: bandsJson,
                 preampDb: preampDb,
+                configJson: configJson,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
@@ -6944,6 +7020,7 @@ class $$EqPresetsTableTableManager
                 Value<bool> isBuiltIn = const Value.absent(),
                 required String bandsJson,
                 Value<double> preampDb = const Value.absent(),
+                Value<String?> configJson = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
               }) => EqPresetsCompanion.insert(
                 id: id,
@@ -6951,6 +7028,7 @@ class $$EqPresetsTableTableManager
                 isBuiltIn: isBuiltIn,
                 bandsJson: bandsJson,
                 preampDb: preampDb,
+                configJson: configJson,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0

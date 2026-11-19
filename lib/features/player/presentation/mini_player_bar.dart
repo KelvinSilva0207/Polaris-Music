@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
+import '../../../core/providers/compact_style_provider.dart';
+import '../../../core/theme/compact_style_config.dart';
 import '../../../core/theme/theme_tokens.dart';
-import '../../../shared/widgets/polaris_surface.dart';
+import '../../../shared/widgets/compact_surface.dart';
 import '../../../shared/widgets/track_artwork.dart';
 import '../domain/player_controller.dart';
 import 'player_providers.dart';
@@ -11,7 +13,9 @@ import 'player_providers.dart';
 /// Progreso aislado: es el único hijo de la mini barra que cambia con el tick
 /// de posición, así que su reconstrucción no arrastra el `BackdropFilter`.
 class _MiniProgress extends ConsumerWidget {
-  const _MiniProgress();
+  const _MiniProgress({required this.accent});
+
+  final Color accent;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -22,6 +26,7 @@ class _MiniProgress extends ConsumerWidget {
       value: progress.clamp(0.0, 1.0),
       minHeight: 2,
       backgroundColor: Colors.white.withValues(alpha: 0.06),
+      valueColor: AlwaysStoppedAnimation<Color>(accent),
     );
   }
 }
@@ -37,32 +42,59 @@ class MiniPlayerBar extends ConsumerWidget {
     final Track? track = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.track),
     );
-    if (track == null) return const SizedBox.shrink();
-
     final bool playing = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playing),
     );
     final PlayerController controller = ref.read(
       playerControllerProvider.notifier,
     );
-    final PolarisTokens tokens = context.tokens;
+    final CompactStyleConfig style = ref.watch(
+      compactStyleProvider(CompactSurface.mini),
+    );
+    final ResolvedCompactStyle resolved = style.resolve(context.tokens);
+
+    if (track == null) {
+      return Material(
+        color: Colors.transparent,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+          child: CompactPanel(
+            style: resolved,
+            padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+            child: Row(
+              children: <Widget>[
+                const Icon(
+                  Icons.music_off_rounded,
+                  size: 20,
+                  color: Colors.white54,
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Sin reproducción activa',
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                ),
+                TextButton(onPressed: onOpen, child: const Text('Abrir')),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Material(
       color: Colors.transparent,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        // El blur del cristal se aísla: el progreso cambia 5 veces/s y no debe
-        // obligar a repintar el BackdropFilter de toda la barra.
         child: RepaintBoundary(
-          child: PolarisSurface(
+          child: CompactPanel(
+            style: resolved,
             padding: EdgeInsets.zero,
-            borderRadius: 16,
-            blur: 20,
-            glowColor: tokens.accent,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                const _MiniProgress(),
+                _MiniProgress(accent: resolved.accent),
                 InkWell(
                   onTap: onOpen,
                   child: Padding(
@@ -72,7 +104,7 @@ class MiniPlayerBar extends ConsumerWidget {
                         TrackArtwork(
                           path: track.artworkPath,
                           size: 44,
-                          radius: 10,
+                          radius: resolved.radius * 0.55,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -108,7 +140,7 @@ class MiniPlayerBar extends ConsumerWidget {
                             playing
                                 ? Icons.pause_rounded
                                 : Icons.play_arrow_rounded,
-                            color: tokens.accent,
+                            color: resolved.accent,
                             size: 28,
                           ),
                         ),

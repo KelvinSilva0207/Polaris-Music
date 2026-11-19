@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,6 +10,8 @@ import '../core/models/update_info.dart';
 import '../core/providers/app_providers.dart';
 import '../core/providers/update_prompt_provider.dart';
 import '../core/services/window_service.dart';
+import '../core/theme/compact_style_config.dart';
+import '../core/theme/compact_theme_scope.dart';
 import '../core/theme/theme_tokens.dart';
 import '../features/dynamic_island/presentation/dynamic_island_overlay.dart';
 import '../features/library/presentation/library_providers.dart';
@@ -21,6 +24,7 @@ import '../features/player/presentation/player_providers.dart';
 import '../features/player/presentation/tray_mini_player.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/settings/presentation/update_dialog.dart';
+import '../shared/widgets/liquid_nav_bar.dart';
 import '../shared/widgets/window_title_bar.dart';
 import 'app_navigation.dart';
 
@@ -43,7 +47,10 @@ class _AppShellState extends ConsumerState<AppShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _screens = <Widget>[
-      const NowPlayingScreen(),
+      const CompactThemeScope(
+        surface: CompactSurface.player,
+        child: NowPlayingScreen(),
+      ),
       const LibraryScreen(),
       const OnlineMusicScreen(),
       SettingsScreen(onNavigate: _goToSection),
@@ -118,14 +125,26 @@ class _AppShellState extends ConsumerState<AppShell>
         final WindowService window = ref.read(windowServiceProvider);
         switch (state.mode) {
           case WindowMode.mini:
-            return TrayMiniPlayer(
-              onOpen: window.restoreNormal,
-              onHide: window.minimizeToTray,
+            return CompactThemeScope(
+              surface: CompactSurface.mini,
+              child: TrayMiniPlayer(
+                onOpen: window.restoreNormal,
+                onHide: window.minimizeToTray,
+              ),
             );
           case WindowMode.phone:
-            return const PhoneModeShell();
+            return const CompactThemeScope(
+              surface: CompactSurface.phone,
+              child: PhoneModeShell(),
+            );
           case WindowMode.island:
-            return IslandWindow(onRestore: window.restoreNormal);
+            return CompactThemeScope(
+              surface: CompactSurface.island,
+              child: IslandWindow(
+                onRestore: window.restoreNormal,
+                onHide: window.hide,
+              ),
+            );
           case WindowMode.normal:
             return _buildNormal();
         }
@@ -152,148 +171,165 @@ class _AppShellState extends ConsumerState<AppShell>
           _togglePlayback();
           return KeyEventResult.handled;
         },
-        child: Column(
-          children: <Widget>[
-            if (Platform.isWindows) const WindowTitleBar(),
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  Consumer(
-                    builder: (BuildContext context, WidgetRef ref, Widget? _) {
-                      final AppSection section = ref.watch(appSectionProvider);
-                      return Column(
-                        children: <Widget>[
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 66),
-                              child: IndexedStack(
-                                index: section.index,
-                                children: _screens,
-                              ),
-                            ),
+        child: Builder(
+          builder: (BuildContext context) {
+            final bool android = Platform.isAndroid;
+            // La barra inferior se superpone: reservamos su altura más el
+            // área del sistema (gestos/navegación) para que nada quede tapado.
+            final double navClearance = android
+                ? MediaQuery.viewPaddingOf(context).bottom + 84
+                : 0;
+
+            return Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                SafeArea(
+                  top: android,
+                  bottom: false,
+                  left: false,
+                  right: false,
+                  child: Padding(
+                    padding: EdgeInsets.only(bottom: navClearance),
+                    child: Column(
+                      children: <Widget>[
+                        if (Platform.isWindows) const WindowTitleBar(),
+                        Expanded(
+                          child: Consumer(
+                            builder:
+                                (
+                                  BuildContext context,
+                                  WidgetRef ref,
+                                  Widget? _,
+                                ) {
+                                  final AppSection section = ref.watch(
+                                    appSectionProvider,
+                                  );
+                                  return Column(
+                                    children: <Widget>[
+                                      Expanded(
+                                        child: Padding(
+                                          // En escritorio la barra va arriba; en
+                                          // Android el SafeArea ya protege el
+                                          // hueco de la barra de notificaciones.
+                                          padding: EdgeInsets.only(
+                                            top: android ? 0 : 66,
+                                          ),
+                                          child: IndexedStack(
+                                            index: section.index,
+                                            children: _screens,
+                                          ),
+                                        ),
+                                      ),
+                                      AnimatedSwitcher(
+                                        duration: const Duration(
+                                          milliseconds: 320,
+                                        ),
+                                        switchInCurve: Curves.easeOutBack,
+                                        switchOutCurve: Curves.easeInCubic,
+                                        transitionBuilder:
+                                            (
+                                              Widget child,
+                                              Animation<double> animation,
+                                            ) {
+                                              return SlideTransition(
+                                                position: Tween<Offset>(
+                                                  begin: const Offset(0, 0.4),
+                                                  end: Offset.zero,
+                                                ).animate(animation),
+                                                child: FadeTransition(
+                                                  opacity: animation,
+                                                  child: child,
+                                                ),
+                                              );
+                                            },
+                                        child: section != AppSection.player
+                                            ? SizedBox(
+                                                key: const ValueKey<String>(
+                                                  'mini',
+                                                ),
+                                                child: CompactThemeScope(
+                                                  surface: CompactSurface.mini,
+                                                  child: MiniPlayerBar(
+                                                    onOpen: () => _goToSection(
+                                                      AppSection.player,
+                                                    ),
+                                                  ),
+                                                ),
+                                              )
+                                            : const SizedBox.shrink(
+                                                key: ValueKey<String>(
+                                                  'no-mini',
+                                                ),
+                                              ),
+                                      ),
+                                    ],
+                                  );
+                                },
                           ),
-                          if (section != AppSection.player)
-                            MiniPlayerBar(
-                              onOpen: () => _goToSection(AppSection.player),
-                            ),
-                        ],
-                      );
-                    },
+                        ),
+                      ],
+                    ),
                   ),
-                  const _FloatingNavBar(),
-                  if (Platform.isWindows) const _SidePeekTab(),
-                ],
-              ),
-            ),
-          ],
+                ),
+                const _FloatingNavBar(),
+                if (Platform.isWindows) const _SidePeekTab(),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-/// Barra superior flotante y minimalista con las cuatro secciones principales.
+/// Barra flotante de las cuatro secciones principales.
+///
+/// En Android baja al borde inferior con `SafeArea` para no invadir la barra de
+/// notificaciones; en escritorio se mantiene arriba como barra compacta.
 class _FloatingNavBar extends ConsumerWidget {
   const _FloatingNavBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppSection selected = ref.watch(appSectionProvider);
-    final PolarisTokens tokens = context.tokens;
-    final bool compact = MediaQuery.sizeOf(context).width < 620;
+    final bool android = Platform.isAndroid;
+    void changeSection(AppSection section) =>
+        ref.read(appSectionProvider.notifier).state = section;
 
-    return Align(
-      alignment: Alignment.topCenter,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Container(
-          padding: const EdgeInsets.all(5),
-          decoration: tokens
-              .panelDecoration(radius: 20, glow: tokens.accent)
-              .copyWith(color: tokens.panelOverlay.withValues(alpha: 0.94)),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: AppSection.values
-                .map(
-                  (AppSection section) => _NavButton(
-                    section: section,
-                    selected: section == selected,
-                    compact: compact,
-                    accent: tokens.accent,
-                    onTap: () =>
-                        ref.read(appSectionProvider.notifier).state = section,
-                  ),
-                )
-                .toList(growable: false),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({
-    required this.section,
-    required this.selected,
-    required this.compact,
-    required this.accent,
-    required this.onTap,
-  });
-
-  final AppSection section;
-  final bool selected;
-  final bool compact;
-  final Color accent;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-      decoration: BoxDecoration(
-        color: selected ? accent.withValues(alpha: 0.18) : Colors.transparent,
-        borderRadius: BorderRadius.circular(15),
-        border: selected
-            ? Border.all(color: accent.withValues(alpha: 0.35))
-            : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(15),
-          onTap: onTap,
+    if (android) {
+      return SafeArea(
+        top: false,
+        bottom: true,
+        child: Align(
+          alignment: Alignment.bottomCenter,
           child: Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: compact ? 12 : 18,
-              vertical: 9,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Icon(
-                  selected ? section.activeIcon : section.icon,
-                  size: 18,
-                  color: selected ? accent : Colors.white60,
-                ),
-                if (!compact) ...<Widget>[
-                  const SizedBox(width: 8),
-                  Text(
-                    section.label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected ? Colors.white : Colors.white70,
-                    ),
-                  ),
-                ],
-              ],
-            ),
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+            child: LiquidNavBar(selected: selected, onChanged: changeSection),
           ),
         ),
-      ),
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width = math.min<double>(
+          620,
+          math.max<double>(280, constraints.maxWidth - 40),
+        );
+        return Align(
+          alignment: Alignment.topCenter,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: LiquidNavBar(
+              layout: LiquidNavLayout.top,
+              width: width,
+              compact: MediaQuery.sizeOf(context).width < 620,
+              selected: selected,
+              onChanged: changeSection,
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -92,7 +92,10 @@ class PlayHistory extends Table {
   BoolColumn get completed => boolean().withDefault(const Constant(false))();
 }
 
-/// Presets de ecualización (10 bandas + preamp), persistidos como JSON.
+/// Presets de ecualización persistidos como JSON.
+///
+/// `bandsJson`/`preampDb` se mantienen por compatibilidad con la v3; los
+/// presets nuevos guardan además la configuración completa en `configJson`.
 @DataClassName('EqPresetRow')
 class EqPresets extends Table {
   IntColumn get id => integer().autoIncrement()();
@@ -100,6 +103,7 @@ class EqPresets extends Table {
   BoolColumn get isBuiltIn => boolean().withDefault(const Constant(false))();
   TextColumn get bandsJson => text()();
   RealColumn get preampDb => real().withDefault(const Constant(0))();
+  TextColumn get configJson => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 

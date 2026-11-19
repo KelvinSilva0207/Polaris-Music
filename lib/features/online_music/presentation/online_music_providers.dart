@@ -251,6 +251,8 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
         }
       case MusicSourceId.tidal:
         await _writeToken(OnlineSourceSettings.tidalToken, token);
+      case MusicSourceId.youtube:
+        return;
     }
     await checkSources();
     await retryCurrent();

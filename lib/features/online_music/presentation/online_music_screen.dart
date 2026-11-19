@@ -87,6 +87,39 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
     }
   }
 
+  /// Resuelve la URL de streaming y la inserta en la cola del reproductor.
+  Future<void> _addToQueue(OnlineTrack track, {bool next = false}) async {
+    if (_resolvingId != null) return;
+    if (!_can(track, (MusicSourceProvider provider) => provider.canStream)) {
+      _notice('Esta fuente no permite añadir pistas a la cola.');
+      return;
+    }
+    setState(() => _resolvingId = track.externalId);
+    try {
+      final Track playable = await ref.read(streamTrackUseCaseProvider)(track);
+      if (!mounted) return;
+      final controller = ref.read(playerControllerProvider.notifier);
+      if (next) {
+        await controller.addAfterCurrent(playable);
+      } else {
+        await controller.addToQueue(playable);
+      }
+      if (mounted) {
+        _notice(
+          next
+              ? '“${track.title}” se reproducirá a continuación.'
+              : '“${track.title}” añadida a la cola.',
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        _notice('No se pudo añadir a la cola: $error');
+      }
+    } finally {
+      if (mounted) setState(() => _resolvingId = null);
+    }
+  }
+
   void _download(OnlineTrack track) {
     if (!_can(track, (MusicSourceProvider provider) => provider.canDownload)) {
       _notice('Esta fuente no permite descargas.');
@@ -224,6 +257,8 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
                   ),
                   task: taskFor(track.externalId),
                   onPlay: () => _play(track),
+                  onAddQueue: () => _addToQueue(track),
+                  onPlayNext: () => _addToQueue(track, next: true),
                   onDownload: () => _download(track),
                   onCancelDownload: () {
                     ref.read(downloadManagerProvider).cancel(track.externalId);
@@ -506,6 +541,8 @@ class _OnlineTrackTile extends StatelessWidget {
     required this.canDownload,
     required this.task,
     required this.onPlay,
+    required this.onAddQueue,
+    required this.onPlayNext,
     required this.onDownload,
     required this.onCancelDownload,
     required this.onRetryDownload,
@@ -518,6 +555,8 @@ class _OnlineTrackTile extends StatelessWidget {
   final bool canDownload;
   final DownloadTask? task;
   final VoidCallback onPlay;
+  final VoidCallback onAddQueue;
+  final VoidCallback onPlayNext;
   final VoidCallback onDownload;
   final VoidCallback onCancelDownload;
   final VoidCallback onRetryDownload;
@@ -612,6 +651,34 @@ class _OnlineTrackTile extends StatelessWidget {
                             color: Colors.white38,
                             size: 24,
                           ),
+                  ),
+                if (canPlay)
+                  PopupMenuButton<String>(
+                    tooltip: 'Añadir a la cola',
+                    icon: const Icon(
+                      Icons.more_vert_rounded,
+                      color: Colors.white38,
+                      size: 20,
+                    ),
+                    onSelected: (String value) {
+                      switch (value) {
+                        case 'queue':
+                          onAddQueue();
+                        case 'play-next':
+                          onPlayNext();
+                      }
+                    },
+                    itemBuilder: (BuildContext context) =>
+                        const <PopupMenuEntry<String>>[
+                          PopupMenuItem<String>(
+                            value: 'queue',
+                            child: Text('Añadir a la cola'),
+                          ),
+                          PopupMenuItem<String>(
+                            value: 'play-next',
+                            child: Text('Reproducir a continuación'),
+                          ),
+                        ],
                   ),
                 if (canDownload)
                   _DownloadAction(

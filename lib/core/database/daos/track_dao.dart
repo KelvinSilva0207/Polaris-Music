@@ -181,10 +181,10 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
         TracksCompanion(isFavorite: Value(value)),
       );
 
-  /// Edición de metadatos desde la app (solo Drift).
+  /// Edición de metadatos desde la app.
   ///
-  /// Escribir los tags en el archivo original queda para una fase posterior;
-  /// aquí no se toca el audio, solo la proyección local.
+  /// La escritura en el archivo la hace `MetadataEditorService`; esta función
+  /// mantiene sincronizada la proyección local, incluida la carátula en caché.
   Future<void> updateMetadata(
     int id, {
     String? title,
@@ -195,6 +195,7 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
     int? year,
     int? trackNumber,
     int? discNumber,
+    String? artworkPath,
   }) => (update(tracks)..where((t) => t.id.equals(id))).write(
     TracksCompanion(
       title: title == null ? const Value.absent() : Value(title),
@@ -211,6 +212,9 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
           ? const Value.absent()
           : Value(trackNumber),
       discNumber: discNumber == null ? const Value.absent() : Value(discNumber),
+      artworkPath: artworkPath == null
+          ? const Value.absent()
+          : Value(artworkPath),
       updatedAt: Value(DateTime.now()),
     ),
   );

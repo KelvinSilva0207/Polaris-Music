@@ -1,13 +1,19 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/track.dart';
 import '../../core/theme/theme_tokens.dart';
+import '../../core/utils/file_utils.dart';
 import '../../core/utils/formatters.dart';
-import '../../features/library/data/library_repository.dart';
+import '../../features/library/data/metadata_editor_service.dart';
 import '../../features/library/presentation/library_providers.dart';
 import '../../features/player/domain/player_controller.dart';
 import '../../features/player/presentation/player_providers.dart';
+import 'playing_indicator.dart';
 import 'track_artwork.dart';
 import 'track_properties_modal.dart';
 
@@ -34,7 +40,9 @@ class TrackTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final PlayerUiState ui = ref.watch(playerControllerProvider);
     final bool current = ui.track?.id == track.id;
+    final bool playing = ui.playing;
     final ThemeData theme = Theme.of(context);
+    final Color accent = context.accent;
 
     return GestureDetector(
       onSecondaryTapDown: (TapDownDetails details) =>
@@ -42,9 +50,7 @@ class TrackTile extends ConsumerWidget {
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        tileColor: current
-            ? theme.colorScheme.primary.withValues(alpha: 0.12)
-            : null,
+        tileColor: current ? accent.withValues(alpha: 0.12) : null,
         leading: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
@@ -55,14 +61,28 @@ class TrackTile extends ConsumerWidget {
                   child: Text(
                     '${(index ?? 0) + 1}',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: current
-                          ? theme.colorScheme.primary
-                          : Colors.white38,
+                      color: current ? accent : Colors.white38,
                     ),
                   ),
                 ),
               ),
-            TrackArtwork(path: track.artworkPath, size: 46, radius: 10),
+            Stack(
+              alignment: Alignment.bottomRight,
+              clipBehavior: Clip.none,
+              children: <Widget>[
+                TrackArtwork(path: track.artworkPath, size: 46, radius: 10),
+                if (current)
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: PlayingIndicator(
+                      active: current,
+                      playing: playing,
+                      color: accent,
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
         title: Text(
@@ -71,7 +91,7 @@ class TrackTile extends ConsumerWidget {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-            color: current ? theme.colorScheme.primary : null,
+            color: current ? accent : null,
           ),
         ),
         subtitle: Row(
@@ -82,7 +102,7 @@ class TrackTile extends ConsumerWidget {
                 child: Icon(
                   Icons.cloud_done_rounded,
                   size: 12,
-                  color: theme.colorScheme.primary.withValues(alpha: 0.85),
+                  color: accent.withValues(alpha: 0.85),
                 ),
               ),
             Flexible(
@@ -116,9 +136,7 @@ class TrackTile extends ConsumerWidget {
                 track.isFavorite
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
-                color: track.isFavorite
-                    ? theme.colorScheme.primary
-                    : Colors.white38,
+                color: track.isFavorite ? accent : Colors.white38,
                 size: 20,
               ),
               onPressed: track.isPersisted
@@ -144,6 +162,10 @@ class TrackTile extends ConsumerWidget {
                 const PopupMenuItem<String>(
                   value: 'queue',
                   child: Text('Añadir a la cola'),
+                ),
+                const PopupMenuItem<String>(
+                  value: 'play-next',
+                  child: Text('Reproducir a continuación'),
                 ),
                 const PopupMenuItem<String>(
                   value: 'properties',
@@ -197,6 +219,10 @@ class TrackTile extends ConsumerWidget {
       items: const <PopupMenuEntry<String>>[
         PopupMenuItem<String>(value: 'play', child: Text('Reproducir ahora')),
         PopupMenuItem<String>(value: 'queue', child: Text('Añadir a la cola')),
+        PopupMenuItem<String>(
+          value: 'play-next',
+          child: Text('Reproducir a continuación'),
+        ),
         PopupMenuItem<String>(value: 'properties', child: Text('Propiedades')),
         PopupMenuItem<String>(value: 'edit', child: Text('Editar metadatos')),
         PopupMenuDivider(),
@@ -226,6 +252,17 @@ class TrackTile extends ConsumerWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('“${track.title}” añadida a la cola')),
+          );
+        }
+      case 'play-next':
+        await ref
+            .read(playerControllerProvider.notifier)
+            .addAfterCurrent(track);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('“${track.title}” se reproducirá a continuación'),
+            ),
           );
         }
       case 'properties':
@@ -267,10 +304,10 @@ class TrackTile extends ConsumerWidget {
   }
 }
 
-/// Editor de metadatos local.
+/// Editor de etiquetas de una pista.
 ///
-/// Actualiza la base de datos de Polaris; la escritura de tags en el archivo
-/// original queda para una fase posterior (documentado en README).
+/// Escribe los cambios en el archivo de audio (en un isolate), guarda la
+/// carátula elegida en caché y sincroniza la base de datos y la cola activa.
 Future<void> showMetadataEditor(
   BuildContext context,
   WidgetRef ref,
@@ -295,105 +332,205 @@ Future<void> showMetadataEditor(
     text: track.discNumber?.toString() ?? '',
   );
 
+  Uint8List? artworkBytes;
+  String? artworkExtension;
+  bool pickingArtwork = false;
+  bool saving = false;
+
+  Future<void> pickArtwork(StateSetter setState) async {
+    if (pickingArtwork) return;
+    pickingArtwork = true;
+    setState(() {});
+    try {
+      final List<PlatformFile> pickedFiles = await FilePicker.pickFiles(
+        dialogTitle: 'Elegir carátula',
+        type: FileType.image,
+      );
+      if (pickedFiles.isEmpty) return;
+
+      final PlatformFile picked = pickedFiles.first;
+      Uint8List? bytes;
+      try {
+        bytes = await picked.readAsBytes();
+      } catch (_) {
+        final String? path = picked.path;
+        if (path == null) rethrow;
+        bytes = await File(path).readAsBytes();
+      }
+
+      final String fromName = FileUtils.extensionOf(picked.name);
+      final String fromPath = FileUtils.extensionOf(picked.path ?? '');
+      setState(() {
+        artworkBytes = bytes;
+        artworkExtension = fromName.isEmpty ? fromPath : fromName;
+      });
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No se pudo abrir la imagen: $error')),
+        );
+      }
+    } finally {
+      pickingArtwork = false;
+      if (context.mounted) setState(() {});
+    }
+  }
+
   final bool? save = await showDialog<bool>(
     context: context,
-    builder: (BuildContext context) => AlertDialog(
-      title: const Text('Editar metadatos'),
-      content: SizedBox(
-        width: 440,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              TextField(
-                controller: title,
-                decoration: const InputDecoration(labelText: 'Título'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: artist,
-                decoration: const InputDecoration(labelText: 'Artista'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: album,
-                decoration: const InputDecoration(labelText: 'Álbum'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: albumArtist,
-                decoration: const InputDecoration(
-                  labelText: 'Artista del álbum',
+    barrierDismissible: false,
+    builder: (BuildContext context) => StatefulBuilder(
+      builder: (BuildContext context, StateSetter setState) => AlertDialog(
+        title: const Text('Editar metadatos'),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: pickingArtwork
+                          ? null
+                          : () => pickArtwork(setState),
+                      child: Container(
+                        width: 64,
+                        height: 64,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.white.withValues(alpha: 0.06),
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: artworkBytes == null
+                              ? TrackArtwork(path: track.artworkPath, size: 64)
+                              : Image.memory(
+                                  artworkBytes!,
+                                  width: 64,
+                                  height: 64,
+                                  fit: BoxFit.cover,
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          const Text(
+                            'Carátula',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            pickingArtwork
+                                ? 'Abriendo imagen…'
+                                : 'Toca la portada para elegir otra imagen',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: Colors.white54),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      controller: genre,
-                      decoration: const InputDecoration(labelText: 'Género'),
-                    ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: title,
+                  decoration: const InputDecoration(labelText: 'Título'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: artist,
+                  decoration: const InputDecoration(labelText: 'Artista'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: album,
+                  decoration: const InputDecoration(labelText: 'Álbum'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: albumArtist,
+                  decoration: const InputDecoration(
+                    labelText: 'Artista del álbum',
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: year,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Año'),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: TextField(
+                        controller: genre,
+                        decoration: const InputDecoration(labelText: 'Género'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      controller: trackNumber,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Pista'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: year,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Año'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: discNumber,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Disco'),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: <Widget>[
+                    Expanded(
+                      child: TextField(
+                        controller: trackNumber,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Pista'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                'Los cambios se guardan en la base de datos de Polaris. La '
-                'escritura de etiquetas en el archivo queda para una fase '
-                'posterior.',
-                style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(color: Colors.white54),
-              ),
-            ],
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: discNumber,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Disco'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Los cambios se escriben en el archivo de audio cuando el '
+                  'formato lo admite y se reflejan en la biblioteca.',
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: Colors.white54),
+                ),
+              ],
+            ),
           ),
         ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: saving ? null : () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: saving
+                ? null
+                : () async {
+                    saving = true;
+                    setState(() {});
+                    Navigator.pop(context, true);
+                  },
+            child: const Text('Guardar'),
+          ),
+        ],
       ),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Guardar'),
-        ),
-      ],
     ),
   );
 
   if (save == true) {
-    final LibraryRepository repository = ref.read(libraryRepositoryProvider);
-    await repository.updateMetadata(
-      track,
+    final MetadataEditValues values = MetadataEditValues(
       title: title.text.trim(),
       artist: artist.text.trim(),
       album: album.text.trim(),
@@ -403,9 +540,41 @@ Future<void> showMetadataEditor(
       trackNumber: int.tryParse(trackNumber.text.trim()),
       discNumber: int.tryParse(discNumber.text.trim()),
     );
-    if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Metadatos guardados')));
+    try {
+      final String? cachedArtworkPath = await ref
+          .read(metadataEditorServiceProvider)
+          .save(
+            track,
+            values,
+            artworkBytes: artworkBytes,
+            artworkExtension: artworkExtension,
+          );
+      await ref
+          .read(playerControllerProvider.notifier)
+          .updateTrackMetadata(
+            track.id,
+            title: values.title,
+            artist: values.artist,
+            album: values.album,
+            albumArtist: values.albumArtist,
+            genre: values.genre,
+            year: values.year,
+            trackNumber: values.trackNumber,
+            discNumber: values.discNumber,
+            artworkPath: cachedArtworkPath,
+          );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Etiquetas guardadas')));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudieron guardar las etiquetas: $error'),
+          ),
+        );
+      }
     }
   }
 

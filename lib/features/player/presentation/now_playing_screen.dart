@@ -10,18 +10,22 @@ import '../../../app/app_navigation.dart';
 import '../../../core/models/playback_state.dart';
 import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/providers/compact_style_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme_config.dart';
+import '../../../core/theme/compact_style_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/audio_progress_bar.dart';
+import 'animated_favorite_button.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/polaris_surface.dart';
+import '../../../shared/widgets/tactile_icon_button.dart';
 import '../../../shared/widgets/track_properties_modal.dart';
 import '../../dynamic_island/presentation/island_providers.dart';
 import '../../equalizer/presentation/equalizer_screen.dart';
-import '../../lyrics/presentation/immersive_lyrics_view.dart';
+import '../../lyrics/presentation/in_artwork_lyrics.dart';
 import '../domain/player_controller.dart';
 import 'artwork_gestures.dart';
 import 'player_providers.dart';
@@ -40,7 +44,7 @@ class NowPlayingScreen extends ConsumerStatefulWidget {
 
 class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
   int _panelTab = 0;
-  bool _lyricsImmersive = false;
+  bool _showLyrics = false;
 
   /// Deslizar abajo: en escritorio se transforma en isla o se minimiza; en
   /// móvil el reproductor pasa a la mini barra persistente de la Biblioteca.
@@ -58,7 +62,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     ref.read(appSectionProvider.notifier).state = AppSection.library;
   }
 
-  void _openLyrics() => setState(() => _lyricsImmersive = true);
+  /// Alterna la carátula y las letras dentro del mismo hueco del reproductor.
+  void _toggleLyrics() => setState(() => _showLyrics = !_showLyrics);
 
   @override
   Widget build(BuildContext context) {
@@ -69,17 +74,30 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       playerControllerProvider.select((PlayerUiState s) => s.playing),
     );
     final AppThemeConfig config = ref.watch(themeConfigProvider);
+    final CompactStyleConfig playerStyle = ref.watch(
+      compactStyleProvider(CompactSurface.player),
+    );
 
     final AsyncValue<Color>? paletteAsync = config.usesDynamicPalette
         ? ref.watch(artworkAccentProvider(track?.artworkPath))
         : null;
-    final Color accent = paletteAsync?.valueOrNull ?? config.accent;
+    final Color accent =
+        playerStyle.accent ?? paletteAsync?.valueOrNull ?? config.accent;
+    final Color background = playerStyle.background ?? config.background;
+    final List<Color>? backdrop = playerStyle.background == null
+        ? config.backdrop
+        : null;
 
     if (track == null) {
       return Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          _DynamicBackdrop(config: config, accent: accent),
+          _DynamicBackdrop(
+            config: config,
+            accent: accent,
+            background: background,
+            backdrop: backdrop,
+          ),
           const EmptyState(
             icon: Icons.play_circle_outline_rounded,
             title: 'Nada en reproducción',
@@ -98,117 +116,144 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     return Stack(
       fit: StackFit.expand,
       children: <Widget>[
-        _DynamicBackdrop(config: config, accent: accent),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 340),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (Widget child, Animation<double> animation) {
-            return FadeTransition(
-              opacity: animation,
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.97, end: 1).animate(animation),
-                child: child,
-              ),
-            );
-          },
-          child: _lyricsImmersive
-              ? ImmersiveLyricsView(
-                  key: const ValueKey<String>('immersive-lyrics'),
-                  track: track,
-                  onClose: () => setState(() => _lyricsImmersive = false),
-                )
-              : LayoutBuilder(
-                  key: const ValueKey<String>('player'),
-                  builder: (BuildContext context, BoxConstraints constraints) {
-                    final bool wide = constraints.maxWidth >= 980;
-                    if (wide) {
-                      return Padding(
-                        padding: const EdgeInsets.fromLTRB(28, 20, 28, 24),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: <Widget>[
-                            Expanded(
-                              flex: 5,
-                              child: SingleChildScrollView(
-                                child: _ArtworkStage(
-                                  track: track,
-                                  config: config,
-                                  accent: accent,
-                                  playing: playing,
-                                  size: math.min(
-                                    math.min(constraints.maxWidth * 0.30, 400),
-                                    math.max(constraints.maxHeight * 0.58, 220),
-                                  ),
-                                  onSeekFraction: controller.seekFraction,
-                                  onPrevious: controller.previous,
-                                  onNext: controller.next,
-                                  onLyrics: _openLyrics,
-                                  onMinimize: _minimizePlayer,
-                                ),
+        _DynamicBackdrop(
+          config: config,
+          accent: accent,
+          background: background,
+          backdrop: backdrop,
+        ),
+        LayoutBuilder(
+          key: const ValueKey<String>('player'),
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final bool wide = constraints.maxWidth >= 980;
+            if (wide) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(28, 20, 28, 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: <Widget>[
+                    Expanded(
+                      flex: 5,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: SingleChildScrollView(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: math.max(
+                                constraints.maxHeight - 44,
+                                0,
                               ),
                             ),
-                            const SizedBox(width: 26),
-                            Expanded(
-                              flex: 5,
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: _PlayerColumn(
-                                  track: track,
-                                  config: config,
-                                  accent: accent,
-                                  controller: controller,
-                                  panelTab: _panelTab,
-                                  onPanelChanged: (int value) =>
-                                      setState(() => _panelTab = value),
-                                  panelHeight: 360,
-                                  onOpenLyrics: () =>
-                                      setState(() => _lyricsImmersive = true),
+                            child: Container(
+                              alignment: Alignment.center,
+                              child: _ArtworkStage(
+                                track: track,
+                                config: config,
+                                accent: accent,
+                                playing: playing,
+                                showLyrics: _showLyrics,
+                                onCloseLyrics: _toggleLyrics,
+                                size: math.min(
+                                  math.min(constraints.maxWidth * 0.30, 400),
+                                  math.max(constraints.maxHeight * 0.58, 220),
                                 ),
+                                onSeekFraction: controller.seekFraction,
+                                onPrevious: controller.previous,
+                                onNext: controller.next,
+                                onLyrics: _toggleLyrics,
+                                onMinimize: _minimizePlayer,
                               ),
                             ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    return ListView(
-                      padding: const EdgeInsets.fromLTRB(20, 14, 20, 140),
-                      children: <Widget>[
-                        Center(
-                          child: _ArtworkStage(
-                            track: track,
-                            config: config,
-                            accent: accent,
-                            playing: playing,
-                            size: math.min(
-                              math.min(constraints.maxWidth - 88, 320),
-                              math.max(constraints.maxHeight * 0.5, 200),
-                            ),
-                            onSeekFraction: controller.seekFraction,
-                            onPrevious: controller.previous,
-                            onNext: controller.next,
-                            onLyrics: _openLyrics,
-                            onMinimize: _minimizePlayer,
                           ),
                         ),
-                        const SizedBox(height: 20),
-                        _PlayerColumn(
-                          track: track,
-                          config: config,
-                          accent: accent,
-                          controller: controller,
-                          panelTab: _panelTab,
-                          onPanelChanged: (int value) =>
-                              setState(() => _panelTab = value),
-                          panelHeight: 380,
-                          onOpenLyrics: () =>
-                              setState(() => _lyricsImmersive = true),
-                        ),
-                      ],
-                    );
-                  },
+                      ),
+                    ),
+                    const SizedBox(width: 26),
+                    Expanded(
+                      flex: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          Flexible(
+                            flex: 4,
+                            fit: FlexFit.tight,
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _PlayerColumn(
+                                track: track,
+                                config: config,
+                                accent: accent,
+                                controller: controller,
+                                panelTab: _panelTab,
+                                onPanelChanged: (int value) =>
+                                    setState(() => _panelTab = value),
+                                panelHeight: null,
+                                includePanel: false,
+                                onOpenLyrics: _toggleLyrics,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 5,
+                            child: _MediaPanel(
+                              track: track,
+                              controller: controller,
+                              accent: accent,
+                              tab: _panelTab,
+                              onTabChanged: (int value) =>
+                                  setState(() => _panelTab = value),
+                              height: null,
+                              onOpenLyrics: _toggleLyrics,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
+              );
+            }
+
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 140),
+              children: <Widget>[
+                Center(
+                  child: _ArtworkStage(
+                    track: track,
+                    config: config,
+                    accent: accent,
+                    playing: playing,
+                    showLyrics: _showLyrics,
+                    onCloseLyrics: _toggleLyrics,
+                    size: math.min(
+                      math.min(constraints.maxWidth - 88, 320),
+                      math.max(constraints.maxHeight * 0.5, 200),
+                    ),
+                    onSeekFraction: controller.seekFraction,
+                    onPrevious: controller.previous,
+                    onNext: controller.next,
+                    onLyrics: _toggleLyrics,
+                    onMinimize: _minimizePlayer,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _PlayerColumn(
+                  track: track,
+                  config: config,
+                  accent: accent,
+                  controller: controller,
+                  panelTab: _panelTab,
+                  onPanelChanged: (int value) =>
+                      setState(() => _panelTab = value),
+                  panelHeight: math.max(
+                    300,
+                    math.min(460, constraints.maxHeight * 0.45),
+                  ),
+                  onOpenLyrics: _toggleLyrics,
+                ),
+              ],
+            );
+          },
         ),
       ],
     );
@@ -227,7 +272,8 @@ class _PlayerColumn extends ConsumerWidget {
     required this.controller,
     required this.panelTab,
     required this.onPanelChanged,
-    required this.panelHeight,
+    this.panelHeight,
+    this.includePanel = true,
     required this.onOpenLyrics,
   });
 
@@ -237,7 +283,8 @@ class _PlayerColumn extends ConsumerWidget {
   final PlayerController controller;
   final int panelTab;
   final ValueChanged<int> onPanelChanged;
-  final double panelHeight;
+  final double? panelHeight;
+  final bool includePanel;
   final VoidCallback onOpenLyrics;
 
   @override
@@ -269,7 +316,7 @@ class _PlayerColumn extends ConsumerWidget {
           accent: config.usesDynamicPalette ? accent : config.volumeColor,
         ),
         const SizedBox(height: 6),
-        _QuickActions(accent: accent, onOpenLyrics: onOpenLyrics),
+        _QuickActions(accent: accent),
         if (sleepActive) _SleepBadge(controller: controller),
         if (error != null)
           Padding(
@@ -280,16 +327,18 @@ class _PlayerColumn extends ConsumerWidget {
               style: const TextStyle(color: Colors.redAccent, fontSize: 12),
             ),
           ),
-        const SizedBox(height: 18),
-        _MediaPanel(
-          track: track,
-          controller: controller,
-          accent: accent,
-          tab: panelTab,
-          onTabChanged: onPanelChanged,
-          height: panelHeight,
-          onOpenLyrics: onOpenLyrics,
-        ),
+        if (includePanel) ...<Widget>[
+          const SizedBox(height: 18),
+          _MediaPanel(
+            track: track,
+            controller: controller,
+            accent: accent,
+            tab: panelTab,
+            onTabChanged: onPanelChanged,
+            height: panelHeight ?? 360,
+            onOpenLyrics: onOpenLyrics,
+          ),
+        ],
       ],
     );
   }
@@ -388,34 +437,19 @@ class _TrackHeader extends ConsumerWidget {
             ),
           ),
 
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
-            transitionBuilder: (Widget child, Animation<double> animation) =>
-                ScaleTransition(scale: animation, child: child),
-            child: IconButton(
-              key: ValueKey<bool>(track.isFavorite),
-              tooltip: !track.isPersisted
-                  ? 'Descarga la pista para guardarla'
-                  : track.isFavorite
-                  ? 'Quitar de favoritos'
-                  : 'Añadir a favoritos',
-              iconSize: 26,
-              onPressed: track.isPersisted
-                  ? () => ref
-                        .read(playerControllerProvider.notifier)
-                        .setFavorite(!track.isFavorite)
-                  : null,
-              icon: Icon(
-                track.isFavorite
-                    ? Icons.favorite_rounded
-                    : Icons.favorite_border_rounded,
-                color: !track.isPersisted
-                    ? Colors.white24
-                    : track.isFavorite
-                    ? Colors.redAccent
-                    : Colors.white38,
-              ),
-            ),
+          AnimatedFavoriteButton(
+            key: ValueKey<int>(track.id),
+            isFavorite: track.isFavorite,
+            enabled: track.isPersisted,
+            accent: accent,
+            tooltip: !track.isPersisted
+                ? 'Descarga la pista para guardarla'
+                : track.isFavorite
+                ? 'Quitar de favoritos'
+                : 'Añadir a favoritos',
+            onPressed: () => ref
+                .read(playerControllerProvider.notifier)
+                .setFavorite(!track.isFavorite),
           ),
         ],
       ),
@@ -685,11 +719,12 @@ class _TransportControls extends ConsumerWidget {
             color: shuffle ? accent : Colors.white54,
           ),
         ),
-        IconButton(
+        TactileIconButton(
           tooltip: 'Anterior',
           iconSize: 32,
+          echoColor: accent,
           onPressed: controller.previous,
-          icon: const Icon(Icons.skip_previous_rounded),
+          icon: Icons.skip_previous_rounded,
         ),
         _PlayPauseButton(
           playing: playing,
@@ -697,11 +732,12 @@ class _TransportControls extends ConsumerWidget {
           accent: accent,
           onPressed: controller.togglePlay,
         ),
-        IconButton(
+        TactileIconButton(
           tooltip: 'Siguiente',
           iconSize: 32,
+          echoColor: accent,
           onPressed: controller.next,
-          icon: const Icon(Icons.skip_next_rounded),
+          icon: Icons.skip_next_rounded,
         ),
         IconButton(
           tooltip: _repeatLabel(repeat),
@@ -850,9 +886,73 @@ class _VolumeRow extends ConsumerWidget {
         ),
         const SizedBox(width: 4),
         _SpeedMenu(speed: speed, onChanged: controller.setSpeed),
+        _ABLoopButton(controller: controller, accent: accent),
         _SleepMenu(controller: controller),
       ],
     );
+  }
+}
+
+/// Repetidor A-B: marca el inicio y el final del fragmento a repetir.
+class _ABLoopButton extends ConsumerWidget {
+  const _ABLoopButton({required this.controller, required this.accent});
+
+  final PlayerController controller;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Duration? a = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.loopA),
+    );
+    final Duration? b = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.loopB),
+    );
+    final bool active = a != null && b != null && b > a;
+
+    return PopupMenuButton<String>(
+      tooltip: 'Repetidor A-B',
+      icon: Icon(
+        Icons.repeat_on_rounded,
+        size: 20,
+        color: active ? accent : Colors.white54,
+      ),
+      onSelected: (String action) {
+        switch (action) {
+          case 'a':
+            controller.markLoopA();
+            break;
+          case 'b':
+            controller.markLoopB();
+            break;
+          case 'clear':
+            controller.clearLoop();
+            break;
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        PopupMenuItem<String>(
+          value: 'a',
+          child: Text(a == null ? 'Marcar A' : 'A: ${_format(a)}'),
+        ),
+        PopupMenuItem<String>(
+          value: 'b',
+          child: Text(b == null ? 'Marcar B' : 'B: ${_format(b)}'),
+        ),
+        if (a != null || b != null)
+          const PopupMenuItem<String>(
+            value: 'clear',
+            child: Text('Desactivar'),
+          ),
+      ],
+    );
+  }
+
+  static String _format(Duration value) {
+    final int minutes = value.inMinutes;
+    final int seconds = value.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:'
+        '${seconds.toString().padLeft(2, '0')}';
   }
 }
 
@@ -986,13 +1086,13 @@ class _SleepBadge extends ConsumerWidget {
   }
 }
 
-/// Panel inferior con la cola o las letras.
-/// Accesos rápidos junto a los controles: ecualizador y letras inmersivas.
+/// Acceso rápido al ecualizador junto a los controles.
+/// Las letras se abren desde la pestaña del panel inferior para no duplicar
+/// el mismo botón dos veces en la pantalla.
 class _QuickActions extends StatelessWidget {
-  const _QuickActions({required this.accent, required this.onOpenLyrics});
+  const _QuickActions({required this.accent});
 
   final Color accent;
-  final VoidCallback onOpenLyrics;
 
   @override
   Widget build(BuildContext context) {
@@ -1019,12 +1119,6 @@ class _QuickActions extends StatelessWidget {
           label: const Text('Ecualizador'),
           style: style,
         ),
-        OutlinedButton.icon(
-          onPressed: onOpenLyrics,
-          icon: const Icon(Icons.lyrics_outlined, size: 18),
-          label: const Text('Letras'),
-          style: style,
-        ),
       ],
     );
   }
@@ -1046,7 +1140,9 @@ class _MediaPanel extends ConsumerWidget {
   final Color accent;
   final int tab;
   final ValueChanged<int> onTabChanged;
-  final double height;
+
+  /// `null` hace que el panel ocupe todo el espacio disponible (modo ancho).
+  final double? height;
   final VoidCallback onOpenLyrics;
 
   @override
@@ -1057,63 +1153,70 @@ class _MediaPanel extends ConsumerWidget {
     final int index = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.index),
     );
+    final bool playing = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playing),
+    );
+    final bool fluid = height == null;
 
-    return SizedBox(
-      height: height,
-      child: PolarisSurface(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-        borderRadius: 22,
-        glowColor: accent,
-        child: Column(
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: SegmentedButton<int>(
-                    segments: const <ButtonSegment<int>>[
-                      ButtonSegment<int>(
-                        value: 0,
-                        label: Text('Cola'),
-                        icon: Icon(Icons.queue_music_rounded, size: 18),
-                      ),
-                      ButtonSegment<int>(
-                        value: 1,
-                        label: Text('Letras'),
-                        icon: Icon(Icons.lyrics_outlined, size: 18),
-                      ),
-                    ],
-                    selected: const <int>{0},
-                    showSelectedIcon: false,
-                    onSelectionChanged: (Set<int> value) {
-                      if (value.first == 1) {
-                        onOpenLyrics();
-                      } else {
-                        onTabChanged(0);
-                      }
-                    },
-                  ),
+    final Widget panel = PolarisSurface(
+      padding: EdgeInsets.fromLTRB(12, 12, 12, fluid ? 0 : 8),
+      borderRadius: 22,
+      glowColor: accent,
+      child: Column(
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: SegmentedButton<int>(
+                  segments: const <ButtonSegment<int>>[
+                    ButtonSegment<int>(
+                      value: 0,
+                      label: Text('Cola'),
+                      icon: Icon(Icons.queue_music_rounded, size: 18),
+                    ),
+                    ButtonSegment<int>(
+                      value: 1,
+                      label: Text('Letras'),
+                      icon: Icon(Icons.lyrics_outlined, size: 18),
+                    ),
+                  ],
+                  selected: const <int>{0},
+                  showSelectedIcon: false,
+                  onSelectionChanged: (Set<int> value) {
+                    if (value.first == 1) {
+                      onOpenLyrics();
+                    } else {
+                      onTabChanged(0);
+                    }
+                  },
                 ),
-                if (tab == 0)
-                  IconButton(
-                    tooltip: 'Vaciar cola',
-                    onPressed: queue.isEmpty ? null : controller.clearQueue,
-                    icon: const Icon(Icons.delete_sweep_outlined, size: 20),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Expanded(
-              child: _QueueList(
-                queue: queue,
-                index: index,
-                controller: controller,
-                accent: accent,
               ),
+              if (tab == 0)
+                IconButton(
+                  tooltip: 'Vaciar cola',
+                  onPressed: queue.isEmpty ? null : controller.clearQueue,
+                  icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: _QueueList(
+              queue: queue,
+              index: index,
+              playing: playing,
+              controller: controller,
+              accent: accent,
+              padBottom: fluid ? 0 : 8,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
+
+    return fluid
+        ? SizedBox.expand(child: panel)
+        : SizedBox(height: height, child: panel);
   }
 }
 
@@ -1121,14 +1224,18 @@ class _QueueList extends StatelessWidget {
   const _QueueList({
     required this.queue,
     required this.index,
+    required this.playing,
     required this.controller,
     required this.accent,
+    this.padBottom = 8,
   });
 
   final List<Track> queue;
   final int index;
+  final bool playing;
   final PlayerController controller;
   final Color accent;
+  final double padBottom;
 
   @override
   Widget build(BuildContext context) {
@@ -1142,24 +1249,38 @@ class _QueueList extends StatelessWidget {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: padBottom),
       itemCount: queue.length,
       itemBuilder: (BuildContext context, int i) {
         final Track track = queue[i];
         final bool current = i == index;
-        return ListTile(
+        final Widget tile = ListTile(
           dense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 6),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          tileColor: current ? accent.withValues(alpha: 0.12) : null,
-          leading: _ArtworkImage(
-            path: track.artworkPath,
-            size: 38,
-            shape: BoxShape.rectangle,
-            radius: BorderRadius.circular(8),
-            accent: accent,
+          tileColor: current
+              ? accent.withValues(alpha: playing ? 0.16 : 0.10)
+              : null,
+          leading: Stack(
+            alignment: Alignment.bottomRight,
+            clipBehavior: Clip.none,
+            children: <Widget>[
+              _ArtworkImage(
+                path: track.artworkPath,
+                size: 38,
+                shape: BoxShape.rectangle,
+                radius: BorderRadius.circular(8),
+                accent: accent,
+              ),
+              if (current)
+                Positioned(
+                  right: -3,
+                  bottom: -3,
+                  child: _NowPlayingWaves(color: accent, playing: playing),
+                ),
+            ],
           ),
           title: Text(
             track.title,
@@ -1192,9 +1313,147 @@ class _QueueList extends StatelessWidget {
           ),
           onTap: () => controller.playAt(i),
         );
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: current && playing
+                ? <BoxShadow>[
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.25),
+                      blurRadius: 16,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : const <BoxShadow>[],
+          ),
+          child: tile,
+        );
       },
     );
   }
+}
+
+/// Ondas compactas que marcan la pista activa de la cola.
+///
+/// El controlador solo se ejecuta mientras hay reproducción; al pausar se
+/// conservan tres barras quietas para no perder la referencia visual.
+class _NowPlayingWaves extends ConsumerStatefulWidget {
+  const _NowPlayingWaves({required this.color, required this.playing});
+
+  final Color color;
+  final bool playing;
+
+  @override
+  ConsumerState<_NowPlayingWaves> createState() => _NowPlayingWavesState();
+}
+
+class _NowPlayingWavesState extends ConsumerState<_NowPlayingWaves>
+    with SingleTickerProviderStateMixin {
+  static const Duration _period = Duration(milliseconds: 900);
+
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: _period,
+  );
+  ValueNotifier<WindowUiState>? _window;
+  bool _backgrounded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _window = ref.read(windowStateProvider);
+    _backgrounded = _window!.value.backgrounded;
+    _window!.addListener(_onWindowChanged);
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _NowPlayingWaves oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _sync();
+  }
+
+  void _onWindowChanged() {
+    final bool value = _window!.value.backgrounded;
+    if (value == _backgrounded) return;
+    setState(() => _backgrounded = value);
+    _sync();
+  }
+
+  /// El ticker solo corre si hay sonido y la ventana es visible.
+  void _sync() {
+    if (widget.playing && !_backgrounded) {
+      if (!_controller.isAnimating) _controller.repeat();
+    } else if (_controller.isAnimating) {
+      _controller.stop();
+      _controller.value = 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _window?.removeListener(_onWindowChanged);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: _controller,
+        builder: (BuildContext context, Widget? _) => Container(
+          width: 18,
+          height: 18,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: widget.color.withValues(alpha: 0.35)),
+          ),
+          child: CustomPaint(
+            painter: _QueueWavePainter(
+              phase: _controller.value,
+              color: widget.color,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QueueWavePainter extends CustomPainter {
+  const _QueueWavePainter({required this.phase, required this.color});
+
+  final double phase;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = color
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+
+    for (int i = 0; i < 3; i++) {
+      final double wave = math.sin(phase * math.pi * 2 + i * 0.9);
+      final double height = size.height * (0.42 + 0.36 * wave);
+      final double x = size.width * (i + 1) / 4;
+      canvas.drawLine(
+        Offset(x, (size.height - height) / 2),
+        Offset(x, (size.height + height) / 2),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _QueueWavePainter oldDelegate) =>
+      oldDelegate.phase != phase || oldDelegate.color != color;
 }
 
 // ---------------------------------------------------------------------------
@@ -1207,11 +1466,13 @@ class _ArtworkStage extends ConsumerWidget {
     required this.config,
     required this.accent,
     required this.playing,
+    required this.showLyrics,
     required this.size,
     required this.onSeekFraction,
     required this.onPrevious,
     required this.onNext,
     required this.onLyrics,
+    required this.onCloseLyrics,
     required this.onMinimize,
   });
 
@@ -1219,11 +1480,13 @@ class _ArtworkStage extends ConsumerWidget {
   final AppThemeConfig config;
   final Color accent;
   final bool playing;
+  final bool showLyrics;
   final double size;
   final ValueChanged<double> onSeekFraction;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onLyrics;
+  final VoidCallback onCloseLyrics;
   final VoidCallback onMinimize;
 
   @override
@@ -1281,32 +1544,62 @@ class _ArtworkStage extends ConsumerWidget {
           )
         : artwork;
 
-    return ArtworkGestures(
-      size: size,
-      onSeekFraction: onSeekFraction,
-      onPrevious: onPrevious,
-      onNext: onNext,
-      onLyrics: onLyrics,
-      onMinimize: onMinimize,
-      child: RepaintBoundary(
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 480),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          transitionBuilder: (Widget child, Animation<double> animation) {
-            return FadeTransition(
-              opacity: animation,
+    // La carátula y las letras comparten el mismo área. El AnimatedSwitcher
+    // hace el crossfade; los gestos de carátula solo se montan cuando la imagen
+    // está visible para no robar el scroll de la letra.
+    return SizedBox(
+      width: size,
+      height: size,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 420),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (Widget child, Animation<double> animation) {
+          // Las letras entran desde abajo y salen hacia arriba: el movimiento
+          // explica si el panel se está abriendo o cerrando sin leer texto.
+          final bool toLyrics =
+              child.key == const ValueKey<String>('artwork-lyrics');
+          return FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: toLyrics
+                    ? const Offset(0, 0.08)
+                    : const Offset(0, -0.06),
+                end: Offset.zero,
+              ).animate(animation),
               child: ScaleTransition(
-                scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
+                scale: Tween<double>(begin: 0.96, end: 1).animate(animation),
                 child: child,
               ),
-            );
-          },
-          child: KeyedSubtree(
-            key: ValueKey<String>('${track.id}-${config.artworkShape.name}'),
-            child: body,
-          ),
-        ),
+            ),
+          );
+        },
+        child: showLyrics
+            ? KeyedSubtree(
+                key: const ValueKey<String>('artwork-lyrics'),
+                child: InArtworkLyrics(
+                  track: track,
+                  size: size,
+                  accent: accent,
+                  onClose: onCloseLyrics,
+                ),
+              )
+            : KeyedSubtree(
+                key: ValueKey<String>(
+                  '${track.id}-${config.artworkShape.name}',
+                ),
+                child: ArtworkGestures(
+                  size: size,
+                  onSeekFraction: onSeekFraction,
+                  onPrevious: onPrevious,
+                  onNext: onNext,
+                  onLyrics: onLyrics,
+                  onMinimize: onMinimize,
+                  accent: accent,
+                  child: RepaintBoundary(child: body),
+                ),
+              ),
       ),
     );
   }
@@ -1780,20 +2073,29 @@ class _RingPainter extends CustomPainter {
 
 /// Fondo degradado con orbes de color; responde a la paleta dinámica.
 class _DynamicBackdrop extends StatelessWidget {
-  const _DynamicBackdrop({required this.config, required this.accent});
+  const _DynamicBackdrop({
+    required this.config,
+    required this.accent,
+    required this.background,
+    this.backdrop,
+  });
 
   final AppThemeConfig config;
   final Color accent;
+  final Color background;
+  final List<Color>? backdrop;
 
   @override
   Widget build(BuildContext context) {
-    final List<Color> colors = config.usesDynamicPalette
-        ? <Color>[
-            Color.lerp(config.background, accent, 0.32) ?? config.background,
-            config.background,
-            Color.lerp(config.background, accent, 0.20) ?? config.background,
-          ]
-        : config.backdrop;
+    final List<Color> colors =
+        backdrop ??
+        (config.usesDynamicPalette
+            ? <Color>[
+                Color.lerp(background, accent, 0.32) ?? background,
+                background,
+                Color.lerp(background, accent, 0.20) ?? background,
+              ]
+            : config.backdrop);
 
     return Stack(
       fit: StackFit.expand,

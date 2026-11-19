@@ -66,9 +66,9 @@ class AppDatabase extends _$AppDatabase {
 
   final bool _manageBackups;
 
-  /// v3 añade índices para búsquedas/filtros de biblioteca sin perder filas.
+  /// v4 añade la configuración completa de los presets de ecualización.
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   static final List<Index> _libraryIndexes = <Index>[
     Index(
@@ -130,6 +130,11 @@ class AppDatabase extends _$AppDatabase {
       if (from < 3) {
         // v3: índices de biblioteca (CREATE INDEX IF NOT EXISTS, no destructivo).
         await _createIndexes(m);
+      }
+      if (from < 4) {
+        // v4: preset de ecualizador con modo, bandas y filtros paramétricos.
+        // Los presets antiguos siguen leyéndose desde bandsJson/preampDb.
+        await m.addColumn(eqPresets, eqPresets.configJson);
       }
     },
     beforeOpen: (details) async {

@@ -117,9 +117,9 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               const Text(
-                'Audius funciona sin configuración. Para SoundCloud y Spotify '
-                'pega un token OAuth de tu propia app; se guarda solo en este '
-                'dispositivo y no se comparte con terceros.',
+                'Audius y YouTube Music funcionan sin configuración. Para '
+                'SoundCloud y Spotify pega un token OAuth de tu propia app; se '
+                'guarda solo en este dispositivo y no se comparte con terceros.',
                 style: TextStyle(fontSize: 12, color: Colors.white60),
               ),
               const SizedBox(height: 16),
@@ -185,6 +185,12 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
                         'Tidal requiere credenciales de socio y contenido con '
                         'DRM. Se muestra su estado, sin búsqueda ni '
                         'reproducción.',
+                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      ),
+                      MusicSourceId.youtube => const Text(
+                        'Catálogo abierto de YouTube Music vía InnerTube: '
+                        'encuentra artistas y canciones actuales. Solo '
+                        'metadatos y enlace, sin reproducción directa.',
                         style: TextStyle(fontSize: 12, color: Colors.white54),
                       ),
                     },

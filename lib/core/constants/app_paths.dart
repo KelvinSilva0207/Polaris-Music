@@ -28,6 +28,13 @@ class AppPaths {
 
   static Future<Directory> lyrics() => _sub('lyrics');
 
+  /// Copias internas de las fuentes importadas por el usuario.
+  ///
+  /// Viven junto al resto de datos de la app: si el archivo original se mueve
+  /// o se borra, Polaris sigue teniendo su propia copia para registrar la
+  /// familia en cada arranque.
+  static Future<Directory> fonts() => _sub('fonts');
+
   static Future<Directory> downloads() async {
     // Descargas del updater: junto al resto de datos para no pedir permisos
     // extra de almacenamiento. En escritorio se puede abrir la carpeta.

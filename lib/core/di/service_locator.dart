@@ -1,6 +1,7 @@
 import 'package:get_it/get_it.dart';
 
 import '../../features/library/data/library_repository.dart';
+import '../../features/library/data/metadata_editor_service.dart';
 import '../../features/lyrics/data/lyrics_service.dart';
 import '../../features/online_music/data/audius_source.dart';
 import '../../features/online_music/data/download_manager.dart';
@@ -10,6 +11,7 @@ import '../../features/online_music/data/soundcloud_source.dart';
 import '../../features/online_music/data/source_helpers.dart';
 import '../../features/online_music/data/spotify_source.dart';
 import '../../features/online_music/data/tidal_source.dart';
+import '../../features/online_music/data/youtube_music_source.dart';
 import '../../features/online_music/domain/music_source.dart';
 import '../../features/online_music/domain/music_source_catalog.dart';
 import '../../features/online_music/domain/online_music_repository.dart';
@@ -20,12 +22,15 @@ import '../database/database_guard.dart';
 import '../services/app_updater_service.dart';
 import '../services/audio_engine_service.dart';
 import '../services/backup_service.dart';
+import '../services/font_service.dart';
 import '../services/global_hotkey_service.dart';
 import '../services/media_session_service.dart';
 import '../services/permission_service.dart';
 import '../services/playback_session_service.dart';
 import '../services/playback_stats_recorder.dart';
 import '../services/settings_service.dart';
+import '../services/audio_device_profile_service.dart';
+import '../services/system_audio_service.dart';
 import '../services/tray_service.dart';
 import '../services/update_service.dart';
 import '../services/window_service.dart';
@@ -85,6 +90,11 @@ class ServiceLocator {
       PlaybackSessionService(settings),
     );
 
+    AppLog.i('Bootstrap', 'Registrando fuentes importadas');
+    final FontService fontService = FontService(settings);
+    await fontService.restore();
+    sl.registerSingleton<FontService>(fontService);
+
     AppLog.i('Bootstrap', 'Iniciando motor de audio');
     final AudioEngineService engine = AudioEngineService(
       isBackgrounded: () =>
@@ -102,6 +112,17 @@ class ServiceLocator {
     final MediaSessionService mediaSession = MediaSessionService(engine);
     await mediaSession.initialize();
     sl.registerSingleton<MediaSessionService>(mediaSession);
+
+    AppLog.i('Bootstrap', 'Suscribiendo eventos del sistema');
+    final SystemAudioService systemAudio = SystemAudioService(
+      engine: engine,
+      settings: settings,
+    );
+    await systemAudio.initialize();
+    sl.registerSingleton<SystemAudioService>(systemAudio);
+    sl.registerSingleton<AudioDeviceProfileService>(
+      AudioDeviceProfileService(settings: settings, systemAudio: systemAudio),
+    );
 
     AppLog.i('Bootstrap', 'Registrando atajos globales');
     final GlobalHotkeyService hotkeys = GlobalHotkeyService(
@@ -141,11 +162,18 @@ class ServiceLocator {
     final AppUpdaterService updater = AppUpdaterService();
     sl.registerSingleton<AppUpdaterService>(updater);
     sl.registerSingleton<UpdateService>(updater);
-    sl.registerSingleton<BackupService>(BackupService(database));
+    sl.registerSingleton<BackupService>(
+      BackupService(database, settingsService: settings),
+    );
     sl.registerSingleton<LibraryRepository>(LibraryRepository(database));
+    sl.registerSingleton<MetadataEditorService>(
+      MetadataEditorService(sl<LibraryRepository>()),
+    );
     sl.registerSingleton<LyricsService>(LyricsService(database.lyricsDao));
     sl.registerSingleton<StatsService>(StatsService(database));
-    sl.registerSingleton<ProfilesService>(ProfilesService(database));
+    sl.registerSingleton<ProfilesService>(
+      ProfilesService(database, settings: settings),
+    );
 
     AppLog.i('Bootstrap', 'Preparando catálogo online y descargas');
     sl.registerLazySingleton<OnlineMusicService>(() => OnlineMusicService());
@@ -165,9 +193,13 @@ class ServiceLocator {
     sl.registerLazySingleton<TidalSource>(
       () => TidalSource(settings: settings, artworkCache: sl<ArtworkCache>()),
     );
+    sl.registerLazySingleton<YouTubeMusicSource>(
+      () => YouTubeMusicSource(artworkCache: sl<ArtworkCache>()),
+    );
     sl.registerLazySingleton<MusicSourceCatalog>(
       () => MusicSourceCatalog(<MusicSourceProvider>[
         sl<AudiusSource>(),
+        sl<YouTubeMusicSource>(),
         sl<SoundCloudSource>(),
         sl<SpotifySource>(),
         sl<TidalSource>(),
@@ -203,6 +235,23 @@ class ServiceLocator {
     }
   }
 
+  /// Cierre completo en Android: detiene audio, notificación y servicio en
+  /// primer plano antes de liberar el resto de recursos.
+  static Future<void> shutdownAndroid() async {
+    if (sl.isRegistered<MediaSessionService>()) {
+      await sl<MediaSessionService>().shutdown();
+    }
+    if (sl.isRegistered<AudioDeviceProfileService>()) {
+      await sl<AudioDeviceProfileService>().dispose();
+    }
+    if (sl.isRegistered<SystemAudioService>()) {
+      await sl<SystemAudioService>().dispose();
+    }
+    if (sl.isRegistered<AudioEngineService>()) {
+      await sl<AudioEngineService>().dispose();
+    }
+  }
+
   /// Libera recursos nativos en orden inverso.
   static Future<void> shutdown() async {
     if (sl.isRegistered<PlaybackSessionService>()) {
@@ -216,6 +265,12 @@ class ServiceLocator {
     }
     if (sl.isRegistered<MediaSessionService>()) {
       await sl<MediaSessionService>().dispose();
+    }
+    if (sl.isRegistered<AudioDeviceProfileService>()) {
+      await sl<AudioDeviceProfileService>().dispose();
+    }
+    if (sl.isRegistered<SystemAudioService>()) {
+      await sl<SystemAudioService>().dispose();
     }
     if (sl.isRegistered<DownloadManager>()) {
       await sl<DownloadManager>().dispose();

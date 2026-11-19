@@ -6,11 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/playback_state.dart';
 import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
-import '../../../core/providers/theme_provider.dart';
+import '../../../core/providers/compact_style_provider.dart';
 import '../../../core/services/window_service.dart';
-import '../../../core/theme/app_theme_config.dart';
+import '../../../core/theme/compact_style_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
+import '../../../shared/widgets/compact_surface.dart';
 import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/track_artwork.dart';
 import '../../player/domain/player_controller.dart';
@@ -57,13 +58,16 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
     final double volume = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.volume),
     );
-    final AppThemeConfig config = ref.watch(themeConfigProvider);
-    final Color accent = config.accent;
+    final CompactStyleConfig style = ref.watch(
+      compactStyleProvider(CompactSurface.phone),
+    );
+    final PolarisTokens tokens = context.tokens;
+    final ResolvedCompactStyle resolved = style.resolve(tokens);
+    final Color accent = resolved.accent;
 
     final PlayerController controller = ref.read(
       playerControllerProvider.notifier,
     );
-    final PolarisTokens tokens = context.tokens;
 
     // El vinilo deja de girar cuando la ventana pasa a segundo plano, pero el
     // reproductor sigue sonando: el estado de audio y el de UI son independientes.
@@ -85,18 +89,18 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: <Color>[
-                Color.lerp(config.background, accent, 0.30) ??
-                    config.background,
-                config.background,
-                Color.lerp(config.background, accent, 0.14) ??
-                    config.background,
+                Color.lerp(resolved.background, accent, 0.30) ??
+                    resolved.background,
+                resolved.background,
+                Color.lerp(resolved.background, accent, 0.14) ??
+                    resolved.background,
               ],
             ),
           ),
           child: SafeArea(
             child: Column(
               children: <Widget>[
-                _PhoneTopBar(accent: accent),
+                _PhoneTopBar(accent: accent, style: resolved),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
@@ -143,7 +147,7 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                       ),
                       const SizedBox(height: 18),
                       _GlassCard(
-                        tokens: tokens,
+                        style: resolved,
                         child: Row(
                           children: <Widget>[
                             Icon(
@@ -185,36 +189,41 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
 }
 
 class _PhoneTopBar extends ConsumerWidget {
-  const _PhoneTopBar({required this.accent});
+  const _PhoneTopBar({required this.accent, required this.style});
 
   final Color accent;
+  final ResolvedCompactStyle style;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final window = ref.watch(windowServiceProvider);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 10, 8, 4),
-      child: Row(
-        children: <Widget>[
-          const PolarisLogo(size: 22, glow: true),
-          const SizedBox(width: 8),
-          const Expanded(
-            child: Text(
-              'Polaris · Teléfono',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 4),
+      child: CompactPanel(
+        style: style,
+        padding: const EdgeInsets.fromLTRB(12, 6, 6, 6),
+        child: Row(
+          children: <Widget>[
+            const PolarisLogo(size: 22, glow: true),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Polaris · Teléfono',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
             ),
-          ),
-          IconButton(
-            tooltip: 'Minimizar a la bandeja',
-            onPressed: window.minimizeToTray,
-            icon: const Icon(Icons.expand_more_rounded, size: 20),
-          ),
-          IconButton(
-            tooltip: 'Abrir ventana principal',
-            onPressed: window.restoreNormal,
-            icon: Icon(Icons.open_in_full_rounded, size: 18, color: accent),
-          ),
-        ],
+            IconButton(
+              tooltip: 'Minimizar a la bandeja',
+              onPressed: window.minimizeToTray,
+              icon: const Icon(Icons.expand_more_rounded, size: 20),
+            ),
+            IconButton(
+              tooltip: 'Abrir ventana principal',
+              onPressed: window.restoreNormal,
+              icon: Icon(Icons.open_in_full_rounded, size: 18, color: accent),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -557,20 +566,16 @@ class _QuickCard extends StatelessWidget {
 }
 
 class _GlassCard extends StatelessWidget {
-  const _GlassCard({required this.tokens, required this.child});
+  const _GlassCard({required this.style, required this.child});
 
-  final PolarisTokens tokens;
+  final ResolvedCompactStyle style;
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return CompactPanel(
+      style: style,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: Colors.white.withValues(alpha: 0.06),
-        border: Border.all(color: tokens.panelBorder),
-      ),
       child: child,
     );
   }

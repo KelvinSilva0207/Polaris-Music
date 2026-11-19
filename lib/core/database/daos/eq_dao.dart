@@ -21,11 +21,13 @@ class EqDao extends DatabaseAccessor<AppDatabase> with _$EqDaoMixin {
     required String name,
     required List<double> bands,
     double preampDb = 0,
+    String? configJson,
   }) => into(eqPresets).insertOnConflictUpdate(
     EqPresetsCompanion.insert(
       name: name,
       bandsJson: bands.join(','),
       preampDb: Value(preampDb),
+      configJson: Value(configJson),
     ),
   );
 

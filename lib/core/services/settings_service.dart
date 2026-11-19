@@ -53,6 +53,17 @@ class SettingsService {
     _notify();
   }
 
+  /// Lectura en un scope arbitrario (perfiles de usuario, salidas de audio).
+  Future<String?> getScoped(String scope, String key) =>
+      _dao.getValue(key, scope: scope);
+
+  /// Escritura en un scope arbitrario sin tocar la caché global.
+  Future<void> setScoped(String scope, String key, String value) =>
+      _dao.setValue(key, value, scope: scope);
+
+  Future<void> removeScoped(String scope, String key) =>
+      _dao.remove(key, scope: scope);
+
   Future<void> setBool(String key, bool value) =>
       setString(key, value ? 'true' : 'false');
 
@@ -77,7 +88,29 @@ class SettingsService {
   bool get crossfadeEnabled =>
       boolOr(AppConstants.keyCrossfade, fallback: false);
 
+  /// Pausa al desconectar auriculares o cambiar de salida de audio.
+  bool get pauseOnHeadphonesDisconnect =>
+      boolOr(AppConstants.keyPauseOnHeadphonesDisconnect, fallback: false);
+
+  /// Pausa cuando el volumen (de la app o del sistema en Android) llega a cero.
+  bool get pauseOnVolumeZero =>
+      boolOr(AppConstants.keyPauseOnVolumeZero, fallback: false);
+
   int get crossfadeMs => intOr(AppConstants.keyCrossfadeMs, fallback: 3000);
+
+  /// Recorte de silencios al inicio/final de las pistas.
+  bool get silenceTrimEnabled =>
+      boolOr(AppConstants.keySilenceTrim, fallback: false);
+
+  int get silenceTrimStartMs =>
+      intOr(AppConstants.keySilenceTrimStartMs, fallback: 0);
+
+  int get silenceTrimEndMs =>
+      intOr(AppConstants.keySilenceTrimEndMs, fallback: 0);
+
+  /// Aplica automáticamente el EQ guardado para la salida activa.
+  bool get perDeviceProfilesEnabled =>
+      boolOr(AppConstants.keyPerDeviceProfiles, fallback: false);
 
   double get volume => doubleOr(
     AppConstants.keyVolume,

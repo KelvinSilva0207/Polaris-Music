@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_theme_config.dart';
+import 'typography_config.dart';
 
 /// Tokens visuales de Polaris.
 ///
@@ -36,6 +37,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     this.shadowOpacity = 0.28,
     this.neumorphicLight = const Color(0xFF2A2A2A),
     this.neumorphicDark = const Color(0xFF000000),
+    this.typography,
   });
 
   final Color accent;
@@ -73,6 +75,9 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   /// Luces y sombras del relieve neumórfico.
   final Color neumorphicLight;
   final Color neumorphicDark;
+
+  /// Tipografía activa, expuesta a vistas que ajustan pesos por rol (letras).
+  final TypographyConfig? typography;
 
   bool get isGlass => cardStyle == CardStyle.glassmorphic;
   bool get isNeumorphic => cardStyle == CardStyle.neumorphic;
@@ -199,6 +204,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     double? shadowOpacity,
     Color? neumorphicLight,
     Color? neumorphicDark,
+    TypographyConfig? typography,
   }) => PolarisTokens(
     accent: accent ?? this.accent,
     panelRadius: panelRadius ?? this.panelRadius,
@@ -222,6 +228,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     shadowOpacity: shadowOpacity ?? this.shadowOpacity,
     neumorphicLight: neumorphicLight ?? this.neumorphicLight,
     neumorphicDark: neumorphicDark ?? this.neumorphicDark,
+    typography: typography ?? this.typography,
   );
 
   @override
@@ -255,6 +262,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
           neumorphicLight,
       neumorphicDark:
           Color.lerp(neumorphicDark, other.neumorphicDark, t) ?? neumorphicDark,
+      typography: t < 0.5 ? typography : other.typography,
     );
   }
 

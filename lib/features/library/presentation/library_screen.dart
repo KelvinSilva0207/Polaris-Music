@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -88,6 +90,16 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               const SizedBox(height: 10),
               Row(
                 children: <Widget>[
+                  if (Platform.isAndroid)
+                    OutlinedButton.icon(
+                      onPressed: scan.running ? null : _importMetrolist,
+                      icon: const Icon(
+                        Icons.download_for_offline_outlined,
+                        size: 18,
+                      ),
+                      label: const Text('Metrolist'),
+                    ),
+                  if (Platform.isAndroid) const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _manageFolders,
                     icon: const Icon(Icons.folder_outlined, size: 18),
@@ -228,6 +240,14 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     await proxy.requestLibraryAccess();
     if (!mounted) return;
     await ref.read(scanControllerProvider.notifier).scan();
+  }
+
+  Future<void> _importMetrolist() async {
+    final String? folder = await FilePicker.getDirectoryPath(
+      dialogTitle: 'Carpeta de descargas de Metrolist (opcional)',
+    );
+    if (!mounted) return;
+    await ref.read(scanControllerProvider.notifier).importMetrolist(folder);
   }
 
   Future<void> _manageFolders() async {

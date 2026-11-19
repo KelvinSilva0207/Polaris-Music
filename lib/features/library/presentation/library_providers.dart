@@ -7,11 +7,15 @@ import '../../../core/di/service_locator.dart';
 import '../../../core/models/track.dart';
 import '../data/library_repository.dart';
 import '../data/library_scanner.dart';
+import '../data/metadata_editor_service.dart';
 import '../domain/library_folder.dart';
 import '../domain/library_sort.dart';
 
 final Provider<LibraryRepository> libraryRepositoryProvider =
     Provider<LibraryRepository>((Ref ref) => sl<LibraryRepository>());
+
+final Provider<MetadataEditorService> metadataEditorServiceProvider =
+    Provider<MetadataEditorService>((Ref ref) => sl<MetadataEditorService>());
 
 final StateProvider<String> libraryQueryProvider = StateProvider<String>(
   (Ref ref) => '',
@@ -80,7 +84,12 @@ class ScanController extends StateNotifier<ScanUiState> {
   final LibraryRepository _repository;
   StreamSubscription<ScanProgress>? _subscription;
 
-  Future<void> scan() async {
+  Future<void> scan() => _run(_repository.scan);
+
+  Future<void> importMetrolist(String? folder) =>
+      _run(() => _repository.importMetrolist(folder));
+
+  Future<void> _run(Future<ScanSummary> Function() action) async {
     if (state.running) return;
     state = ScanUiState(running: true, summary: state.summary);
     _subscription = _repository.scanProgress.listen((ScanProgress progress) {
@@ -90,10 +99,10 @@ class ScanController extends StateNotifier<ScanUiState> {
     });
 
     try {
-      final ScanSummary summary = await _repository.scan();
+      final ScanSummary summary = await action();
       state = ScanUiState(summary: summary);
     } catch (error) {
-      state = ScanUiState(error: 'No se pudo escanear: $error');
+      state = ScanUiState(error: 'No se pudo completar la operación: $error');
     } finally {
       await _subscription?.cancel();
       _subscription = null;

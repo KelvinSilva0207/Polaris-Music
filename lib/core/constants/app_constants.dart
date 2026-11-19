@@ -6,7 +6,7 @@ class AppConstants {
   AppConstants._();
 
   static const String appName = 'Polaris Music';
-  static const String appVersionFallback = '1.0.3';
+  static const String appVersionFallback = '1.0.4';
   static const String githubOwner = 'KelvinSilva0207';
   static const String githubRepo = 'Polaris-Music';
   static const String githubReleasesUrl =
@@ -65,6 +65,98 @@ class AppConstants {
   static const double eqMinGain = -12;
   static const double eqMaxGain = 12;
 
+  /// Diseños seleccionables del ecualizador gráfico (frecuencias en Hz).
+  /// El diseño personalizado se construye añadiendo/quitando bandas en la UI.
+  static const Map<String, List<double>> eqBandLayouts = <String, List<double>>{
+    '5': <double>[60, 230, 910, 3600, 14000],
+    '10': eqBands,
+    '15': <double>[
+      25,
+      40,
+      63,
+      100,
+      160,
+      250,
+      400,
+      630,
+      1000,
+      1600,
+      2500,
+      4000,
+      6300,
+      10000,
+      16000,
+    ],
+    '20': <double>[
+      20,
+      31,
+      50,
+      80,
+      125,
+      200,
+      315,
+      500,
+      630,
+      1000,
+      1600,
+      2000,
+      3150,
+      4000,
+      6300,
+      8000,
+      10000,
+      12500,
+      16000,
+      20000,
+    ],
+    '31': <double>[
+      20,
+      25,
+      31.5,
+      40,
+      50,
+      63,
+      80,
+      100,
+      125,
+      160,
+      200,
+      250,
+      315,
+      400,
+      500,
+      630,
+      800,
+      1000,
+      1250,
+      1600,
+      2000,
+      2500,
+      3150,
+      4000,
+      5000,
+      6300,
+      8000,
+      10000,
+      12500,
+      16000,
+      20000,
+    ],
+  };
+
+  static const String eqCustomLayout = 'custom';
+
+  /// Límites del modo paramétrico y del sintetizador sub-armónico.
+  static const int eqMaxParametricFilters = 8;
+  static const double eqMinFrequency = 20;
+  static const double eqMaxFrequency = 20000;
+  static const double eqMinQ = 0.1;
+  static const double eqMaxQ = 18;
+  static const double subMinMix = 0;
+  static const double subMaxMix = 0.35;
+  static const double subMinCrossover = 40;
+  static const double subMaxCrossover = 200;
+
   /// Rangos de velocidad de reproducción permitidos.
   static const double minSpeed = 0.5;
   static const double maxSpeed = 2.0;
@@ -75,8 +167,15 @@ class AppConstants {
   static const String keyGapless = 'audio.gapless';
   static const String keyCrossfade = 'audio.crossfade';
   static const String keyCrossfadeMs = 'audio.crossfade_ms';
+  static const String keySilenceTrim = 'audio.trim_silence';
+  static const String keySilenceTrimStartMs = 'audio.trim_start_ms';
+  static const String keySilenceTrimEndMs = 'audio.trim_end_ms';
+  static const String keyPerDeviceProfiles = 'eq.per_device_profiles';
   static const String keyNormalizeVolume = 'audio.normalize';
   static const String keyVolume = 'audio.volume';
+  static const String keyPauseOnHeadphonesDisconnect =
+      'audio.pause_on_headphones_disconnect';
+  static const String keyPauseOnVolumeZero = 'audio.pause_on_volume_zero';
   static const String keyLastTrackId = 'player.last_track_id';
   static const String keyPlaybackSession = 'player.session';
   static const String keySleepTimerDefault = 'player.sleep_timer_min';
@@ -84,12 +183,22 @@ class AppConstants {
   static const String keyEqPreset = 'eq.preset';
   static const String keyEqCustomBands = 'eq.custom_bands';
   static const String keyEqCustomPreamp = 'eq.custom_preamp';
+
+  /// Configuración completa (gráfica, paramétrica y sub-armónico). Las claves
+  /// antiguas se siguen escribiendo para no romper versiones previas.
+  static const String keyEqConfig = 'eq.config';
   static const String keyAlwaysOnTop = 'window.always_on_top';
   static const String keyMiniMode = 'window.mini_mode';
   static const String keyTrayEnabled = 'window.tray_enabled';
   static const String keyAccentColor = 'theme.accent';
   static const String keyThemeConfig = 'theme.config';
   static const String keyThemeProfiles = 'theme.profiles';
+  static const String keyCompactIslandStyle = 'ui.style.island';
+  static const String keyCompactMiniStyle = 'ui.style.mini';
+  static const String keyCompactPhoneStyle = 'ui.style.phone';
+  static const String keyCompactPlayerStyle = 'ui.style.player';
+  static const String keyTypography = 'ui.typography';
+  static const String keyImportedFonts = 'ui.imported_fonts';
   static const String keyIslandEnabled = 'island.enabled';
   static const String keyScanOnStartup = 'library.scan_on_startup';
   static const String keyLastScanAt = 'library.last_scan_at';

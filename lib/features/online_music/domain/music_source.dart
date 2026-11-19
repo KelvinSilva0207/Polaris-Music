@@ -3,7 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'online_track.dart';
 
 /// Identificador estable de un proveedor de catálogo online.
-enum MusicSourceId { audius, soundcloud, spotify, tidal }
+enum MusicSourceId { audius, soundcloud, spotify, tidal, youtube }
 
 /// Motivo por el que una fuente no se puede consultar en este momento.
 ///
@@ -25,6 +25,7 @@ extension MusicSourceIdX on MusicSourceId {
     MusicSourceId.soundcloud => 'SoundCloud',
     MusicSourceId.spotify => 'Spotify',
     MusicSourceId.tidal => 'Tidal',
+    MusicSourceId.youtube => 'YouTube Music',
   };
 
   /// Prefijo usado en `externalId` para enrutar descargas y streams.
@@ -33,11 +34,14 @@ extension MusicSourceIdX on MusicSourceId {
     MusicSourceId.soundcloud => 'soundcloud',
     MusicSourceId.spotify => 'spotify',
     MusicSourceId.tidal => 'tidal',
+    MusicSourceId.youtube => 'youtube',
   };
 
   /// Las APIs de Spotify y Tidal entregan metadatos, no audio reproducible.
   bool get canStreamAudio => switch (this) {
-    MusicSourceId.audius || MusicSourceId.soundcloud => true,
+    MusicSourceId.audius ||
+    MusicSourceId.soundcloud ||
+    MusicSourceId.youtube => true,
     MusicSourceId.spotify || MusicSourceId.tidal => false,
   };
 

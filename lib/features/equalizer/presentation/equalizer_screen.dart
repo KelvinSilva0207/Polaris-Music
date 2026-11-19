@@ -2,16 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
+import '../../../core/models/equalizer_config.dart';
 import '../../../core/models/equalizer_preset.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../domain/equalizer_controller.dart';
+import 'eq_curve_painter.dart';
 import 'equalizer_providers.dart';
+import 'parametric_eq_view.dart';
+import 'subharmonic_control.dart';
 
-/// Ecualizador de 10 bandas + preamplificador.
+/// Ecualizador gráfico configurable + paramétrico + sub-armónico.
 ///
 /// Los ajustes se aplican al audio mediante los filtros `lavfi` de libmpv
 /// (Windows y Android). En plataformas sin DSP la pantalla lo indica y los
-/// valores se siguen guardando como preset.
+/// valores se siguen guardando como perfil.
 class EqualizerScreen extends ConsumerWidget {
   const EqualizerScreen({super.key});
 
@@ -38,9 +42,10 @@ class EqualizerScreen extends ConsumerWidget {
                         ?.copyWith(fontSize: 30),
                   ),
                   const SizedBox(height: 2),
-                  const Text(
-                    '10 bandas de estudio + preamplificador',
-                    style: TextStyle(color: Colors.white54),
+                  Text(
+                    '${state.config.frequencies.length} bandas, paramétrico y '
+                    'sub-armónico',
+                    style: const TextStyle(color: Colors.white54),
                   ),
                 ],
               ),
@@ -49,46 +54,57 @@ class EqualizerScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 14),
-        if (backend) _DspStatus(enabled: state.enabled) else const _DspNotice(),
+        if (backend)
+          _DspStatus(
+            enabled: state.enabled,
+            mode: state.mode,
+            subEnabled: state.sub.enabled,
+          )
+        else
+          const _DspNotice(),
+        const SizedBox(height: 10),
+        _DeviceProfileCard(state: state, controller: controller),
         const SizedBox(height: 10),
         _PresetSelector(state: state, controller: controller),
-        const SizedBox(height: 20),
-        Container(
-          padding: const EdgeInsets.fromLTRB(12, 20, 12, 12),
-          decoration: context.tokens.panelDecoration(
-            radius: 20,
-            elevated: false,
+        const SizedBox(height: 16),
+        SegmentedButton<EqMode>(
+          segments: const <ButtonSegment<EqMode>>[
+            ButtonSegment<EqMode>(
+              value: EqMode.graphic,
+              label: Text('Gráfico'),
+              icon: Icon(Icons.bar_chart_rounded, size: 16),
+            ),
+            ButtonSegment<EqMode>(
+              value: EqMode.parametric,
+              label: Text('Paramétrico'),
+              icon: Icon(Icons.tune_rounded, size: 16),
+            ),
+          ],
+          selected: <EqMode>{state.mode},
+          onSelectionChanged: (Set<EqMode> selection) {
+            if (selection.isEmpty) return;
+            controller.setMode(selection.first);
+          },
+        ),
+        const SizedBox(height: 14),
+        EqCurveView(config: state.config),
+        const SizedBox(height: 14),
+        if (state.mode == EqMode.graphic)
+          _GraphicPanel(state: state, controller: controller)
+        else
+          ParametricEqView(
+            filters: state.filters,
+            onFilterChanged: controller.setParametricFilter,
+            onAdd: controller.addParametricFilter,
+            onRemove: controller.removeParametricFilter,
           ),
-          child: Column(
-            children: <Widget>[
-              SizedBox(
-                height: 230,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: List<Widget>.generate(
-                      AppConstants.eqBands.length,
-                      (int index) => _BandSlider(
-                        frequency: AppConstants.eqBands[index],
-                        gain: index < state.bands.length
-                            ? state.bands[index]
-                            : 0,
-                        enabled: state.enabled,
-                        onChanged: (double value) =>
-                            controller.setBand(index, value),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const Divider(height: 24),
-              _PreampControl(
-                value: state.preampDb,
-                enabled: state.enabled,
-                onChanged: controller.setPreamp,
-              ),
-            ],
+        const SizedBox(height: 14),
+        SubharmonicControl(
+          settings: state.sub,
+          onChanged: (SubHarmonicSettings value) => controller.setSub(
+            enabled: value.enabled,
+            mix: value.mix,
+            crossoverHz: value.crossoverHz,
           ),
         ),
         const SizedBox(height: 18),
@@ -99,7 +115,7 @@ class EqualizerScreen extends ConsumerWidget {
             OutlinedButton.icon(
               onPressed: () => _saveAs(context, controller),
               icon: const Icon(Icons.save_outlined, size: 18),
-              label: const Text('Guardar como preset'),
+              label: const Text('Guardar perfil'),
             ),
             TextButton.icon(
               onPressed: controller.reset,
@@ -109,12 +125,11 @@ class EqualizerScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 18),
-        Text(
-          'Presets incluidos: Plano, Rock, Pop, Jazz, Clásica, Electrónica, '
-          'Hip-Hop, Vocal y Bass Boost. Mantén pulsado un preset propio para '
-          'eliminarlo.',
-          style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: Colors.white38),
+        const Text(
+          'Elige 5, 10, 15, 20 o 31 bandas, ajusta cada frecuencia o usa hasta '
+          '8 filtros paramétricos. Los perfiles se guardan con su curva, modo '
+          'y sub-armónico. Mantén pulsado un perfil propio para eliminarlo.',
+          style: TextStyle(fontSize: 12, color: Colors.white38),
         ),
       ],
     );
@@ -128,12 +143,12 @@ class EqualizerScreen extends ConsumerWidget {
     final bool? accepted = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Guardar preset'),
+        title: const Text('Guardar perfil'),
         content: TextField(
           controller: name,
           autofocus: true,
           decoration: const InputDecoration(
-            labelText: 'Nombre del preset',
+            labelText: 'Nombre del perfil',
             hintText: 'Mi firma sonora',
           ),
           onSubmitted: (String _) => Navigator.pop(context, true),
@@ -154,7 +169,7 @@ class EqualizerScreen extends ConsumerWidget {
       await controller.saveAs(name.text);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Preset “${name.text.trim()}” guardado')),
+          SnackBar(content: Text('Perfil “${name.text.trim()}” guardado')),
         );
       }
     }
@@ -162,10 +177,96 @@ class EqualizerScreen extends ConsumerWidget {
   }
 }
 
+class _GraphicPanel extends StatelessWidget {
+  const _GraphicPanel({required this.state, required this.controller});
+
+  final EqualizerState state;
+  final EqualizerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final String layoutId = state.config.layoutId;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+      decoration: context.tokens.panelDecoration(radius: 20, elevated: false),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: <Widget>[
+                for (final MapEntry<String, List<double>> entry
+                    in AppConstants.eqBandLayouts.entries)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      label: Text('${entry.key} bandas'),
+                      selected: layoutId == entry.key,
+                      onSelected: (bool value) {
+                        if (value) controller.setBandLayout(entry.key);
+                      },
+                    ),
+                  ),
+                ChoiceChip(
+                  label: const Text('Personalizada'),
+                  selected: layoutId == AppConstants.eqCustomLayout,
+                  onSelected: (_) {},
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            height: 230,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: List<Widget>.generate(
+                  state.frequencies.length,
+                  (int index) => _BandSlider(
+                    frequency: state.frequencies[index],
+                    gain: index < state.bands.length ? state.bands[index] : 0,
+                    onChanged: (double value) =>
+                        controller.setBand(index, value),
+                    onRemove: state.frequencies.length > 2
+                        ? () => controller.removeBand(index)
+                        : null,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: controller.addBand,
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Añadir banda personalizada'),
+            ),
+          ),
+          const Divider(height: 16),
+          _PreampControl(
+            value: state.preampDb,
+            onChanged: controller.setPreamp,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _DspStatus extends StatelessWidget {
-  const _DspStatus({required this.enabled});
+  const _DspStatus({
+    required this.enabled,
+    required this.mode,
+    required this.subEnabled,
+  });
 
   final bool enabled;
+  final EqMode mode;
+  final bool subEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -191,9 +292,10 @@ class _DspStatus extends StatelessWidget {
           Expanded(
             child: Text(
               enabled
-                  ? 'DSP activo: 10 bandas aplicadas al audio mediante libmpv.'
-                  : 'DSP en espera. Activa el interruptor para escuchar el '
-                        'ecualizador.',
+                  ? 'DSP activo: modo ${mode.label} mediante libmpv'
+                        '${subEnabled ? ' + sub-armónico' : ''}.'
+                  : 'DSP en espera. Activa el interruptor para escuchar los '
+                        'filtros.',
               style: const TextStyle(fontSize: 12, color: Colors.white70),
             ),
           ),
@@ -225,10 +327,116 @@ class _DspNotice extends StatelessWidget {
           Expanded(
             child: Text(
               'Esta plataforma no permite aplicar filtros de audio. Los ajustes '
-              'se guardan como preset, pero no modifican la reproducción.',
+              'se guardan como perfil, pero no modifican la reproducción.',
               style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Perfiles de ecualizador por dispositivo de salida (altavoces vs. BT).
+class _DeviceProfileCard extends StatelessWidget {
+  const _DeviceProfileCard({required this.state, required this.controller});
+
+  final EqualizerState state;
+  final EqualizerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color accent = context.tokens.accent;
+    final String? deviceName = state.activeDeviceName;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: accent.withValues(alpha: 0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.headphones_rounded, size: 18, color: accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      'Perfil por dispositivo de salida',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      deviceName == null
+                          ? 'No se ha detectado la salida activa'
+                          : 'Salida: $deviceName',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.white54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: controller.perDeviceProfilesEnabled,
+                onChanged: (bool value) =>
+                    controller.setPerDeviceProfiles(value),
+              ),
+            ],
+          ),
+          if (controller.perDeviceProfilesEnabled &&
+              deviceName != null) ...<Widget>[
+            const SizedBox(height: 8),
+            if (state.usingDeviceProfile)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: <Widget>[
+                    Icon(Icons.check_circle_rounded, size: 14, color: accent),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Aplicando el perfil guardado de $deviceName',
+                      style: TextStyle(fontSize: 11, color: accent),
+                    ),
+                  ],
+                ),
+              ),
+            FutureBuilder<bool>(
+              future: controller.hasProfileForCurrentDevice(),
+              builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
+                final bool hasProfile = snapshot.data ?? false;
+                return Wrap(
+                  spacing: 8,
+                  children: <Widget>[
+                    OutlinedButton.icon(
+                      onPressed: () => controller.saveProfileForCurrentDevice(),
+                      icon: const Icon(Icons.bookmark_add_rounded, size: 16),
+                      label: const Text('Guardar para este dispositivo'),
+                    ),
+                    if (hasProfile)
+                      TextButton.icon(
+                        onPressed: () =>
+                            controller.deleteProfileForCurrentDevice(),
+                        icon: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 16,
+                        ),
+                        label: const Text('Borrar perfil'),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -245,7 +453,7 @@ class _PresetSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     if (state.presets.isEmpty) {
       return const Text(
-        'Cargando presets…',
+        'Cargando perfiles…',
         style: TextStyle(color: Colors.white54),
       );
     }
@@ -287,8 +495,8 @@ class _PresetSelector extends StatelessWidget {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Eliminar preset'),
-        content: Text('¿Eliminar el preset “${preset.name}”?'),
+        title: const Text('Eliminar perfil'),
+        content: Text('¿Eliminar el perfil “${preset.name}”?'),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -309,14 +517,14 @@ class _BandSlider extends StatelessWidget {
   const _BandSlider({
     required this.frequency,
     required this.gain,
-    required this.enabled,
     required this.onChanged,
+    required this.onRemove,
   });
 
   final double frequency;
   final double gain;
-  final bool enabled;
   final ValueChanged<double> onChanged;
+  final VoidCallback? onRemove;
 
   String get _label {
     if (frequency >= 1000) {
@@ -332,17 +540,31 @@ class _BandSlider extends StatelessWidget {
   Widget build(BuildContext context) {
     final Color accent = context.tokens.accent;
     return SizedBox(
-      width: 52,
+      width: 58,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Text(
-            gain == 0 ? '0' : gain.toStringAsFixed(0),
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: gain == 0 ? Colors.white54 : accent,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Text(
+                gain == 0 ? '0' : gain.toStringAsFixed(0),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: gain == 0 ? Colors.white54 : accent,
+                ),
+              ),
+              if (onRemove != null)
+                InkWell(
+                  onTap: onRemove,
+                  child: const Icon(
+                    Icons.close_rounded,
+                    size: 11,
+                    color: Colors.white30,
+                  ),
+                ),
+            ],
           ),
           SizedBox(
             height: 168,
@@ -356,7 +578,7 @@ class _BandSlider extends StatelessWidget {
                 min: AppConstants.eqMinGain,
                 max: AppConstants.eqMaxGain,
                 divisions: 24,
-                onChanged: enabled ? onChanged : null,
+                onChanged: onChanged,
               ),
             ),
           ),
@@ -371,14 +593,9 @@ class _BandSlider extends StatelessWidget {
 }
 
 class _PreampControl extends StatelessWidget {
-  const _PreampControl({
-    required this.value,
-    required this.enabled,
-    required this.onChanged,
-  });
+  const _PreampControl({required this.value, required this.onChanged});
 
   final double value;
-  final bool enabled;
   final ValueChanged<double> onChanged;
 
   @override
@@ -392,11 +609,11 @@ class _PreampControl extends StatelessWidget {
         ),
         Expanded(
           child: Slider(
-            value: value.clamp(-12.0, 12.0),
-            min: -12,
-            max: 12,
+            value: value.clamp(AppConstants.eqMinGain, AppConstants.eqMaxGain),
+            min: AppConstants.eqMinGain,
+            max: AppConstants.eqMaxGain,
             divisions: 24,
-            onChanged: enabled ? onChanged : null,
+            onChanged: onChanged,
           ),
         ),
         SizedBox(

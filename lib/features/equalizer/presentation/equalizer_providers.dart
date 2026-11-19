@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/service_locator.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/services/audio_device_profile_service.dart';
 import '../../../core/services/audio_engine_service.dart';
 import '../../../core/services/settings_service.dart';
 import '../domain/equalizer_controller.dart';
@@ -17,6 +18,7 @@ equalizerControllerProvider =
         db.eqDao,
         settings,
         sl<AudioEngineService>(),
+        sl<AudioDeviceProfileService>(),
       );
       unawaited(controller.load());
       ref.onDispose(controller.dispose);

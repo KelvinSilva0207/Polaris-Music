@@ -2,7 +2,7 @@
 ;  Polaris Music - instalador oficial para Windows
 ;
 ;  Compilar con:  installer\build_installer.ps1
-;  o directamente: ISCC.exe /DMyAppVersion=1.0.3 installer\polaris_music.iss
+;  o directamente: ISCC.exe /DMyAppVersion=1.0.4 installer\polaris_music.iss
 ;
 ;  El instalador es por usuario por defecto (sin UAC), lo que permite que la
 ;  autoactualización desde la app se ejecute de forma silenciosa. Tambien puede
@@ -22,7 +22,7 @@
 #ifndef MyAppVersion
   #define MyAppVersion GetEnv("POLARIS_VERSION")
   #if MyAppVersion == ""
-    #define MyAppVersion "1.0.3"
+    #define MyAppVersion "1.0.4"
   #endif
 #endif
 
@@ -61,7 +61,7 @@ MinVersion=10.0
 
 OutputDir=Output
 OutputBaseFilename=Polaris-Music-Setup-{#MyAppVersion}
-SetupIconFile=..\assets\icons\polaris_music.ico
+SetupIconFile=..\assets\icons\app.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName}
 WizardStyle=modern dark polar includetitlebar
@@ -95,8 +95,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [InstallDelete]
 ; Limpia iconos de versiones anteriores: el proyecto usa un unico icono
-; (assets\icons\polaris_music.ico) y estos archivos ya no se empaquetan.
+; (assets\icons\app.ico) y estos archivos ya no se empaquetan.
 Type: files; Name: "{app}\data\flutter_assets\assets\icons\app_icon.ico"
+Type: files; Name: "{app}\data\flutter_assets\assets\icons\polaris_music.ico"
 Type: files; Name: "{app}\data\flutter_assets\assets\icons\tray.ico"
 Type: files; Name: "{app}\data\flutter_assets\assets\icons\polaris.png"
 

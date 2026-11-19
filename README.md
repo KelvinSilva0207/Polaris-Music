@@ -74,6 +74,21 @@ del usuario.
 - Micro-animaciones: escala al pulsar, transición de pista y vinilo con giro orgánico; sin
   indicadores tipo panel de administración.
 
+### Fase 4 — Audio avanzado y respaldo completo ✅
+
+- **Perfiles por dispositivo de salida:** el EQ (curva, modo, filtros paramétricos y sub-armónico)
+  se guarda por salida con scopes `device:<endpoint>` y se aplica al cambiar entre altavoces,
+  Bluetooth o USB. El perfil global sigue intacto como fallback.
+- **Crossfade real:** dos decks libmpv con fundido configurable (0–12 s) y relevo del deck entrante
+  al principal. El fundido usa un multiplicador de ganancia independiente del temporizador de sueño.
+- **Recorte de silencios:** offsets `start`/`end` de `Media` para omitir silencios al inicio/final
+  (0–15 s cada lado), sin añadir filtros a la cadena `af` del ecualizador.
+- **Repetidor A-B:** marca A y B desde el reproductor y repite el fragmento hasta desactivarlo; se
+  desarma automáticamente al cambiar de pista.
+- **Respaldo v2:** JSON/ZIP con preferencias globales y por scope, perfiles activos, presets de EQ
+  con DSP completo, listas, favoritos, letras y temas RGB/HSL. Importa también respaldos v1 y
+  muestra avisos por bloque restaurado parcialmente.
+
 ---
 
 ## Módulos de la visión
@@ -116,8 +131,8 @@ del usuario.
 - **Ecualizador:** las 10 bandas y el preamplificador se aplican con filtros `lavfi` de libmpv
   (`equalizer` + `volume`) en Windows y Android. En plataformas sin libmpv nativo la UI avisa y
   solo se guardan los presets.
-- **Crossfade:** el ajuste se persiste, pero el fundido requiere dos decks simultáneos y aún no
-  se implementa.
+- **Crossfade:** se usa un segundo deck libmpv; en equipos muy lentos un fundido muy corto puede
+  notarse como una pausa breve mientras el deck entrante abre el archivo.
 - **Metadatos:** la edición se guarda en Drift; escribir las etiquetas de vuelta al archivo queda
   para una fase posterior.
 - **Android local:** sin Android SDK/JDK en el equipo de desarrollo, los APK se generan en CI.

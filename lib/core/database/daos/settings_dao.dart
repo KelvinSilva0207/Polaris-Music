@@ -43,4 +43,23 @@ class SettingsDao extends DatabaseAccessor<AppDatabase>
       await (delete(settings)..where((s) => s.scope.equals(scope))).go();
     }
   }
+
+  /// Todas las preferencias agrupadas por scope (global, perfiles, dispositivos).
+  ///
+  /// Se usa en respaldos para no perder la configuración por salida de audio.
+  Future<Map<String, Map<String, String>>> allScoped() async {
+    final List<SettingRow> rows =
+        await (select(settings)..orderBy(<OrderingTerm Function(Settings)>[
+              (Settings t) => OrderingTerm.asc(t.scope),
+              (Settings t) => OrderingTerm.asc(t.key),
+            ]))
+            .get();
+    final Map<String, Map<String, String>> grouped =
+        <String, Map<String, String>>{};
+    for (final SettingRow row in rows) {
+      grouped.putIfAbsent(row.scope, () => <String, String>{})[row.key] =
+          row.value;
+    }
+    return grouped;
+  }
 }

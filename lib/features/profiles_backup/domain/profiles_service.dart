@@ -2,6 +2,7 @@ import 'dart:io';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/services/backup_service.dart';
+import '../../../core/services/settings_service.dart';
 
 /// Perfiles de usuario (preferencias y colecciones separadas por perfil).
 ///
@@ -9,9 +10,9 @@ import '../../../core/services/backup_service.dart';
 /// archivos); lo que cambia por perfil son las preferencias con `scope`.
 /// La UI usa este servicio para no tocar Drift.
 class ProfilesService {
-  ProfilesService(AppDatabase db)
+  ProfilesService(AppDatabase db, {SettingsService? settings})
     : _profiles = db.profileDao,
-      _backup = BackupService(db);
+      _backup = BackupService(db, settingsService: settings);
 
   final ProfileDao _profiles;
 

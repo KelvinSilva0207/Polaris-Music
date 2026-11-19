@@ -32,12 +32,32 @@ class MediaSessionService {
   StreamSubscription<smtc.RepeatMode>? _repeatSub;
   StreamSubscription<bool>? _shuffleSub;
 
-  int? _smtcTrackId;
+  Track? _smtcTrack;
   bool _smtcPlaying = false;
   DateTime _lastSmtcUpdate = DateTime.fromMillisecondsSinceEpoch(0);
 
   bool get isAndroidSessionActive => _androidHandler != null;
   bool get isWindowsSessionActive => _smtc != null;
+
+  /// Detiene la reproducción y el servicio en primer plano de Android.
+  ///
+  /// `AudioHandler.stop()` deja el estado en `idle`, que es lo que oculta la
+  /// notificación persistente; además se pide al plataforma que detenga el
+  /// `AudioService` para que no quede proceso en segundo plano.
+  Future<void> shutdown() async {
+    final AudioHandler? handler = _androidHandler;
+    if (handler != null) {
+      try {
+        await handler.stop();
+        // ignore: deprecated_member_use
+        await AudioService.stop();
+      } catch (error, stack) {
+        AppLog.w(_tag, 'No se pudo detener el servicio de audio', error, stack);
+      }
+      _androidHandler = null;
+    }
+    await dispose();
+  }
 
   Future<void> initialize() async {
     if (kIsWeb) return;
@@ -135,10 +155,12 @@ class MediaSessionService {
     if (smtcInstance == null) return;
 
     final Track? track = snapshot.currentTrack;
-    final bool trackChanged = track?.id != _smtcTrackId;
+    // La identidad cambia también al editar etiquetas con el mismo id, de modo
+    // que el panel de medios refleja la edición sin esperar un cambio de pista.
+    final bool trackChanged = !identical(track, _smtcTrack);
 
     if (trackChanged) {
-      _smtcTrackId = track?.id;
+      _smtcTrack = track;
       unawaited(
         smtcInstance.updateMetadata(
           smtc.MusicMetadata(
@@ -203,24 +225,30 @@ class PolarisAudioHandler extends BaseAudioHandler
   final AudioEngineService _engine;
   StreamSubscription<PlaybackSnapshot>? _subscription;
 
-  int? _lastTrackId;
+  Track? _lastTrack;
+  List<Track>? _lastQueue;
   bool _lastPlaying = false;
   Duration _lastPosition = Duration.zero;
   DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
 
   void _onState(PlaybackSnapshot snapshot) {
     final Track? track = snapshot.currentTrack;
-    final bool trackChanged = track != null && track.id != _lastTrackId;
+    final bool trackChanged = !identical(track, _lastTrack);
+    final bool queueChanged = !identical(snapshot.queue, _lastQueue);
 
     if (trackChanged) {
-      _lastTrackId = track.id;
-      mediaItem.add(_toMediaItem(track));
+      _lastTrack = track;
+      if (track != null) mediaItem.add(_toMediaItem(track));
+    }
+    if (queueChanged) {
+      _lastQueue = snapshot.queue;
       queue.add(snapshot.queue.map(_toMediaItem).toList(growable: false));
     }
 
     final DateTime now = DateTime.now();
     final bool shouldEmit =
         trackChanged ||
+        queueChanged ||
         snapshot.playing != _lastPlaying ||
         snapshot.completed ||
         (snapshot.position - _lastPosition).abs() >
@@ -298,6 +326,33 @@ class PolarisAudioHandler extends BaseAudioHandler
 
   @override
   Future<void> skipToPrevious() => _engine.previous();
+
+  /// Botón multimedia de los auriculares (`media` = play/pause).
+  @override
+  Future<void> click([MediaButton button = MediaButton.media]) =>
+      switch (button) {
+        MediaButton.media => _engine.playOrPause(),
+        MediaButton.next => _engine.next(),
+        MediaButton.previous => _engine.previous(),
+      };
+
+  @override
+  Future<void> fastForward() =>
+      _engine.seek(_engine.state.position + const Duration(seconds: 10));
+
+  @override
+  Future<void> rewind() async {
+    final Duration target =
+        _engine.state.position - const Duration(seconds: 10);
+    await _engine.seek(target < Duration.zero ? Duration.zero : target);
+  }
+
+  @override
+  Future<void> prepare() => Future<void>.value();
+
+  @override
+  Future<void> setRating(Rating rating, [Map<String, dynamic>? extras]) =>
+      Future<void>.value();
 
   @override
   Future<void> skipToQueueItem(int index) => _engine.playIndex(index);

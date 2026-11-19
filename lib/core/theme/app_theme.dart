@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import 'app_theme_config.dart';
 import 'theme_tokens.dart';
+import 'typography_config.dart';
+import 'typography_theme.dart';
 
 /// Construye el [ThemeData] de Polaris a partir de una [AppThemeConfig].
 ///
@@ -14,7 +16,13 @@ class AppTheme {
   static const Color defaultAccent = Color(0xFF8B5CF6);
   static const Color background = Color(0xFF0B0710);
   static const Color surface = Color(0xFF151020);
-  static ThemeData fromConfig(AppThemeConfig config) {
+  static ThemeData fromConfig(
+    AppThemeConfig config, {
+    ResolvedTypography? typography,
+  }) {
+    final ResolvedTypography type =
+        typography ??
+        const ResolvedTypography(TypographyConfig(), 'Polaris Sans');
     final Color accent = config.accent;
     final ColorScheme scheme =
         ColorScheme.fromSeed(
@@ -26,7 +34,7 @@ class AppTheme {
           secondary: accent.withValues(alpha: 0.75),
         );
 
-    return ThemeData(
+    final ThemeData base = ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
       colorScheme: scheme,
@@ -57,18 +65,9 @@ class AppTheme {
           neumorphicDark: config.neumorphicDark,
           glassEnabled: config.isGlass,
           glassOpacity: config.glassOpacity,
+          typography: type.config,
         ),
       ],
-      textTheme: const TextTheme(
-        headlineMedium: TextStyle(
-          fontWeight: FontWeight.w700,
-          letterSpacing: -0.5,
-        ),
-        titleLarge: TextStyle(fontWeight: FontWeight.w600, letterSpacing: -0.2),
-        titleMedium: TextStyle(fontWeight: FontWeight.w600),
-        bodyMedium: TextStyle(height: 1.35),
-        labelSmall: TextStyle(letterSpacing: 0.4),
-      ),
       cardTheme: CardThemeData(
         color: config.surface,
         elevation: 0,
@@ -147,6 +146,15 @@ class AppTheme {
           color: Color.lerp(config.surface, Colors.white, 0.08),
           borderRadius: BorderRadius.circular(8),
         ),
+      ),
+      fontFamily: type.family,
+    );
+
+    return base.copyWith(
+      textTheme: buildPolarisTextTheme(
+        base.textTheme,
+        type.family,
+        type.config,
       ),
     );
   }

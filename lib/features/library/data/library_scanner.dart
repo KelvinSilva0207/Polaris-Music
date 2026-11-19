@@ -124,32 +124,75 @@ class LibraryScanner {
   Stream<ScanProgress> get progress => _progress.stream;
   bool get isRunning => _running;
 
-  Future<ScanSummary> scanAll({bool removeMissing = true}) async {
-    if (_running) {
-      throw StateError('Ya hay un escaneo en curso.');
-    }
+  /// Escanea explícitamente un conjunto de rutas sin tocar el resto de la
+  /// biblioteca. Es el modo usado por el importador de Metrolist: añade/binda
+  /// archivos pero nunca elimina pistas de otras carpetas.
+  Future<ScanSummary> scanPaths(Iterable<String> paths) async {
+    _ensureNotRunning();
     _running = true;
+    try {
+      final List<String> found = <String>[];
+      for (final String path in paths) {
+        found.addAll(await FileUtils.listAudioFiles(path, recursive: true));
+      }
+      final Set<String> unique = found.toSet();
+      if (unique.isEmpty) return const ScanSummary();
+      final Set<String> knownPaths = (await _tracks.allPaths()).toSet();
+      return await _index(
+        unique,
+        unique.difference(knownPaths),
+        removeMissing: false,
+      );
+    } finally {
+      _running = false;
+    }
+  }
+
+  void _ensureNotRunning() {
+    if (_running) throw StateError('Ya hay un escaneo en curso.');
+  }
+
+  Future<ScanSummary> scanAll({bool removeMissing = true}) async {
+    _ensureNotRunning();
+    _running = true;
+    try {
+      final List<ScanFolderRow> folders = await _folders.getAll();
+      final Set<String> found = <String>{};
+      for (final ScanFolderRow folder in folders) {
+        found.addAll(
+          await FileUtils.listAudioFiles(
+            folder.path,
+            recursive: folder.recursive,
+          ),
+        );
+      }
+      final Set<String> knownPaths = (await _tracks.allPaths()).toSet();
+      final Set<String> pending = found.difference(knownPaths);
+      final ScanSummary summary = await _index(
+        found,
+        pending,
+        removeMissing: removeMissing,
+      );
+      for (final ScanFolderRow folder in folders) {
+        await _folders.markScanned(folder.id);
+      }
+      return summary;
+    } finally {
+      _running = false;
+    }
+  }
+
+  Future<ScanSummary> _index(
+    Set<String> found,
+    Set<String> pending, {
+    required bool removeMissing,
+  }) async {
     final Stopwatch watch = Stopwatch()..start();
     int inserted = 0;
     int updated = 0;
     int failed = 0;
 
     try {
-      final List<ScanFolderRow> folders = await _folders.getAll();
-      final Set<String> found = <String>{};
-
-      for (final ScanFolderRow folder in folders) {
-        final List<String> files = await FileUtils.listAudioFiles(
-          folder.path,
-          recursive: folder.recursive,
-        );
-        found.addAll(files);
-      }
-
-      final Set<String> knownPaths = (await _tracks.allPaths()).toSet();
-      final List<String> pending = found
-          .where((String path) => !knownPaths.contains(path))
-          .toList();
       // Releer los existentes solo si el archivo cambió de tamaño/fecha es
       // costoso; en Fase 1 se reindexan todos para refrescar metadatos.
       final List<String> all = found.toList(growable: false);
@@ -234,10 +277,6 @@ class LibraryScanner {
         removed = before - after;
       }
 
-      for (final ScanFolderRow folder in folders) {
-        await _folders.markScanned(folder.id);
-      }
-
       watch.stop();
       final ScanSummary summary = ScanSummary(
         filesFound: all.length,
@@ -250,7 +289,7 @@ class LibraryScanner {
       AppLog.i(_tag, '$summary en ${watch.elapsed.inSeconds}s');
       return summary;
     } finally {
-      _running = false;
+      watch.stop();
     }
   }
 

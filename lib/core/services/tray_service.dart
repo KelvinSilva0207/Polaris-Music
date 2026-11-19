@@ -28,7 +28,7 @@ class TrayService with TrayListener {
        _window = window;
 
   static const String _tag = 'Tray';
-  static const String _icon = 'assets/icons/polaris_music.ico';
+  static const String _icon = 'assets/icons/app.ico';
 
   final AudioEngineService _engine;
   final WindowService _window;

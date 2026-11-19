@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:drift/drift.dart' show Value;
 
 import '../../../core/database/app_database.dart';
+import '../../../core/services/permission_service.dart';
 import '../../../core/models/downloaded_track.dart';
 import '../../../core/models/track.dart';
 import '../domain/library_folder.dart';
+import '../domain/metrolist_paths.dart';
 import '../domain/library_sort.dart';
 import 'library_scanner.dart';
 
@@ -14,13 +16,15 @@ import 'library_scanner.dart';
 /// Traduce filas de Drift a [Track] y aplica orden/filtros en memoria. La UI
 /// nunca importa `drift` ni conoce `TrackRow`.
 class LibraryRepository {
-  LibraryRepository(AppDatabase db)
+  LibraryRepository(AppDatabase db, {PermissionService? permissions})
     : _tracks = db.trackDao,
       _folders = db.folderDao,
+      _permissions = permissions ?? PermissionService(),
       scanner = LibraryScanner(db);
 
   final TrackDao _tracks;
   final FolderDao _folders;
+  final PermissionService _permissions;
 
   final LibraryScanner scanner;
 
@@ -104,6 +108,7 @@ class LibraryRepository {
     int? year,
     int? trackNumber,
     int? discNumber,
+    String? artworkPath,
   }) => _tracks.updateMetadata(
     track.id,
     title: title,
@@ -114,6 +119,7 @@ class LibraryRepository {
     year: year,
     trackNumber: trackNumber,
     discNumber: discNumber,
+    artworkPath: artworkPath,
   );
 
   Stream<List<LibraryFolder>> watchFolders() => _folders.watchAll().map(
@@ -145,6 +151,26 @@ class LibraryRepository {
   Stream<ScanProgress> get scanProgress => scanner.progress;
 
   Future<ScanSummary> scan() => scanner.scanAll();
+
+  /// Importa las descargas de Metrolist sin borrar otras pistas de Drift.
+  Future<ScanSummary> importMetrolist(String? folder) async {
+    if (_permissions.isAndroid) {
+      final LibraryPermissionResult result = await _permissions
+          .requestLibraryAccess();
+      if (!result.granted) {
+        throw StateError(
+          result.message ?? 'Se necesita acceso a archivos de audio.',
+        );
+      }
+    }
+    final List<Directory> dirs = await MetrolistPaths.existing(
+      additional: folder,
+    );
+    if (dirs.isEmpty) {
+      throw StateError('No se encontró ninguna carpeta de Metrolist.');
+    }
+    return scanner.scanPaths(dirs.map((Directory d) => d.path));
+  }
 
   Future<void> dispose() => scanner.dispose();
 }
