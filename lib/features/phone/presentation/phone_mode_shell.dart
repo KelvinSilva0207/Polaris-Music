@@ -35,6 +35,24 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
     vsync: this,
     duration: const Duration(seconds: 18),
   );
+  bool? _spinActive;
+
+  /// Arranca/para el vinilo FUERA de la fase de build: `repeat()` notifica a los
+  /// listeners y hacerlo dentro de `build` puede provocar reconstrucciones
+  /// anidadas. El `child` del builder siempre existe, así que nunca se monta el
+  /// `SizedBox.shrink()` de respaldo.
+  void _syncSpin(bool active) {
+    if (_spinActive == active) return;
+    _spinActive = active;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (active) {
+        if (!_spin.isAnimating) _spin.repeat();
+      } else if (_spin.isAnimating) {
+        _spin.stop();
+      }
+    });
+  }
 
   @override
   void dispose() {
@@ -75,11 +93,7 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
       valueListenable: ref.watch(windowStateProvider),
       builder: (BuildContext context, WindowUiState state, Widget? child) {
         final bool active = playing && !state.backgrounded;
-        if (active && !_spin.isAnimating) {
-          _spin.repeat();
-        } else if (!active && _spin.isAnimating) {
-          _spin.stop();
-        }
+        _syncSpin(active);
         return child ?? const SizedBox.shrink();
       },
       child: Scaffold(
@@ -108,14 +122,18 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                       const SizedBox(height: 4),
                       Center(
                         child: _PhoneArtwork(
+                          key: ValueKey<int>(track?.id ?? 0),
                           track: track,
                           accent: accent,
+                          background: resolved.background,
                           rotation: _spin,
+                          shape: resolved.tokens.artworkShape,
                         ),
                       ),
                       const SizedBox(height: 18),
                       Text(
                         track?.title ?? 'Polaris Music',
+                        key: ValueKey<String>('phone-title-${track?.id ?? 0}'),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
@@ -128,6 +146,7 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                       const SizedBox(height: 4),
                       Text(
                         track?.artist ?? 'Tu universo sonoro',
+                        key: ValueKey<String>('phone-artist-${track?.id ?? 0}'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
@@ -137,7 +156,7 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const _PhoneProgress(),
+                      _PhoneProgress(color: resolved.progressColor),
                       const SizedBox(height: 8),
                       _PhoneControls(
                         playing: playing,
@@ -158,10 +177,20 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                               color: Colors.white60,
                             ),
                             Expanded(
-                              child: Slider(
-                                value: volume.clamp(0.0, 100.0).toDouble(),
-                                max: 100,
-                                onChanged: controller.setVolume,
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  trackHeight: 3,
+                                  activeTrackColor: resolved.volumeColor,
+                                  thumbColor: resolved.volumeColor,
+                                  overlayColor: resolved.volumeColor.withValues(
+                                    alpha: 0.18,
+                                  ),
+                                ),
+                                child: Slider(
+                                  value: volume.clamp(0.0, 100.0).toDouble(),
+                                  max: 100,
+                                  onChanged: controller.setVolume,
+                                ),
                               ),
                             ),
                             Text(
@@ -231,18 +260,52 @@ class _PhoneTopBar extends ConsumerWidget {
 
 class _PhoneArtwork extends StatelessWidget {
   const _PhoneArtwork({
+    super.key,
     required this.track,
     required this.accent,
+    required this.background,
     required this.rotation,
+    required this.shape,
   });
 
   final Track? track;
   final Color accent;
+  final Color background;
   final Animation<double> rotation;
+  final ArtworkShape shape;
 
   @override
   Widget build(BuildContext context) {
     final double size = math.min(MediaQuery.sizeOf(context).width - 92, 230);
+    final bool vinyl = shape == ArtworkShape.circleVinyl;
+    final double radius = vinyl
+        ? size / 2
+        : switch (shape) {
+            ArtworkShape.card3D => size * 0.22,
+            _ => size * 0.14,
+          };
+    final Widget artwork = track == null
+        ? Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[
+                  accent.withValues(alpha: 0.42),
+                  background.withValues(alpha: 0.92),
+                ],
+              ),
+            ),
+            child: Icon(
+              Icons.music_note_rounded,
+              size: size * 0.34,
+              color: Colors.white.withValues(alpha: 0.88),
+            ),
+          )
+        : TrackArtwork(path: track!.artworkPath, size: size, radius: radius);
+
     return SizedBox(
       width: size,
       height: size,
@@ -251,7 +314,8 @@ class _PhoneArtwork extends StatelessWidget {
         children: <Widget>[
           Container(
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
+              shape: vinyl ? BoxShape.circle : BoxShape.rectangle,
+              borderRadius: vinyl ? null : BorderRadius.circular(radius),
               boxShadow: <BoxShadow>[
                 BoxShadow(
                   color: accent.withValues(alpha: 0.38),
@@ -263,45 +327,31 @@ class _PhoneArtwork extends StatelessWidget {
           ),
           RotationTransition(
             turns: rotation,
-            child: ClipOval(
-              child: track == null
-                  ? Container(
-                      width: size,
-                      height: size,
-                      color: Colors.white.withValues(alpha: 0.06),
-                      child: Icon(
-                        Icons.music_note_rounded,
-                        size: size * 0.34,
-                        color: Colors.white54,
-                      ),
-                    )
-                  : TrackArtwork(
-                      path: track!.artworkPath,
-                      size: size,
-                      radius: size / 2,
-                    ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(vinyl ? size / 2 : radius),
+              child: artwork,
             ),
           ),
-          Container(
-            width: size * 0.11,
-            height: size * 0.11,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: configSurface(context),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          if (vinyl)
+            Container(
+              width: size * 0.11,
+              height: size * 0.11,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: background,
+                border: Border.all(color: accent.withValues(alpha: 0.55)),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
-
-  Color configSurface(BuildContext context) =>
-      Theme.of(context).scaffoldBackgroundColor;
 }
 
 class _PhoneProgress extends ConsumerWidget {
-  const _PhoneProgress();
+  const _PhoneProgress({required this.color});
+
+  final Color color;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -322,6 +372,9 @@ class _PhoneProgress extends ConsumerWidget {
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
             trackHeight: 3,
+            activeTrackColor: color,
+            thumbColor: color,
+            overlayColor: color.withValues(alpha: 0.18),
             thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
           ),

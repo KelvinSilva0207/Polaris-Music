@@ -87,13 +87,19 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
     final List<Color>? backdrop = playerStyle.background == null
         ? config.backdrop
         : null;
+    // La forma de carátula es propia del reproductor: si el usuario la anuló en
+    // "Diseños compactos → Principal", gana sobre la configuración global.
+    final ArtworkShape shape = playerStyle.artworkShape ?? config.artworkShape;
+    final AppThemeConfig effectiveConfig = shape == config.artworkShape
+        ? config
+        : config.copyWith(artworkShape: shape);
 
     if (track == null) {
       return Stack(
         fit: StackFit.expand,
         children: <Widget>[
           _DynamicBackdrop(
-            config: config,
+            config: effectiveConfig,
             accent: accent,
             background: background,
             backdrop: backdrop,
@@ -117,7 +123,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
       fit: StackFit.expand,
       children: <Widget>[
         _DynamicBackdrop(
-          config: config,
+          config: effectiveConfig,
           accent: accent,
           background: background,
           backdrop: backdrop,
@@ -148,7 +154,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                               alignment: Alignment.center,
                               child: _ArtworkStage(
                                 track: track,
-                                config: config,
+                                config: effectiveConfig,
                                 accent: accent,
                                 playing: playing,
                                 showLyrics: _showLyrics,
@@ -181,7 +187,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                               padding: const EdgeInsets.only(bottom: 12),
                               child: _PlayerColumn(
                                 track: track,
-                                config: config,
+                                config: effectiveConfig,
                                 accent: accent,
                                 controller: controller,
                                 panelTab: _panelTab,
@@ -220,7 +226,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                 Center(
                   child: _ArtworkStage(
                     track: track,
-                    config: config,
+                    config: effectiveConfig,
                     accent: accent,
                     playing: playing,
                     showLyrics: _showLyrics,
@@ -239,7 +245,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                 const SizedBox(height: 20),
                 _PlayerColumn(
                   track: track,
-                  config: config,
+                  config: effectiveConfig,
                   accent: accent,
                   controller: controller,
                   panelTab: _panelTab,
@@ -711,13 +717,12 @@ class _TransportControls extends ConsumerWidget {
       spacing: 10,
       runSpacing: 4,
       children: <Widget>[
-        IconButton(
+        TactileIconButton(
           tooltip: 'Aleatorio',
           onPressed: controller.toggleShuffle,
-          icon: Icon(
-            Icons.shuffle_rounded,
-            color: shuffle ? accent : Colors.white54,
-          ),
+          icon: Icons.shuffle_rounded,
+          color: shuffle ? accent : Colors.white54,
+          echoColor: accent,
         ),
         TactileIconButton(
           tooltip: 'Anterior',
@@ -739,15 +744,14 @@ class _TransportControls extends ConsumerWidget {
           onPressed: controller.next,
           icon: Icons.skip_next_rounded,
         ),
-        IconButton(
+        TactileIconButton(
           tooltip: _repeatLabel(repeat),
           onPressed: controller.cycleRepeat,
-          icon: Icon(
-            repeat == RepeatMode.one
-                ? Icons.repeat_one_rounded
-                : Icons.repeat_rounded,
-            color: repeat == RepeatMode.off ? Colors.white54 : accent,
-          ),
+          icon: repeat == RepeatMode.one
+              ? Icons.repeat_one_rounded
+              : Icons.repeat_rounded,
+          color: repeat == RepeatMode.off ? Colors.white54 : accent,
+          echoColor: accent,
         ),
       ],
     );
@@ -1147,8 +1151,12 @@ class _MediaPanel extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // La cola visible es el orden ACTIVO: con aleatorio, `index` pertenece a la
+    // playlist barajada de mpv y resaltar `queue[index]` marcaría otra pista.
     final List<Track> queue = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.playback.queue),
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.playback.activeQueue,
+      ),
     );
     final int index = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.index),
@@ -1255,6 +1263,7 @@ class _QueueList extends StatelessWidget {
         final Track track = queue[i];
         final bool current = i == index;
         final Widget tile = ListTile(
+          key: ValueKey<int>(track.id),
           dense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 6),
           shape: RoundedRectangleBorder(
@@ -1460,6 +1469,64 @@ class _QueueWavePainter extends CustomPainter {
 // Carátula adaptativa
 // ---------------------------------------------------------------------------
 
+/// Fundido cinematográfico entre carátula y letras y entre pistas.
+///
+/// La dirección del deslizamiento se deriva del cambio de posición en el orden
+/// activo; así funciona igual con la cola secuencial que con el espejo barajado
+/// y no depende de comparar ids ni carátulas.
+class _CinematicSwitcher extends StatefulWidget {
+  const _CinematicSwitcher({required this.position, required this.child});
+
+  final int position;
+  final Widget child;
+
+  @override
+  State<_CinematicSwitcher> createState() => _CinematicSwitcherState();
+}
+
+class _CinematicSwitcherState extends State<_CinematicSwitcher> {
+  bool _forward = true;
+
+  @override
+  void didUpdateWidget(covariant _CinematicSwitcher oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.position != widget.position) {
+      _forward = widget.position > oldWidget.position;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 460),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        final bool toLyrics =
+            child.key is ValueKey<String> &&
+            (child.key as ValueKey<String>).value.startsWith('artwork-lyrics');
+        final Offset begin = toLyrics
+            ? const Offset(0, 0.10)
+            : Offset(_forward ? 0.16 : -0.16, 0);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: begin,
+              end: Offset.zero,
+            ).animate(animation),
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
 class _ArtworkStage extends ConsumerWidget {
   const _ArtworkStage({
     required this.track,
@@ -1500,6 +1567,11 @@ class _ArtworkStage extends ConsumerWidget {
             ),
           )
         : 0;
+    // Posición en el orden activo: permite decidir si la transición entra desde
+    // la derecha (siguiente) o desde la izquierda (anterior), también en shuffle.
+    final int position = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.index),
+    );
 
     // El anillo ocupa el 84 % interior: la carátula se ajusta para no
     // desbordar el círculo (el antiguo desajuste del estilo Vinilo).
@@ -1550,34 +1622,13 @@ class _ArtworkStage extends ConsumerWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 420),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (Widget child, Animation<double> animation) {
-          // Las letras entran desde abajo y salen hacia arriba: el movimiento
-          // explica si el panel se está abriendo o cerrando sin leer texto.
-          final bool toLyrics =
-              child.key == const ValueKey<String>('artwork-lyrics');
-          return FadeTransition(
-            opacity: animation,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: toLyrics
-                    ? const Offset(0, 0.08)
-                    : const Offset(0, -0.06),
-                end: Offset.zero,
-              ).animate(animation),
-              child: ScaleTransition(
-                scale: Tween<double>(begin: 0.96, end: 1).animate(animation),
-                child: child,
-              ),
-            ),
-          );
-        },
+      child: _CinematicSwitcher(
+        position: position,
         child: showLyrics
             ? KeyedSubtree(
-                key: const ValueKey<String>('artwork-lyrics'),
+                // La clave incluye la pista: sin ella el State de LyricsPanel se
+                // reutiliza al cambiar de canción y conserva scroll/índice viejo.
+                key: ValueKey<String>('artwork-lyrics-${track.id}'),
                 child: InArtworkLyrics(
                   track: track,
                   size: size,
@@ -1587,7 +1638,7 @@ class _ArtworkStage extends ConsumerWidget {
               )
             : KeyedSubtree(
                 key: ValueKey<String>(
-                  '${track.id}-${config.artworkShape.name}',
+                  'artwork-${track.id}-${config.artworkShape.name}',
                 ),
                 child: ArtworkGestures(
                   size: size,
@@ -1648,6 +1699,7 @@ class _ArtworkImage extends StatelessWidget {
       final int decodeWidth = (size * ratio).round().clamp(48, 2048);
       content = Image.file(
         File(artwork),
+        key: ValueKey<String>(artwork),
         width: size,
         height: size,
         fit: BoxFit.cover,

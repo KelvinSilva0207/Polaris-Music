@@ -470,16 +470,23 @@ class _PresetSelector extends StatelessWidget {
             onLongPress: preset.isBuiltIn
                 ? null
                 : () => _confirmDelete(context, preset),
-            child: ChoiceChip(
-              label: Text(preset.name),
-              selected: selected,
-              onSelected: (bool value) {
-                if (value) controller.applyPreset(preset.name);
-              },
-              selectedColor: context.tokens.accent.withValues(alpha: 0.24),
-              labelStyle: TextStyle(
-                color: selected ? context.tokens.accent : Colors.white70,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            // Respuesta elástica al elegir un perfil: el chip "rebota" con
+            // easeOutBack en lugar de cambiar de color sin movimiento.
+            child: AnimatedScale(
+              scale: selected ? 1.06 : 1,
+              duration: const Duration(milliseconds: 280),
+              curve: Curves.easeOutBack,
+              child: ChoiceChip(
+                label: Text(preset.name),
+                selected: selected,
+                onSelected: (bool value) {
+                  if (value) controller.applyPreset(preset.name);
+                },
+                selectedColor: context.tokens.accent.withValues(alpha: 0.24),
+                labelStyle: TextStyle(
+                  color: selected ? context.tokens.accent : Colors.white70,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                ),
               ),
             ),
           );

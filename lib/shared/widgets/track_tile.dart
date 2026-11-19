@@ -48,6 +48,7 @@ class TrackTile extends ConsumerWidget {
       onSecondaryTapDown: (TapDownDetails details) =>
           _showContextMenu(context, ref, details.globalPosition),
       child: ListTile(
+        key: ValueKey<int>(track.id),
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         tileColor: current ? accent.withValues(alpha: 0.12) : null,
@@ -70,7 +71,12 @@ class TrackTile extends ConsumerWidget {
               alignment: Alignment.bottomRight,
               clipBehavior: Clip.none,
               children: <Widget>[
-                TrackArtwork(path: track.artworkPath, size: 46, radius: 10),
+                TrackArtwork(
+                  key: ValueKey<int>(track.id),
+                  path: track.artworkPath,
+                  size: 46,
+                  radius: 10,
+                ),
                 if (current)
                   Positioned(
                     right: -4,

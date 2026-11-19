@@ -97,6 +97,12 @@ class BackupService {
     'player': AppConstants.keyCompactPlayerStyle,
   };
 
+  static CompactSurface _compactSurface(String name) =>
+      CompactSurface.values.firstWhere(
+        (CompactSurface surface) => surface.name == name,
+        orElse: () => CompactSurface.player,
+      );
+
   final AppDatabase _db;
   final SettingsDao _settings;
   final EqDao _eq;
@@ -247,6 +253,7 @@ class BackupService {
       try {
         compact[entry.key] = CompactStyleConfig.fromJson(
           jsonDecode(raw) as Map<String, dynamic>,
+          surface: _compactSurface(entry.key),
         ).toJson();
       } catch (error, stack) {
         AppLog.w(
@@ -573,8 +580,12 @@ class BackupService {
       await apply(
         entry.value,
         compact[entry.key] ?? settings[entry.value],
-        (dynamic raw) async =>
-            jsonEncode(CompactStyleConfig.fromJson(objectOf(raw)).toJson()),
+        (dynamic raw) async => jsonEncode(
+          CompactStyleConfig.fromJson(
+            objectOf(raw),
+            surface: _compactSurface(entry.key),
+          ).toJson(),
+        ),
       );
     }
 

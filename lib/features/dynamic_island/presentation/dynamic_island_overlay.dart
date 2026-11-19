@@ -82,9 +82,18 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     if (!style.autoHide) return;
     final int seconds = style.autoHideSeconds.clamp(2, 60).toInt();
     _hideTimer = Timer(Duration(seconds: seconds), () {
-      if (!mounted || _hovering || _dismissing) return;
+      if (!mounted || _hovering || _dismissing || _persistentlyExpanded) {
+        return;
+      }
       _requestHide();
     });
+  }
+
+  /// Un aviso o una expansión explícita mantienen la isla abierta aunque el
+  /// ratón salga: el auto-ocultado solo aplica al estado puramente temporal.
+  bool get _persistentlyExpanded {
+    final DynamicIslandState island = ref.read(dynamicIslandControllerProvider);
+    return island.expanded || island.message != null;
   }
 
   void _setHovering(bool value) {
@@ -92,7 +101,7 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     setState(() => _hovering = value);
     if (value) {
       _hideTimer?.cancel();
-    } else {
+    } else if (!_persistentlyExpanded) {
       _scheduleAutoHide();
     }
   }
@@ -111,6 +120,15 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
         }
       },
     );
+    ref.listen<DynamicIslandState>(dynamicIslandControllerProvider, (
+      DynamicIslandState? previous,
+      DynamicIslandState next,
+    ) {
+      final bool wasHeld =
+          previous != null && (previous.expanded || previous.message != null);
+      final bool held = next.expanded || next.message != null;
+      if (wasHeld && !held && !_hovering) _scheduleAutoHide();
+    });
 
     final Track? track = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.track),
@@ -236,18 +254,25 @@ class _Capsule extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 3,
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  minHeight: 3,
-                  backgroundColor: Colors.white.withValues(alpha: 0.07),
-                  valueColor: AlwaysStoppedAnimation<Color>(style.accent),
+              // Sin progreso real no se dibuja nada: evita la línea huérfana
+              // en el borde de la cápsula cuando no hay pista o está parada.
+              if (progress > 0)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 3,
+                  child: LinearProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    minHeight: 3,
+                    backgroundColor: style.progressColor.withValues(
+                      alpha: 0.12,
+                    ),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      style.progressColor,
+                    ),
+                  ),
                 ),
-              ),
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   hovering ? 12 : 8,
@@ -258,6 +283,7 @@ class _Capsule extends StatelessWidget {
                 child: Row(
                   children: <Widget>[
                     AnimatedContainer(
+                      key: ValueKey<String>('island-artwork-${track?.id ?? 0}'),
                       duration: const Duration(milliseconds: 320),
                       curve: Curves.easeOutCubic,
                       width: artworkSize,
@@ -267,7 +293,7 @@ class _Capsule extends StatelessWidget {
                           : TrackArtwork(
                               path: track!.artworkPath,
                               size: artworkSize,
-                              radius: style.radius * 0.42,
+                              radius: style.artworkRadius(style.radius * 0.42),
                             ),
                     ),
                     SizedBox(width: hovering ? 12 : 8),
@@ -277,7 +303,9 @@ class _Capsule extends StatelessWidget {
                           duration: const Duration(milliseconds: 240),
                           child: hovering
                               ? _ExpandedInfo(
-                                  key: const ValueKey<String>('expanded'),
+                                  key: ValueKey<String>(
+                                    'expanded-${track?.id ?? 0}',
+                                  ),
                                   track: track,
                                   message: message,
                                   position: position,
@@ -285,7 +313,9 @@ class _Capsule extends StatelessWidget {
                                   playing: playing,
                                 )
                               : _CompactInfo(
-                                  key: const ValueKey<String>('compact'),
+                                  key: ValueKey<String>(
+                                    'compact-${track?.id ?? 0}',
+                                  ),
                                   track: track,
                                 ),
                         ),

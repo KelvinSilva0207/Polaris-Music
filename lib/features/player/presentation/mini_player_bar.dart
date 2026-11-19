@@ -94,7 +94,7 @@ class MiniPlayerBar extends ConsumerWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                _MiniProgress(accent: resolved.accent),
+                _MiniProgress(accent: resolved.progressColor),
                 InkWell(
                   onTap: onOpen,
                   child: Padding(
@@ -102,13 +102,17 @@ class MiniPlayerBar extends ConsumerWidget {
                     child: Row(
                       children: <Widget>[
                         TrackArtwork(
+                          key: ValueKey<int>(track.id),
                           path: track.artworkPath,
                           size: 44,
-                          radius: resolved.radius * 0.55,
+                          radius: resolved.artworkRadius(
+                            resolved.radius * 0.55,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
+                            key: ValueKey<int>(track.id),
                             crossAxisAlignment: CrossAxisAlignment.start,
                             mainAxisSize: MainAxisSize.min,
                             children: <Widget>[

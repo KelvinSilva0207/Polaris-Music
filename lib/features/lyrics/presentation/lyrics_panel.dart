@@ -142,36 +142,53 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                   final LyricLine line = document.lines[index];
                   final bool isActive = index == active;
                   final bool isPast = active != null && index < active;
-                  return Padding(
-                    padding: EdgeInsets.symmetric(
-                      vertical: widget.immersive ? 12 : 6,
-                    ),
-                    child: AnimatedDefaultTextStyle(
-                      duration: const Duration(milliseconds: 220),
-                      style: TextStyle(
-                        fontSize: isActive ? activeSize : normalSize,
-                        height: 1.32,
-                        fontWeight: isActive
-                            ? FontWeight.w800
-                            : FontWeight.w600,
-                        color: isActive
-                            ? tokens.karaokeColor
-                            : isPast
-                            ? Colors.white.withValues(alpha: 0.38)
-                            : Colors.white.withValues(alpha: 0.80),
-                        shadows: isActive
-                            ? <Shadow>[
-                                Shadow(
-                                  color: tokens.karaokeColor.withValues(
-                                    alpha: 0.45,
-                                  ),
-                                  blurRadius: widget.immersive ? 26 : 12,
-                                ),
-                              ]
-                            : null,
+                  // Cada línea entra con una pequeña onda escalonada: el
+                  // conjunto se funde con la carátula como un solo morfeo.
+                  return TweenAnimationBuilder<double>(
+                    key: ValueKey<int>(index),
+                    tween: Tween<double>(begin: 0, end: 1),
+                    duration: Duration(milliseconds: 280 + (index % 6) * 26),
+                    curve: Curves.easeOutCubic,
+                    builder:
+                        (BuildContext context, double value, Widget? child) =>
+                            Opacity(
+                              opacity: value,
+                              child: Transform.translate(
+                                offset: Offset(0, (1 - value) * 12),
+                                child: child,
+                              ),
+                            ),
+                    child: Padding(
+                      padding: EdgeInsets.symmetric(
+                        vertical: widget.immersive ? 12 : 6,
                       ),
-                      textAlign: TextAlign.center,
-                      child: Text(line.text.isEmpty ? '♪' : line.text),
+                      child: AnimatedDefaultTextStyle(
+                        duration: const Duration(milliseconds: 220),
+                        style: TextStyle(
+                          fontSize: isActive ? activeSize : normalSize,
+                          height: 1.32,
+                          fontWeight: isActive
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                          color: isActive
+                              ? tokens.karaokeColor
+                              : isPast
+                              ? Colors.white.withValues(alpha: 0.38)
+                              : Colors.white.withValues(alpha: 0.80),
+                          shadows: isActive
+                              ? <Shadow>[
+                                  Shadow(
+                                    color: tokens.karaokeColor.withValues(
+                                      alpha: 0.45,
+                                    ),
+                                    blurRadius: widget.immersive ? 26 : 12,
+                                  ),
+                                ]
+                              : null,
+                        ),
+                        textAlign: TextAlign.center,
+                        child: Text(line.text.isEmpty ? '♪' : line.text),
+                      ),
                     ),
                   );
                 },

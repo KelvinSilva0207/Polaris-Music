@@ -42,6 +42,7 @@ class AudioEngineService {
   Timer? _crossfadeTimer;
   StreamSubscription<Duration>? _crossfadePositionSub;
   bool _crossfading = false;
+  bool _awaitingShuffleEvent = false;
   int _crossfadeMs = 0;
   double _crossfadeGain = 1;
 
@@ -227,39 +228,97 @@ class AudioEngineService {
     }
 
     bool queueChanged = false;
-    final List<Track> queue = _state.queue
-        .map((Track track) {
-          if (track.id == trackId && track.isFavorite != value) {
-            queueChanged = true;
-            return track.copyWith(isFavorite: value);
-          }
-          return track;
-        })
-        .toList(growable: false);
+    List<Track> apply(List<Track> source) {
+      return source
+          .map((Track track) {
+            if (track.id == trackId && track.isFavorite != value) {
+              queueChanged = true;
+              return track.copyWith(isFavorite: value);
+            }
+            return track;
+          })
+          .toList(growable: false);
+    }
+
+    final List<Track> queue = apply(_state.queue);
+    final List<Track> shuffled = _state.shuffledQueue.isEmpty
+        ? const <Track>[]
+        : List<Track>.unmodifiable(apply(_state.shuffledQueue));
 
     if (queueChanged) {
       _state = _state.copyWith(
         queue: List<Track>.unmodifiable(queue),
+        shuffledQueue: shuffled,
         currentTrack: _state.currentTrack,
       );
     }
     _emit(_state);
   }
 
+  /// Resuelve la pista que corresponde a un `Media.uri` de mpv.
+  ///
+  /// Es la traducción definitiva índice de mpv → pista: funciona tanto con la
+  /// cola original como con la barajada, porque compara la ruta del archivo y
+  /// no una posición de lista que mpv ya ha reordenado.
+  Track? _trackForUri(String uri) {
+    for (final Track track in _state.activeQueue) {
+      if (track.path == uri) return track;
+    }
+    for (final Track track in _state.queue) {
+      if (track.path == uri) return track;
+    }
+    return null;
+  }
+
+  static bool _samePlaylistOrder(List<Track> a, List<Track> b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id || a[i].path != b[i].path) return false;
+    }
+    return true;
+  }
+
   void _onPlaylistChanged(Playlist playlist) {
-    final int index = playlist.index;
-    final List<Track> queue = _state.queue;
-    final Track? track = index >= 0 && index < queue.length
-        ? queue[index]
-        : _state.currentTrack;
+    final int eventIndex = playlist.index;
+    final List<Track> mapped = playlist.medias
+        .map((Media media) => _trackForUri(media.uri))
+        .whereType<Track>()
+        .toList(growable: false);
+
+    // `playlist-shuffle` reordena físicamente la playlist de mpv. El índice del
+    // evento pertenece a ESE orden, nunca a `_state.queue`: lo reflejamos en
+    // `shuffledQueue` y derivamos la pista del propio `Media` sonoro. Solo
+    // inferimos aleatorio del orden cuando el evento viene de un `setShuffle`:
+    // `add`/`move`/`remove` también reordenan transitoriamente y no deben
+    // activar el modo aleatorio por error.
+    final bool orderChanged =
+        _awaitingShuffleEvent &&
+        mapped.isNotEmpty &&
+        !_samePlaylistOrder(mapped, _state.queue);
+    final bool isShuffled = orderChanged || _state.shuffle;
+    final List<Track> shuffled = isShuffled
+        ? List<Track>.unmodifiable(mapped)
+        : const <Track>[];
+    final List<Track> active = shuffled.isNotEmpty ? shuffled : _state.queue;
+
+    final int index = eventIndex < 0 || active.isEmpty
+        ? _state.index
+        : eventIndex.clamp(0, active.length - 1);
+    final Track? track = eventIndex >= 0 && eventIndex < mapped.length
+        ? mapped[eventIndex]
+        : (index >= 0 && index < active.length
+              ? active[index]
+              : _state.currentTrack);
 
     final bool trackChanged =
         track != null && track.id != _state.currentTrack?.id;
 
     _emit(
       _state.copyWith(
-        index: index < 0 ? _state.index : index,
+        index: index,
         currentTrack: track,
+        shuffledQueue: shuffled,
+        shuffle: isShuffled,
         duration: trackChanged ? track.duration : _state.duration,
         position: trackChanged ? Duration.zero : _state.position,
         completed: trackChanged ? false : _state.completed,
@@ -290,6 +349,9 @@ class AudioEngineService {
     final int index = startIndex.clamp(0, tracks.length - 1);
     _state = _state.copyWith(
       queue: List<Track>.unmodifiable(tracks),
+      // La cola vieja no debe filtrarse: `_open` volverá a aplicar `shuffle`
+      // sobre el orden original y `_onPlaylistChanged` reconstruirá el espejo.
+      shuffledQueue: const <Track>[],
       index: index,
       currentTrack: tracks[index],
       position: Duration.zero,
@@ -347,9 +409,10 @@ class AudioEngineService {
 
   Future<void> _open({required bool autoPlay}) async {
     final int epoch = ++_openEpoch;
-    final List<Media> medias = _state.queue
-        .map(_mediaFor)
-        .toList(growable: false);
+    // La playlist nativa se abre SIEMPRE en el orden activo. Así `playlist.index`
+    // y `activeQueue[index]` significan lo mismo incluso con aleatorio activo.
+    final List<Track> order = _state.activeQueue;
+    final List<Media> medias = order.map(_mediaFor).toList(growable: false);
 
     if (medias.isEmpty) return;
 
@@ -388,7 +451,17 @@ class AudioEngineService {
       return;
     }
     final List<Track> queue = <Track>[..._state.queue, track];
-    _emit(_state.copyWith(queue: List<Track>.unmodifiable(queue)));
+    final List<Track> shuffled = _state.shuffledQueue.isEmpty
+        ? const <Track>[]
+        : List<Track>.unmodifiable(<Track>[..._state.shuffledQueue, track]);
+    _emit(
+      _state.copyWith(
+        queue: List<Track>.unmodifiable(queue),
+        shuffledQueue: shuffled,
+      ),
+    );
+    // mpv mantiene su playlist en el orden activo, así que `add` reproduce la
+    // misma posición que acabamos de registrar en el espejo.
     await _player.add(_mediaFor(track));
   }
 
@@ -403,15 +476,28 @@ class AudioEngineService {
       return;
     }
 
-    final int nextIndex = _state.index + 1;
+    // La inserción se calcula sobre el orden activo: con aleatorio, "a
+    // continuación" significa después de la pista en orden barajado.
+    final List<Track> active = _state.activeQueue;
     final int insertIndex = _state.index < 0
         ? 0
-        : (nextIndex > _state.queue.length ? _state.queue.length : nextIndex);
-    final List<Track> queue = <Track>[..._state.queue]
+        : (_state.index + 1).clamp(0, active.length);
+    final List<Track> updatedActive = <Track>[...active]
       ..insert(insertIndex, track);
-    _emit(_state.copyWith(queue: List<Track>.unmodifiable(queue)));
+    final bool isShuffled = _state.shuffledQueue.isNotEmpty;
+    final List<Track> queue = isShuffled
+        ? <Track>[..._state.queue, track]
+        : updatedActive;
+    _emit(
+      _state.copyWith(
+        queue: List<Track>.unmodifiable(queue),
+        shuffledQueue: isShuffled
+            ? List<Track>.unmodifiable(updatedActive)
+            : const <Track>[],
+      ),
+    );
 
-    final int appendedIndex = _state.queue.length;
+    final int appendedIndex = active.length;
     await _player.add(_mediaFor(track));
     if (appendedIndex != insertIndex) {
       await _player.move(appendedIndex, insertIndex);
@@ -455,27 +541,53 @@ class AudioEngineService {
     final List<Track> queue = _state.queue
         .map(updatedTrack)
         .toList(growable: false);
+    final List<Track> shuffled = _state.shuffledQueue.isEmpty
+        ? const <Track>[]
+        : List<Track>.unmodifiable(
+            _state.shuffledQueue.map(updatedTrack).toList(growable: false),
+          );
     if (!changed) return;
 
     _emit(
       _state.copyWith(
         currentTrack: updatedCurrent,
         queue: List<Track>.unmodifiable(queue),
+        shuffledQueue: shuffled,
       ),
     );
   }
 
   Future<void> removeAt(int index) async {
-    if (index < 0 || index >= _state.queue.length) return;
+    // [index] viene de la cola que ve la UI: el orden activo.
+    final List<Track> active = _state.activeQueue;
+    if (index < 0 || index >= active.length) return;
     await _cancelCrossfade();
-    final List<Track> queue = <Track>[..._state.queue]..removeAt(index);
+    final Track removed = active[index];
+    final List<Track> updatedActive = <Track>[...active]..removeAt(index);
+    final List<Track> queue = <Track>[..._state.queue]
+      ..removeWhere(
+        (Track track) =>
+            identical(track, removed) ||
+            (track.id == removed.id && track.path == removed.path),
+      );
+
+    int newIndex = _state.index;
+    if (index < _state.index) {
+      newIndex--;
+    } else if (index == _state.index && updatedActive.isNotEmpty) {
+      newIndex = index.clamp(0, updatedActive.length - 1);
+    }
+    final Track? nextTrack = updatedActive.isEmpty
+        ? null
+        : updatedActive[newIndex.clamp(0, updatedActive.length - 1)];
     _emit(
       _state.copyWith(
         queue: List<Track>.unmodifiable(queue),
-        index: index < _state.index ? _state.index - 1 : _state.index,
-        currentTrack: index == _state.index
-            ? (queue.isEmpty ? null : queue[index.clamp(0, queue.length - 1)])
-            : _state.currentTrack,
+        shuffledQueue: _state.shuffledQueue.isEmpty
+            ? const <Track>[]
+            : List<Track>.unmodifiable(updatedActive),
+        index: newIndex < 0 ? 0 : newIndex,
+        currentTrack: index == _state.index ? nextTrack : _state.currentTrack,
       ),
     );
     await _player.remove(index);
@@ -490,8 +602,14 @@ class AudioEngineService {
 
   /// Reproduce una pista de la cola (o abre una nueva cola de una sola pista).
   Future<void> playTrack(Track track) async {
-    final int index = _state.queue.indexWhere((Track t) => t.id == track.id);
-    if (index >= 0) {
+    // Buscar primero en el orden activo evita saltar a otra pista cuando el
+    // mismo id aparece en una posición distinta de la cola original.
+    final List<Track> active = _state.activeQueue;
+    int index = active.indexWhere((Track t) => t.id == track.id);
+    if (index < 0) {
+      index = _state.queue.indexWhere((Track t) => t.id == track.id);
+    }
+    if (index >= 0 && index < active.length) {
       await playIndex(index);
     } else {
       await setQueue(<Track>[track]);
@@ -499,10 +617,12 @@ class AudioEngineService {
   }
 
   Future<void> playIndex(int index) async {
-    if (index < 0 || index >= _state.queue.length) return;
+    final List<Track> active = _state.activeQueue;
+    if (index < 0 || index >= active.length) return;
     await _cancelCrossfade();
-    _state = _state.copyWith(index: index, currentTrack: _state.queue[index]);
+    _state = _state.copyWith(index: index, currentTrack: active[index]);
     _emit(_state);
+    // mpv ya tiene su playlist en el orden activo, así que el índice coincide.
     await _player.jump(index);
     await _player.play();
   }
@@ -606,27 +726,31 @@ class AudioEngineService {
     if (_crossfadeMs <= 0 || _crossfading || !_state.playing) return;
     if (_state.repeat == RepeatMode.one) return;
     final int nextIndex = _state.index + 1;
-    if (nextIndex >= _state.queue.length && _state.repeat != RepeatMode.all) {
+    final int activeLength = _state.activeQueue.length;
+    if (nextIndex >= activeLength && _state.repeat != RepeatMode.all) {
       return;
     }
     final Duration total = _effectiveDuration(_state.currentTrack);
     if (total <= Duration.zero) return;
     final Duration remaining = total - _toEffectivePosition(position);
     if (remaining > Duration(milliseconds: _crossfadeMs)) return;
-    unawaited(_startCrossfade(nextIndex % _state.queue.length));
+    unawaited(_startCrossfade(nextIndex % activeLength));
   }
 
   Future<void> _startCrossfade(int nextIndex) async {
-    if (_crossfading || nextIndex < 0 || nextIndex >= _state.queue.length) {
+    final List<Track> active = _state.activeQueue;
+    if (_crossfading || nextIndex < 0 || nextIndex >= active.length) {
       return;
     }
     _crossfading = true;
     try {
       final Player incoming = _fadePlayer ??= Player();
       await incoming.stop();
+      // El deck entrante usa el MISMO orden activo, así que su `playlist.index`
+      // vuelve a significar lo mismo que `activeQueue[index]`.
       await incoming.open(
         Playlist(
-          _state.queue.map(_mediaFor).toList(growable: false),
+          active.map(_mediaFor).toList(growable: false),
           index: nextIndex,
         ),
         play: false,
@@ -677,14 +801,25 @@ class AudioEngineService {
 
     _player = incoming;
     _fadePlayer = outgoing;
-    final int incomingIndex = incoming.state.playlist.index;
-    final int newIndex = incomingIndex < 0 ? _state.index : incomingIndex;
-    final Track? newTrack = newIndex >= 0 && newIndex < _state.queue.length
-        ? _state.queue[newIndex]
-        : _state.currentTrack;
+    final Playlist incomingPlaylist = incoming.state.playlist;
+    final int incomingIndex = incomingPlaylist.index;
+    final int activeLength = _state.activeQueue.length;
+    final int newIndex = incomingIndex < 0 || activeLength == 0
+        ? _state.index
+        : incomingIndex.clamp(0, activeLength - 1);
+    final Track? newTrack =
+        incomingIndex >= 0 && incomingIndex < incomingPlaylist.medias.length
+        ? _trackForUri(incomingPlaylist.medias[incomingIndex].uri)
+        : (newIndex >= 0 && newIndex < activeLength
+              ? _state.activeQueue[newIndex]
+              : _state.currentTrack);
+    final List<Track> shuffled = _state.shuffledQueue.isEmpty
+        ? const <Track>[]
+        : List<Track>.unmodifiable(_state.activeQueue);
     _state = _state.copyWith(
       index: newIndex,
       currentTrack: newTrack,
+      shuffledQueue: shuffled,
       position: Duration(milliseconds: _crossfadeMs),
       completed: false,
       error: null,
@@ -733,9 +868,45 @@ class AudioEngineService {
     await setShuffle(!_state.shuffle);
   }
 
+  /// Activa/desactiva el aleatorio sin tocar la pista que suena.
+  ///
+  /// mpv ejecuta `playlist-shuffle`/`playlist-unshuffle` y conserva la entrada
+  /// actual; `_onPlaylistChanged` reconstruye `shuffledQueue` desde el propio
+  /// `Media` sonoro. Por eso la carátula nunca se elige por índice ni cambia al
+  /// conmutar el modo.
   Future<void> setShuffle(bool value) async {
+    if (_state.shuffle == value) return;
     _emit(_state.copyWith(shuffle: value));
-    await _player.setShuffle(value);
+
+    if (_player.state.shuffle == value) {
+      // Tras un crossfade mpv ya está en el modo pedido; si aún arrastramos un
+      // espejo barajado hay que reconstruir la playlist en orden secuencial.
+      if (!value && _state.shuffledQueue.isNotEmpty) {
+        final Track? current = _state.currentTrack;
+        final Duration absolute = _trimStart + _state.position;
+        final int found = current == null
+            ? 0
+            : _state.queue.indexWhere((Track track) => track.id == current.id);
+        final int index = found < 0 ? 0 : found;
+        _state = _state.copyWith(
+          shuffledQueue: const <Track>[],
+          index: index,
+          currentTrack:
+              current ?? (_state.queue.isEmpty ? null : _state.queue[index]),
+        );
+        final bool wasPlaying = _state.playing;
+        await _open(autoPlay: wasPlaying);
+        if (absolute > Duration.zero) await _player.seek(absolute);
+      }
+      return;
+    }
+
+    _awaitingShuffleEvent = true;
+    try {
+      await _player.setShuffle(value);
+    } finally {
+      _awaitingShuffleEvent = false;
+    }
   }
 
   Future<void> cycleRepeat() async {

@@ -49,8 +49,19 @@ class CompactStyleController
   Future<void> setBackground(CompactSurface surface, Color? color) =>
       update(surface, styleOf(surface).copyWith(background: color));
 
+  /// `null` vuelve a usar el acento de esta superficie.
+  Future<void> setProgressColor(CompactSurface surface, Color? color) =>
+      update(surface, styleOf(surface).copyWith(progressColor: color));
+
+  Future<void> setVolumeColor(CompactSurface surface, Color? color) =>
+      update(surface, styleOf(surface).copyWith(volumeColor: color));
+
   Future<void> setCardStyle(CompactSurface surface, CardStyle style) =>
       update(surface, styleOf(surface).copyWith(cardStyle: style));
+
+  /// `null` vuelve a usar la forma de carátula global.
+  Future<void> setArtworkShape(CompactSurface surface, ArtworkShape? shape) =>
+      update(surface, styleOf(surface).copyWith(artworkShape: shape));
 
   Future<void> setCornerRadius(CompactSurface surface, double value) => update(
     surface,
@@ -101,7 +112,10 @@ class CompactStyleController
       try {
         final Object? decoded = jsonDecode(raw);
         if (decoded is Map<Object?, Object?>) {
-          return CompactStyleConfig.fromJson(decoded.cast<String, Object?>());
+          return CompactStyleConfig.fromJson(
+            decoded.cast<String, Object?>(),
+            surface: surface,
+          );
         }
       } catch (error) {
         AppLog.w(

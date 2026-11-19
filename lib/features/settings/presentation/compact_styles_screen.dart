@@ -34,19 +34,31 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
     final Color initial =
         (accent ? style.accent : style.background) ??
         (accent ? tokens.accent : tokens.background);
-    final Color? picked = await ColorPickerDialog.show(
-      context,
+    await _pickChannel(
       title: accent
           ? 'Acento de ${_surface.label}'
           : 'Fondo de ${_surface.label}',
       initial: initial,
+      setter: (Color? color) => accent
+          ? _controller.setAccent(_surface, color)
+          : _controller.setBackground(_surface, color),
     );
-    if (picked == null || !mounted) return;
-    if (accent) {
-      await _controller.setAccent(_surface, picked);
-    } else {
-      await _controller.setBackground(_surface, picked);
-    }
+  }
+
+  /// Selector genérico para los colores propios de cada superficie. `null`
+  /// significa «heredar el acento del modo» y se ofrece como opción explícita.
+  Future<void> _pickChannel({
+    required String title,
+    required Color initial,
+    required Future<void> Function(Color? color) setter,
+  }) async {
+    final Color? picked = await ColorPickerDialog.show(
+      context,
+      title: title,
+      initial: initial,
+    );
+    if (!mounted) return;
+    if (picked != null) await setter(picked);
   }
 
   @override
@@ -119,6 +131,32 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
             onPick: () => _pickColor(accent: false),
             onInherit: () => _controller.setBackground(_surface, null),
           ),
+          const SizedBox(height: 8),
+          _ColorRow(
+            title: 'Progreso',
+            color: style.progressColor ?? accent,
+            inherited: style.progressColor == null,
+            onPick: () => _pickChannel(
+              title: 'Progreso de ${_surface.label}',
+              initial: style.progressColor ?? accent,
+              setter: (Color? color) =>
+                  _controller.setProgressColor(_surface, color),
+            ),
+            onInherit: () => _controller.setProgressColor(_surface, null),
+          ),
+          const SizedBox(height: 8),
+          _ColorRow(
+            title: 'Volumen',
+            color: style.volumeColor ?? accent,
+            inherited: style.volumeColor == null,
+            onPick: () => _pickChannel(
+              title: 'Volumen de ${_surface.label}',
+              initial: style.volumeColor ?? accent,
+              setter: (Color? color) =>
+                  _controller.setVolumeColor(_surface, color),
+            ),
+            onInherit: () => _controller.setVolumeColor(_surface, null),
+          ),
           const SizedBox(height: 22),
           _SectionTitle(title: 'Forma y acabado'),
           _Label(
@@ -143,6 +181,35 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
             onChanged: (CardStyle? value) {
               if (value != null) _controller.setCardStyle(_surface, value);
             },
+          ),
+          const SizedBox(height: 14),
+          _Label(
+            title: 'Forma de carátula',
+            subtitle: style.artworkShape == null
+                ? 'Hereda la forma global'
+                : style.artworkShape!.description,
+          ),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<ArtworkShape?>(
+            initialValue: style.artworkShape,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            items: <DropdownMenuItem<ArtworkShape?>>[
+              const DropdownMenuItem<ArtworkShape?>(
+                value: null,
+                child: Text('Heredar (global)'),
+              ),
+              ...ArtworkShape.values.map(
+                (ArtworkShape value) => DropdownMenuItem<ArtworkShape?>(
+                  value: value,
+                  child: Text(value.label),
+                ),
+              ),
+            ],
+            onChanged: (ArtworkShape? value) =>
+                _controller.setArtworkShape(_surface, value),
           ),
           const SizedBox(height: 14),
           _Slider(

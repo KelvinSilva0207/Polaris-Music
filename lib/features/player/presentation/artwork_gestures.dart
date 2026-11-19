@@ -1,7 +1,7 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 const double _gestureSwipeThreshold = 48;
 
@@ -17,9 +17,9 @@ const double _gestureSwipeThreshold = 48;
 /// deslizamiento. Usamos [Listener] en lugar de [GestureDetector] para decidir
 /// el modo en el instante del toque y que la búsqueda no robe los deslizamientos.
 ///
-/// Durante el arrastre se dibuja una flecha que crece en la dirección elegida y,
-/// al soltar, un anillo de pulso confirma la acción. Ambos usan el acento del
-/// tema activo y se pintan con [CustomPainter] sin capas de desenfoque.
+/// El feedback es físico y sin texto: la carátula sigue el dedo con un tilted
+/// 3D sutil, vuelve con un resorte (spring) al soltar y un anillo cromático
+/// confirma la acción. No se dibujan flechas ni etiquetas sobre la portada.
 class ArtworkGestures extends StatefulWidget {
   const ArtworkGestures({
     super.key,
@@ -49,20 +49,20 @@ class ArtworkGestures extends StatefulWidget {
 }
 
 class _ArtworkGesturesState extends State<ArtworkGestures>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const double _swipeThreshold = _gestureSwipeThreshold;
   static const double _hintThreshold = 22;
   static const double _seekBand = 0.40;
 
   Offset? _start;
   bool _seeking = false;
-  String? _hint;
-  Timer? _hintTimer;
 
   final ValueNotifier<Offset> _drag = ValueNotifier<Offset>(Offset.zero);
   late final AnimationController _pulse;
-  late final Listenable _repaint;
+  late final AnimationController _spring;
+  late final Listenable _motion;
   Offset _lastDirection = Offset.zero;
+  bool _releasing = false;
 
   @override
   void initState() {
@@ -71,13 +71,26 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
       vsync: this,
       duration: const Duration(milliseconds: 380),
     );
-    _repaint = Listenable.merge(<Listenable>[_drag, _pulse]);
+    // Los límites permiten el overshoot del resorte sin asserts.
+    _spring = AnimationController(
+      vsync: this,
+      lowerBound: -0.45,
+      upperBound: 1.45,
+      duration: const Duration(milliseconds: 1),
+    );
+    _spring.addListener(() {
+      if (!_spring.isAnimating && _releasing) {
+        _releasing = false;
+        _drag.value = Offset.zero;
+      }
+    });
+    _motion = Listenable.merge(<Listenable>[_drag, _pulse, _spring]);
   }
 
   @override
   void dispose() {
-    _hintTimer?.cancel();
     _pulse.dispose();
+    _spring.dispose();
     _drag.dispose();
     super.dispose();
   }
@@ -102,33 +115,15 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
     _ => const Offset(0, 1),
   };
 
-  IconData _hintIcon(String hint) => switch (hint) {
-    'Siguiente' => Icons.skip_next_rounded,
-    'Anterior' => Icons.skip_previous_rounded,
-    'Letras' => Icons.lyrics_outlined,
-    _ => Icons.expand_more_rounded,
-  };
-
-  void _showHint(String hint, {bool persistent = false}) {
-    _hintTimer?.cancel();
-    if (!persistent) {
-      _hintTimer = Timer(const Duration(milliseconds: 1400), () {
-        if (!mounted) return;
-        setState(() => _hint = null);
-      });
-    }
-    if (_hint == hint) return;
-    setState(() => _hint = hint);
-  }
-
-  void _clearDrag() {
+  void _resetMotion() {
+    _spring.stop();
+    _releasing = false;
     if (_drag.value != Offset.zero) _drag.value = Offset.zero;
   }
 
   void _onDown(PointerDownEvent event) {
-    _hintTimer?.cancel();
     _start = event.localPosition;
-    _clearDrag();
+    _resetMotion();
     final Offset center = Offset(widget.size / 2, widget.size / 2);
     _seeking =
         (event.localPosition - center).distance > widget.size * _seekBand;
@@ -143,10 +138,22 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
       return;
     }
     final Offset delta = event.localPosition - start;
-    if (delta.distance > _hintThreshold) {
-      _drag.value = delta;
-      _showHint(_directionHint(delta.dx, delta.dy), persistent: true);
-    }
+    if (delta.distance > _hintThreshold) _drag.value = delta;
+  }
+
+  /// Resorte: la carátula sigue el dedo y vuelve con inercia elástica.
+  void _release(Offset delta) {
+    _releasing = true;
+    final double velocity = -(delta.distance / 0.16).clamp(0, 6).toDouble();
+    _spring.animateWith(
+      SpringSimulation(
+        const SpringDescription(mass: 1.1, stiffness: 210, damping: 15),
+        1,
+        0,
+        velocity,
+      ),
+    );
+    _pulse.forward(from: 0);
   }
 
   void _onUp(PointerUpEvent event) {
@@ -156,24 +163,20 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
     final bool wasSeeking = _seeking;
     _seeking = false;
 
-    if (wasSeeking || _hint == null) {
-      _clearDrag();
-      _showHint('');
+    if (wasSeeking) {
+      _resetMotion();
       return;
     }
 
     final Offset delta = event.localPosition - start;
-    final String action = _directionHint(delta.dx, delta.dy);
     if (delta.distance < _swipeThreshold) {
-      _clearDrag();
-      _showHint('');
+      _resetMotion();
       return;
     }
 
+    final String action = _directionHint(delta.dx, delta.dy);
     _lastDirection = _directionFor(action);
-    _clearDrag();
-    _pulse.forward(from: 0);
-    _showHint(action);
+    _release(delta);
     switch (action) {
       case 'Siguiente':
         widget.onNext();
@@ -189,9 +192,11 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
   void _onCancel(PointerCancelEvent _) {
     _start = null;
     _seeking = false;
-    _clearDrag();
-    _showHint('');
+    _resetMotion();
   }
+
+  Offset _effectiveOffset() =>
+      _releasing ? _drag.value * _spring.value : _drag.value;
 
   @override
   Widget build(BuildContext context) {
@@ -211,72 +216,43 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
         child: Stack(
           alignment: Alignment.center,
           children: <Widget>[
-            widget.child,
+            AnimatedBuilder(
+              animation: _motion,
+              builder: (BuildContext context, Widget? child) {
+                final Offset offset = _effectiveOffset();
+                // Tilt 3D sutil y dependiente del gesto, sobre la perspectiva
+                // base que ya tiene la carátula. El resorte puede overshoot.
+                final double tiltX = (offset.dy / widget.size)
+                    .clamp(-0.10, 0.10)
+                    .toDouble();
+                final double tiltY = (offset.dx / widget.size)
+                    .clamp(-0.10, 0.10)
+                    .toDouble();
+                return Transform(
+                  alignment: Alignment.center,
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.0015)
+                    ..rotateX(-tiltX)
+                    ..rotateY(tiltY),
+                  child: Transform.translate(
+                    offset: Offset(offset.dx * 0.22, offset.dy * 0.22),
+                    child: child,
+                  ),
+                );
+              },
+              child: widget.child,
+            ),
             Positioned.fill(
               child: IgnorePointer(
                 child: CustomPaint(
-                  painter: _GestureFeedbackPainter(
-                    repaint: _repaint,
+                  painter: _ChromaticGesturePainter(
+                    repaint: _motion,
                     drag: _drag,
                     pulse: _pulse,
                     accent: accent,
                     direction: _lastDirection,
-                    hint: _hint,
                   ),
                 ),
-              ),
-            ),
-            IgnorePointer(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 170),
-                transitionBuilder: (Widget child, Animation<double> animation) {
-                  final Animation<double> scale =
-                      Tween<double>(begin: 0.82, end: 1).animate(
-                        CurvedAnimation(
-                          parent: animation,
-                          curve: Curves.easeOutBack,
-                        ),
-                      );
-                  return FadeTransition(
-                    opacity: animation,
-                    child: ScaleTransition(scale: scale, child: child),
-                  );
-                },
-                child: _hint == null || _hint!.isEmpty
-                    ? const SizedBox.shrink()
-                    : Container(
-                        key: ValueKey<String>(_hint!),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: accent.withValues(alpha: 0.90),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.28),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Icon(
-                              _hintIcon(_hint!),
-                              size: 16,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 7),
-                            Text(
-                              _hint!,
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
               ),
             ),
           ],
@@ -286,72 +262,78 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
   }
 }
 
-/// Flecha direccional mientras se arrastra y anillo de confirmación al soltar.
-class _GestureFeedbackPainter extends CustomPainter {
-  _GestureFeedbackPainter({
+/// Resplandor cromático reactivo: tres anillos desplazados en la dirección del
+/// gesto y un pulso de confirmación al soltar. Sin filtros de desenfoque.
+class _ChromaticGesturePainter extends CustomPainter {
+  _ChromaticGesturePainter({
     required Listenable repaint,
     required this.drag,
     required this.pulse,
     required this.accent,
     required this.direction,
-    required this.hint,
   }) : super(repaint: repaint);
 
   final ValueNotifier<Offset> drag;
   final Animation<double> pulse;
   final Color accent;
   final Offset direction;
-  final String? hint;
 
   @override
   void paint(Canvas canvas, Size size) {
     final Offset current = drag.value;
     final double distance = current.distance;
-    final bool dragging = distance > 0.5;
-    final Offset dir = dragging ? current / distance : direction;
-    if (dir.distanceSquared == 0) return;
+    final double strength = (distance / _gestureSwipeThreshold)
+        .clamp(0, 1.35)
+        .toDouble();
+    final Offset dir = distance > 0.5 ? current / distance : direction;
 
     final Offset center = Offset(size.width / 2, size.height / 2);
-    final double strength = dragging
-        ? (distance / _gestureSwipeThreshold).clamp(0.0, 1.35).toDouble()
-        : 0;
+    final HSVColor base = HSVColor.fromColor(accent);
+    final List<Color> channels = <Color>[
+      base.withHue((base.hue + 34) % 360).toColor(),
+      accent,
+      base.withHue((base.hue - 34 + 360) % 360).toColor(),
+    ];
 
-    final Paint paint = Paint()
-      ..color = accent.withValues(
-        alpha: (0.28 + 0.55 * strength).clamp(0, 1).toDouble(),
-      )
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round
-      ..style = PaintingStyle.stroke;
-
-    final Offset start = center + dir * (size.width * 0.14);
-    final Offset end = center + dir * (size.width * (0.27 + 0.07 * strength));
-    canvas.drawLine(start, end, paint);
-
-    final double head = 10 + 5 * strength;
-    final Offset perp = Offset(-dir.dy, dir.dx);
-    canvas.drawLine(end, end - dir * head + perp * head * 0.7, paint);
-    canvas.drawLine(end, end - dir * head - perp * head * 0.7, paint);
+    if (strength > 0) {
+      final double radius = size.width * 0.32 + 5 * strength;
+      for (int i = 0; i < channels.length; i++) {
+        final double shift = (i - 1) * (2 + 6 * strength);
+        canvas.drawCircle(
+          center + dir * shift,
+          radius,
+          Paint()
+            ..color = channels[i].withValues(
+              alpha: (0.08 + 0.26 * strength).clamp(0, 1).toDouble(),
+            )
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = i == 1 ? 2.2 : 1.3,
+        );
+      }
+    }
 
     if (pulse.value > 0 && pulse.value < 1) {
       final double eased = Curves.easeOutCubic.transform(pulse.value);
-      canvas.drawCircle(
-        center,
-        size.width * 0.30 + 38 * eased,
-        Paint()
-          ..color = accent.withValues(alpha: (1 - eased) * 0.55)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.5,
-      );
+      final double radius = size.width * 0.30 + 38 * eased;
+      for (int i = 0; i < channels.length; i++) {
+        canvas.drawCircle(
+          center + dir * ((i - 1) * 5),
+          radius,
+          Paint()
+            ..color = channels[i].withValues(
+              alpha: (1 - eased) * (i == 1 ? 0.55 : 0.28),
+            )
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = i == 1 ? 2.4 : 1.4,
+        );
+      }
     }
   }
 
   @override
-  bool shouldRepaint(covariant _GestureFeedbackPainter old) =>
-      pulse.isAnimating ||
+  bool shouldRepaint(covariant _ChromaticGesturePainter old) =>
       old.drag != drag ||
       old.pulse != pulse ||
       old.accent != accent ||
-      old.direction != direction ||
-      old.hint != hint;
+      old.direction != direction;
 }

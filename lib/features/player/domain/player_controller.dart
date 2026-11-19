@@ -440,7 +440,17 @@ class PlayerController extends StateNotifier<PlayerUiState> {
         paths: playback.queue
             .map((Track track) => track.path)
             .toList(growable: false),
-        index: playback.index,
+        // `playback.index` pertenece al orden activo (barajado si shuffle está
+        // activo). La sesión se restaura sobre el orden original, así que
+        // guardamos la posición canónica de la pista que suena.
+        index: playback.currentTrack == null
+            ? 0
+            : (() {
+                final int at = playback.queue.indexWhere(
+                  (Track track) => track.id == playback.currentTrack!.id,
+                );
+                return at < 0 ? 0 : at;
+              })(),
         positionMs: playback.position.inMilliseconds,
         playing: playback.playing,
         shuffle: playback.shuffle,

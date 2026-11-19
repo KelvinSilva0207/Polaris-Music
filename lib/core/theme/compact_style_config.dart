@@ -5,7 +5,7 @@ import 'font_catalog.dart';
 import 'theme_tokens.dart';
 import 'typography_config.dart';
 
-export 'app_theme_config.dart' show CardStyle;
+export 'app_theme_config.dart' show ArtworkShape, CardStyle;
 
 /// Superficies compactas que pueden personalizarse de forma independiente.
 enum CompactSurface { island, mini, phone, player }
@@ -43,6 +43,9 @@ class CompactStyleConfig {
   const CompactStyleConfig({
     this.accent,
     this.background,
+    this.progressColor,
+    this.volumeColor,
+    this.artworkShape,
     this.cardStyle = CardStyle.glassmorphic,
     this.cornerRadius = 20,
     this.opacity = 0.92,
@@ -98,6 +101,15 @@ class CompactStyleConfig {
 
   final Color? accent;
   final Color? background;
+
+  /// Colores propios de la barra de progreso y del volumen de esta superficie.
+  /// `null` = heredar el acento del modo.
+  final Color? progressColor;
+  final Color? volumeColor;
+
+  /// Forma de carátula propia de esta superficie. `null` = heredar la global.
+  final ArtworkShape? artworkShape;
+
   final CardStyle cardStyle;
   final double cornerRadius;
   final double opacity;
@@ -127,6 +139,9 @@ class CompactStyleConfig {
   CompactStyleConfig copyWith({
     Object? accent = _unset,
     Object? background = _unset,
+    Object? progressColor = _unset,
+    Object? volumeColor = _unset,
+    Object? artworkShape = _unset,
     CardStyle? cardStyle,
     double? cornerRadius,
     double? opacity,
@@ -141,6 +156,15 @@ class CompactStyleConfig {
     background: identical(background, _unset)
         ? this.background
         : background as Color?,
+    progressColor: identical(progressColor, _unset)
+        ? this.progressColor
+        : progressColor as Color?,
+    volumeColor: identical(volumeColor, _unset)
+        ? this.volumeColor
+        : volumeColor as Color?,
+    artworkShape: identical(artworkShape, _unset)
+        ? this.artworkShape
+        : artworkShape as ArtworkShape?,
     cardStyle: cardStyle ?? this.cardStyle,
     cornerRadius: cornerRadius ?? this.cornerRadius,
     opacity: opacity ?? this.opacity,
@@ -159,6 +183,9 @@ class CompactStyleConfig {
   Map<String, Object?> toJson() => <String, Object?>{
     'accent': accent?.toARGB32(),
     'background': background?.toARGB32(),
+    'progressColor': progressColor?.toARGB32(),
+    'volumeColor': volumeColor?.toARGB32(),
+    'artworkShape': artworkShape?.name,
     'cardStyle': cardStyle.name,
     'cornerRadius': cornerRadius,
     'opacity': opacity,
@@ -170,11 +197,23 @@ class CompactStyleConfig {
     'autoHideSeconds': autoHideSeconds,
   };
 
-  factory CompactStyleConfig.fromJson(Map<String, Object?> json) {
-    final CompactStyleConfig base = CompactStyleConfig();
+  factory CompactStyleConfig.fromJson(
+    Map<String, Object?> json, {
+    CompactSurface? surface,
+  }) {
+    // Los defaults dependen de la superficie: sin esto, un respaldo antiguo de
+    // la isla recuperaría el radio del reproductor (20 en vez de 38).
+    final CompactStyleConfig base = surface == null
+        ? CompactStyleConfig()
+        : CompactStyleConfig.defaultsFor(surface);
     return base.copyWith(
       accent: _color(json['accent']),
       background: _color(json['background']),
+      progressColor: _color(json['progressColor']),
+      volumeColor: _color(json['volumeColor']),
+      artworkShape:
+          _enumByName(ArtworkShape.values, json['artworkShape']) ??
+          base.artworkShape,
       cardStyle:
           _enumByName(CardStyle.values, json['cardStyle']) ?? base.cardStyle,
       cornerRadius: _number(
@@ -223,6 +262,8 @@ class ResolvedCompactStyle {
     required this.tokens,
     required this.accent,
     required this.background,
+    required this.progressColor,
+    required this.volumeColor,
     required this.radius,
     required this.opacity,
     required this.blur,
@@ -236,6 +277,8 @@ class ResolvedCompactStyle {
   final PolarisTokens tokens;
   final Color accent;
   final Color background;
+  final Color progressColor;
+  final Color volumeColor;
   final double radius;
   final double opacity;
   final double blur;
@@ -249,6 +292,18 @@ class ResolvedCompactStyle {
 
   final bool autoHide;
   final int autoHideSeconds;
+}
+
+/// Utilidades compartidas para aplicar la forma de carátula elegida en cada
+/// superficie compacta sin duplicar switches en los widgets.
+extension ResolvedCompactArtwork on ResolvedCompactStyle {
+  bool get isVinyl => tokens.artworkShape == ArtworkShape.circleVinyl;
+
+  double artworkRadius(double base) => switch (tokens.artworkShape) {
+    ArtworkShape.circleVinyl => 100000,
+    ArtworkShape.card3D => base * 1.6,
+    ArtworkShape.squareRounded => base,
+  };
 }
 
 extension CompactStyleResolver on CompactStyleConfig {
@@ -273,6 +328,7 @@ extension CompactStyleResolver on CompactStyleConfig {
       cardStyle: cardStyle,
       borderColor: accent.withValues(alpha: 0.26),
       typography: effective,
+      artworkShape: artworkShape,
     );
     return ResolvedCompactStyle(
       tokens: local,
@@ -280,6 +336,8 @@ extension CompactStyleResolver on CompactStyleConfig {
       fontFamily: family,
       accent: accent,
       background: background,
+      progressColor: progressColor ?? accent,
+      volumeColor: volumeColor ?? accent,
       radius: cornerRadius,
       opacity: opacity,
       blur: blur,

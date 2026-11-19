@@ -1,13 +1,16 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/providers/app_providers.dart';
 
 /// Insignia discreta de «pista en reproducción».
 ///
 /// Tres barras que solo se animan cuando la pista está activa **y** sonando:
 /// al pausar el controlador se detiene y dibuja tres barras quietas, sin
 /// dejar un ticker corriendo. El color viene del acento RGB/HSL activo.
-class PlayingIndicator extends StatefulWidget {
+class PlayingIndicator extends ConsumerStatefulWidget {
   const PlayingIndicator({
     super.key,
     required this.active,
@@ -22,10 +25,10 @@ class PlayingIndicator extends StatefulWidget {
   final double size;
 
   @override
-  State<PlayingIndicator> createState() => _PlayingIndicatorState();
+  ConsumerState<PlayingIndicator> createState() => _PlayingIndicatorState();
 }
 
-class _PlayingIndicatorState extends State<PlayingIndicator>
+class _PlayingIndicatorState extends ConsumerState<PlayingIndicator>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller = AnimationController(
     vsync: this,
@@ -35,6 +38,7 @@ class _PlayingIndicatorState extends State<PlayingIndicator>
   @override
   void initState() {
     super.initState();
+    ref.listen(windowStateProvider, (_, _) => _sync());
     _sync();
   }
 
@@ -45,7 +49,10 @@ class _PlayingIndicatorState extends State<PlayingIndicator>
   }
 
   void _sync() {
-    if (widget.active && widget.playing) {
+    // Además de pausar/estar inactiva, se detiene cuando la ventana pasa a
+    // segundo plano: la música sigue, pero no hay ticks de UI innecesarios.
+    final bool backgrounded = ref.read(windowStateProvider).value.backgrounded;
+    if (widget.active && widget.playing && !backgrounded) {
       if (!_controller.isAnimating) _controller.repeat();
     } else if (_controller.isAnimating) {
       _controller.stop();

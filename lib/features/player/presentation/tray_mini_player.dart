@@ -57,17 +57,22 @@ class TrayMiniPlayer extends ConsumerWidget {
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: LinearProgressIndicator(
-                  value: progress.clamp(0.0, 1.0),
-                  minHeight: 2.5,
-                  backgroundColor: Colors.white.withValues(alpha: 0.05),
-                  valueColor: AlwaysStoppedAnimation<Color>(resolved.accent),
+              if (progress > 0)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: LinearProgressIndicator(
+                    value: progress.clamp(0.0, 1.0),
+                    minHeight: 2.5,
+                    backgroundColor: resolved.progressColor.withValues(
+                      alpha: 0.12,
+                    ),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      resolved.progressColor,
+                    ),
+                  ),
                 ),
-              ),
               if (track == null)
                 _EmptyState(
                   accent: resolved.accent,
@@ -82,13 +87,17 @@ class TrayMiniPlayer extends ConsumerWidget {
                       Row(
                         children: <Widget>[
                           TrackArtwork(
+                            key: ValueKey<int>(track.id),
                             path: track.artworkPath,
                             size: 52,
-                            radius: resolved.radius * 0.55,
+                            radius: resolved.artworkRadius(
+                              resolved.radius * 0.55,
+                            ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
+                              key: ValueKey<int>(track.id),
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: <Widget>[
@@ -186,8 +195,8 @@ class TrayMiniPlayer extends ConsumerWidget {
                             child: SliderTheme(
                               data: SliderTheme.of(context).copyWith(
                                 trackHeight: 2.5,
-                                activeTrackColor: resolved.accent,
-                                thumbColor: resolved.accent,
+                                activeTrackColor: resolved.volumeColor,
+                                thumbColor: resolved.volumeColor,
                                 thumbShape: const RoundSliderThumbShape(
                                   enabledThumbRadius: 6,
                                 ),

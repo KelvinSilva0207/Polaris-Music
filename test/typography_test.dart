@@ -119,5 +119,45 @@ void main() {
       expect(restored.fontScale, 0.9);
       expect(restored.resolve(PolarisTokens.fallback).fontFamily, isNull);
     });
+
+    test(
+      'colores de barra y forma de carátula por superficie sobreviven al JSON',
+      () {
+        final CompactStyleConfig style = CompactStyleConfig.mini.copyWith(
+          progressColor: const Color(0xFF00E5FF),
+          volumeColor: const Color(0xFFFF5252),
+          artworkShape: ArtworkShape.squareRounded,
+        );
+        final CompactStyleConfig restored = CompactStyleConfig.fromJson(
+          jsonDecode(jsonEncode(style.toJson())) as Map<String, Object?>,
+          surface: CompactSurface.mini,
+        );
+        expect(restored.progressColor, const Color(0xFF00E5FF));
+        expect(restored.volumeColor, const Color(0xFFFF5252));
+        expect(restored.artworkShape, ArtworkShape.squareRounded);
+
+        final ResolvedCompactStyle resolved = restored.resolve(
+          PolarisTokens.fallback,
+        );
+        expect(resolved.progressColor, const Color(0xFF00E5FF));
+        expect(resolved.volumeColor, const Color(0xFFFF5252));
+        expect(resolved.artworkRadius(40), 40);
+        expect(
+          restored.copyWith(artworkShape: null).artworkShape,
+          isNull,
+          reason: 'null anula la forma para heredar la global',
+        );
+      },
+    );
+
+    test('superficie sin anulación hereda la forma global', () {
+      const CompactStyleConfig style = CompactStyleConfig();
+      expect(style.artworkShape, isNull);
+      final ResolvedCompactStyle resolved = style.resolve(
+        PolarisTokens.fallback.copyWith(artworkShape: ArtworkShape.circleVinyl),
+      );
+      expect(resolved.isVinyl, isTrue);
+      expect(resolved.artworkRadius(40), greaterThan(1000));
+    });
   });
 }

@@ -5,58 +5,41 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/playback_state.dart';
-import '../../../core/models/track.dart';
 import '../../../core/services/audio_engine_service.dart';
 import '../../../core/services/settings_service.dart';
 
 /// Contenido de la "isla dinámica" flotante.
 enum IslandMode { hidden, compact, expanded }
 
+/// Estado de UI de la isla.
+///
+/// Deliberadamente NO guarda pista, carátula, progreso ni reproducción: esos
+/// datos los lee la vista directamente de `playerControllerProvider`, que es la
+/// única fuente de verdad. Aquí solo vive el modo (compacto/expandido), el
+/// mensaje temporal y la preferencia de activación.
 @immutable
 class DynamicIslandState {
   const DynamicIslandState({
     this.enabled = true,
     this.mode = IslandMode.compact,
     this.message,
-    this.track,
-    this.playing = false,
-    this.position = Duration.zero,
-    this.duration = Duration.zero,
   });
 
   final bool enabled;
   final IslandMode mode;
   final String? message;
-  final Track? track;
-  final bool playing;
-  final Duration position;
-  final Duration duration;
 
-  bool get visible =>
-      enabled &&
-      mode != IslandMode.hidden &&
-      (track != null || message != null);
+  bool get visible => enabled && mode != IslandMode.hidden;
   bool get expanded => mode == IslandMode.expanded;
-  double get progress => duration.inMilliseconds == 0
-      ? 0
-      : (position.inMilliseconds / duration.inMilliseconds).clamp(0.0, 1.0);
 
   DynamicIslandState copyWith({
     bool? enabled,
     IslandMode? mode,
     Object? message = _unset,
-    Object? track = _unset,
-    bool? playing,
-    Duration? position,
-    Duration? duration,
   }) => DynamicIslandState(
     enabled: enabled ?? this.enabled,
     mode: mode ?? this.mode,
     message: identical(message, _unset) ? this.message : message as String?,
-    track: identical(track, _unset) ? this.track : track as Track?,
-    playing: playing ?? this.playing,
-    position: position ?? this.position,
-    duration: duration ?? this.duration,
   );
 }
 
@@ -64,55 +47,37 @@ const Object _unset = Object();
 
 /// Controla el globo flotante que muestra la pista actual y acciones rápidas.
 ///
-/// En Fase 1 es un overlay dentro de la ventana (Windows/Android). En fases
-/// posteriores puede convertirse en una ventana independiente o en una
-/// notificación flotante nativa sin cambiar este estado.
+/// Se suscribe al motor solo para detectar un cambio de pista y expandirse una
+/// vez; el contenido visible siempre viene del controlador del reproductor.
 class DynamicIslandController extends StateNotifier<DynamicIslandState> {
   DynamicIslandController({
     required SettingsService settings,
     required AudioEngineService engine,
   }) : _settings = settings,
-       _engine = engine,
        super(
          DynamicIslandState(
            enabled: settings.boolOr(
              AppConstants.keyIslandEnabled,
              fallback: true,
            ),
-           track: engine.state.currentTrack,
-           playing: engine.state.playing,
          ),
        ) {
-    _subscription = _engine.states.listen(onPlayback);
+    _subscription = engine.states.listen(onPlayback);
   }
 
   final SettingsService _settings;
-  final AudioEngineService _engine;
   StreamSubscription<PlaybackSnapshot>? _subscription;
   Timer? _collapseTimer;
   Timer? _messageTimer;
   int? _lastTrackId;
 
   void onPlayback(PlaybackSnapshot snapshot) {
-    final Track? track = snapshot.currentTrack;
-    final bool changed = track != null && track.id != _lastTrackId;
-    if (changed) {
-      _lastTrackId = track.id;
-      state = state.copyWith(
-        track: track,
-        mode: IslandMode.expanded,
-        message: null,
-      );
+    final int? trackId = snapshot.currentTrack?.id;
+    if (trackId != null && trackId != _lastTrackId) {
+      _lastTrackId = trackId;
+      state = state.copyWith(mode: IslandMode.expanded, message: null);
       _scheduleCollapse();
     }
-
-    state = state.copyWith(
-      track: track,
-      playing: snapshot.playing,
-      position: snapshot.position,
-      duration: snapshot.duration,
-      mode: changed ? IslandMode.expanded : state.mode,
-    );
   }
 
   Future<void> setEnabled(bool value) async {

@@ -216,7 +216,24 @@ class _AppShellState extends ConsumerState<AppShell>
                                           ),
                                           child: IndexedStack(
                                             index: section.index,
-                                            children: _screens,
+                                            // IndexedStack mantiene montadas las
+                                            // cuatro pantallas. Sin TickerMode el
+                                            // vinilo de la pestaña oculta sigue
+                                            // consumiendo ticks con la música en
+                                            // marcha; aquí se cortan al cambiar
+                                            // de sección (y al pasar a segundo
+                                            // plano lo hace `backgrounded`).
+                                            children: <Widget>[
+                                              for (
+                                                int i = 0;
+                                                i < _screens.length;
+                                                i++
+                                              )
+                                                TickerMode(
+                                                  enabled: i == section.index,
+                                                  child: _screens[i],
+                                                ),
+                                            ],
                                           ),
                                         ),
                                       ),
