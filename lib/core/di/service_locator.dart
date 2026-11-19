@@ -2,8 +2,17 @@ import 'package:get_it/get_it.dart';
 
 import '../../features/library/data/library_repository.dart';
 import '../../features/lyrics/data/lyrics_service.dart';
+import '../../features/online_music/data/audius_source.dart';
 import '../../features/online_music/data/download_manager.dart';
+import '../../features/online_music/data/online_catalog_repository.dart';
 import '../../features/online_music/data/online_music_service.dart';
+import '../../features/online_music/data/soundcloud_source.dart';
+import '../../features/online_music/data/source_helpers.dart';
+import '../../features/online_music/data/spotify_source.dart';
+import '../../features/online_music/data/tidal_source.dart';
+import '../../features/online_music/domain/music_source.dart';
+import '../../features/online_music/domain/music_source_catalog.dart';
+import '../../features/online_music/domain/online_music_repository.dart';
 import '../../features/profiles_backup/domain/profiles_service.dart';
 import '../../features/stats_sync/domain/stats_service.dart';
 import '../database/app_database.dart';
@@ -140,9 +149,39 @@ class ServiceLocator {
 
     AppLog.i('Bootstrap', 'Preparando catálogo online y descargas');
     sl.registerLazySingleton<OnlineMusicService>(() => OnlineMusicService());
+    sl.registerLazySingleton<ArtworkCache>(() => ArtworkCache());
+    sl.registerLazySingleton<AudiusSource>(
+      () => AudiusSource(sl<OnlineMusicService>()),
+    );
+    sl.registerLazySingleton<SoundCloudSource>(
+      () => SoundCloudSource(
+        settings: settings,
+        artworkCache: sl<ArtworkCache>(),
+      ),
+    );
+    sl.registerLazySingleton<SpotifySource>(
+      () => SpotifySource(settings: settings, artworkCache: sl<ArtworkCache>()),
+    );
+    sl.registerLazySingleton<TidalSource>(
+      () => TidalSource(settings: settings, artworkCache: sl<ArtworkCache>()),
+    );
+    sl.registerLazySingleton<MusicSourceCatalog>(
+      () => MusicSourceCatalog(<MusicSourceProvider>[
+        sl<AudiusSource>(),
+        sl<SoundCloudSource>(),
+        sl<SpotifySource>(),
+        sl<TidalSource>(),
+      ]),
+    );
+    sl.registerLazySingleton<OnlineMusicRepository>(
+      () => OnlineCatalogRepository(
+        catalog: sl<MusicSourceCatalog>(),
+        artworkCache: sl<ArtworkCache>(),
+      ),
+    );
     sl.registerLazySingleton<DownloadManager>(
       () => DownloadManager(
-        repository: sl<OnlineMusicService>(),
+        repository: sl<OnlineMusicRepository>(),
         registerDownloaded: sl<LibraryRepository>().registerDownloaded,
         hasDownloaded: sl<LibraryRepository>().hasExternalId,
       ),
@@ -183,6 +222,9 @@ class ServiceLocator {
     }
     if (sl.isRegistered<OnlineMusicService>()) {
       await sl<OnlineMusicService>().dispose();
+    }
+    if (sl.isRegistered<ArtworkCache>()) {
+      sl<ArtworkCache>().dispose();
     }
     if (sl.isRegistered<LibraryRepository>()) {
       await sl<LibraryRepository>().dispose();

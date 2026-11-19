@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/track.dart';
 import '../../../core/theme/theme_tokens.dart';
@@ -8,14 +9,18 @@ import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import '../../player/presentation/player_providers.dart';
 import '../domain/download_task.dart';
+import '../domain/music_source.dart';
 import '../domain/online_track.dart';
 import 'online_music_providers.dart';
+import 'source_settings_dialog.dart';
+import 'source_status_ui.dart';
 
 /// Exploración de música online y descargas a la biblioteca local.
 ///
-/// Consume el catálogo abierto de Audius. Las pistas se pueden reproducir en
-/// streaming (se comportan como locales en el reproductor) o descargar para
-/// escucharlas sin conexión.
+/// Consulta varias fuentes de forma independiente: Audius y SoundCloud pueden
+/// transmitir y descargar audio; Spotify aporta metadatos y Tidal expone su
+/// estado. Las pistas reproducibles se comportan como locales en el
+/// reproductor y las descargas se registran en la biblioteca.
 class OnlineMusicScreen extends ConsumerStatefulWidget {
   const OnlineMusicScreen({super.key});
 
@@ -33,8 +38,39 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
     super.dispose();
   }
 
+  bool _can(
+    OnlineTrack track,
+    bool Function(MusicSourceProvider provider) test,
+  ) {
+    final MusicSourceId? id = MusicSourceIdX.fromExternalId(track.externalId);
+    if (id == null) return false;
+    final MusicSourceProvider? provider = ref
+        .read(musicSourceCatalogProvider)
+        .providerFor(id);
+    return provider != null && test(provider);
+  }
+
   Future<void> _play(OnlineTrack track) async {
     if (_resolvingId != null) return;
+    if (!_can(track, (MusicSourceProvider provider) => provider.canStream)) {
+      final String? link = track.permalink;
+      if (link != null) {
+        try {
+          if (await launchUrl(
+            Uri.parse(link),
+            mode: LaunchMode.externalApplication,
+          )) {
+            return;
+          }
+        } on FormatException {
+          // Enlace malformado: se informa igual que si no existiera.
+        }
+      }
+      _notice(
+        'Esta fuente solo ofrece metadatos y no se pudo abrir el enlace.',
+      );
+      return;
+    }
     setState(() => _resolvingId = track.externalId);
     final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     try {
@@ -52,12 +88,17 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
   }
 
   void _download(OnlineTrack track) {
+    if (!_can(track, (MusicSourceProvider provider) => provider.canDownload)) {
+      _notice('Esta fuente no permite descargas.');
+      return;
+    }
     ref.read(downloadTrackUseCaseProvider)(track);
+    _notice('“${track.title}” añadida a la cola de descargas.');
+  }
+
+  void _notice(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('“${track.title}” añadida a la cola de descargas.'),
-        duration: const Duration(seconds: 2),
-      ),
+      SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
 
@@ -71,6 +112,10 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
     final List<DownloadTask> pending = downloads
         .where((DownloadTask task) => !task.isCompleted)
         .toList(growable: false);
+    final MusicSourceId? filter = state.sourceFilter;
+    final SourceResult? filteredIssue = filter == null
+        ? null
+        : state.resultFor(filter);
 
     DownloadTask? taskFor(String externalId) {
       for (final DownloadTask task in downloads) {
@@ -87,6 +132,7 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
             onRefresh: () {
               ref.read(onlineSearchProvider.notifier).retryCurrent();
             },
+            onConfigure: () => showSourcesDialog(context),
           ),
           const SizedBox(height: 18),
           _SearchField(
@@ -100,6 +146,27 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
               ref.read(onlineSearchProvider.notifier).onQueryChanged('');
             },
           ),
+          const SizedBox(height: 14),
+          _SourceFilterBar(
+            providers: ref.watch(musicSourceCatalogProvider).providers,
+            selected: state.sourceFilter,
+            statuses: state.sourceStatuses,
+            onChanged: (MusicSourceId? source) {
+              ref.read(onlineSearchProvider.notifier).setSourceFilter(source);
+            },
+          ),
+          if (filteredIssue != null &&
+              SourceStatusUi.isActionable(filteredIssue.status.issue))
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _SourceIssueBanner(
+                status: filteredIssue.status,
+                onConfigure: () => showSourcesDialog(context, initial: filter),
+                onRetry: () {
+                  ref.read(onlineSearchProvider.notifier).retryCurrent();
+                },
+              ),
+            ),
           if (pending.isNotEmpty) ...<Widget>[
             const SizedBox(height: 16),
             _DownloadsPanel(
@@ -150,6 +217,11 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
                   track: track,
                   downloaded: downloaded.contains(track.externalId),
                   resolving: _resolvingId == track.externalId,
+                  canPlay: _can(track, (MusicSourceProvider p) => p.canStream),
+                  canDownload: _can(
+                    track,
+                    (MusicSourceProvider p) => p.canDownload,
+                  ),
                   task: taskFor(track.externalId),
                   onPlay: () => _play(track),
                   onDownload: () => _download(track),
@@ -169,9 +241,10 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
 }
 
 class _OnlineHeader extends StatelessWidget {
-  const _OnlineHeader({required this.onRefresh});
+  const _OnlineHeader({required this.onRefresh, required this.onConfigure});
 
   final VoidCallback onRefresh;
+  final VoidCallback onConfigure;
 
   @override
   Widget build(BuildContext context) {
@@ -210,12 +283,17 @@ class _OnlineHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'Catálogo abierto de Audius: transmite al instante o descarga '
-                'para escuchar sin conexión.',
+                'Audius y SoundCloud permiten streaming; Spotify aporta '
+                'metadatos. Configura tus tokens y filtra por fuente.',
                 style: text.bodySmall?.copyWith(color: Colors.white60),
               ),
             ],
           ),
+        ),
+        IconButton(
+          tooltip: 'Configurar fuentes',
+          onPressed: onConfigure,
+          icon: const Icon(Icons.tune_rounded),
         ),
         IconButton(
           tooltip: 'Actualizar',
@@ -285,6 +363,104 @@ class _SearchField extends StatelessWidget {
   }
 }
 
+class _SourceFilterBar extends StatelessWidget {
+  const _SourceFilterBar({
+    required this.providers,
+    required this.selected,
+    required this.statuses,
+    required this.onChanged,
+  });
+
+  final List<MusicSourceProvider> providers;
+  final MusicSourceId? selected;
+  final Map<MusicSourceId, MusicSourceStatus> statuses;
+  final ValueChanged<MusicSourceId?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: <Widget>[
+          ChoiceChip(
+            label: const Text('Todas'),
+            selected: selected == null,
+            onSelected: (_) => onChanged(null),
+          ),
+          const SizedBox(width: 8),
+          for (final MusicSourceProvider provider in providers)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                avatar: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: SourceStatusUi.color(
+                      statuses[provider.id] ?? provider.status,
+                    ),
+                  ),
+                ),
+                label: Text(provider.id.label),
+                selected: selected == provider.id,
+                tooltip: SourceStatusUi.explain(
+                  (statuses[provider.id] ?? provider.status).issue,
+                ),
+                onSelected: (_) => onChanged(provider.id),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SourceIssueBanner extends StatelessWidget {
+  const _SourceIssueBanner({
+    required this.status,
+    required this.onConfigure,
+    required this.onRetry,
+  });
+
+  final MusicSourceStatus status;
+  final VoidCallback onConfigure;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color color = SourceStatusUi.color(status);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.info_outline_rounded, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              status.detail.isNotEmpty
+                  ? status.detail
+                  : SourceStatusUi.explain(status.issue),
+              style: const TextStyle(fontSize: 12, color: Colors.white70),
+            ),
+          ),
+          TextButton(onPressed: onConfigure, child: const Text('Ajustes')),
+          IconButton(
+            tooltip: 'Reintentar',
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ResultsHeader extends StatelessWidget {
   const _ResultsHeader({required this.state});
 
@@ -326,6 +502,8 @@ class _OnlineTrackTile extends StatelessWidget {
     required this.track,
     required this.downloaded,
     required this.resolving,
+    required this.canPlay,
+    required this.canDownload,
     required this.task,
     required this.onPlay,
     required this.onDownload,
@@ -336,6 +514,8 @@ class _OnlineTrackTile extends StatelessWidget {
   final OnlineTrack track;
   final bool downloaded;
   final bool resolving;
+  final bool canPlay;
+  final bool canDownload;
   final DownloadTask? task;
   final VoidCallback onPlay;
   final VoidCallback onDownload;
@@ -357,7 +537,7 @@ class _OnlineTrackTile extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(14),
-        onTap: resolving ? null : onPlay,
+        onTap: resolving || !canPlay ? null : onPlay,
         child: Ink(
           decoration: tokens.panelDecoration(radius: 14, elevated: false),
           child: Padding(
@@ -417,22 +597,31 @@ class _OnlineTrackTile extends StatelessWidget {
                   )
                 else
                   IconButton(
-                    tooltip: 'Reproducir en streaming',
+                    tooltip: canPlay
+                        ? 'Reproducir en streaming'
+                        : 'Abrir en la app original',
                     onPressed: onPlay,
-                    icon: Icon(
-                      Icons.play_circle_fill_rounded,
-                      color: tokens.accent,
-                      size: 28,
-                    ),
+                    icon: canPlay
+                        ? Icon(
+                            Icons.play_circle_fill_rounded,
+                            color: tokens.accent,
+                            size: 28,
+                          )
+                        : const Icon(
+                            Icons.open_in_new_rounded,
+                            color: Colors.white38,
+                            size: 24,
+                          ),
                   ),
-                _DownloadAction(
-                  downloaded: downloaded,
-                  task: current,
-                  busy: downloading,
-                  onDownload: onDownload,
-                  onCancel: onCancelDownload,
-                  onRetry: onRetryDownload,
-                ),
+                if (canDownload)
+                  _DownloadAction(
+                    downloaded: downloaded,
+                    task: current,
+                    busy: downloading,
+                    onDownload: onDownload,
+                    onCancel: onCancelDownload,
+                    onRetry: onRetryDownload,
+                  ),
               ],
             ),
           ),

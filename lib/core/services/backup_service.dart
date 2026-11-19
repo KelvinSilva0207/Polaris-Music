@@ -62,6 +62,9 @@ class BackupService {
   static const String _tag = 'Backup';
   static const int _formatVersion = 1;
 
+  /// Preferencias que contienen credenciales y no deben viajar en un backup.
+  static const String _credentialPrefix = 'online.';
+
   final AppDatabase _db;
   final SettingsDao _settings;
   final EqDao _eq;
@@ -72,7 +75,9 @@ class BackupService {
 
   /// Serializa el estado actual a un mapa listo para `jsonEncode`.
   Future<Map<String, dynamic>> buildBackup() async {
-    final Map<String, String> settings = await _settings.all();
+    final Map<String, String> settings = Map<String, String>.from(
+      await _settings.all(),
+    )..removeWhere((String key, _) => key.startsWith(_credentialPrefix));
     final List<EqPresetRow> presets = await _eq.getAll();
     final List<ProfileRow> profiles = await _profiles.getAll();
     final List<PlaylistRow> playlistRows = await _playlists.getAll();
@@ -202,6 +207,7 @@ class BackupService {
       await _settings.clear();
     }
     for (final MapEntry<String, dynamic> entry in settings.entries) {
+      if (entry.key.startsWith(_credentialPrefix)) continue;
       await _settings.setValue(entry.key, '${entry.value}');
       settingsCount++;
     }
