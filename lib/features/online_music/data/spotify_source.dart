@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../../core/services/settings_service.dart';
 import '../domain/music_source.dart';
+import '../domain/online_catalog_items.dart';
 import '../domain/online_source_settings.dart';
 import '../domain/online_track.dart';
 import 'source_helpers.dart';
@@ -152,6 +153,132 @@ class SpotifySource implements MusicSourceProvider {
       ),
     ),
   );
+
+  /// Las colecciones se consultan con el mismo token OAuth; Spotify solo
+  /// entrega metadatos, pero son útiles como entrada al puente de audio.
+  @override
+  Future<List<OnlineCollectionRef>> searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+  }) async {
+    if (query.trim().isEmpty || type == OnlineSearchType.songs) {
+      return const <OnlineCollectionRef>[];
+    }
+    final MusicSourceStatus current = status;
+    if (!current.available && current.issue == MusicSourceIssue.notConfigured) {
+      return const <OnlineCollectionRef>[];
+    }
+    final String section = switch (type) {
+      OnlineSearchType.albums => 'albums',
+      OnlineSearchType.artists => 'artists',
+      OnlineSearchType.playlists => 'playlists',
+      OnlineSearchType.songs => '',
+    };
+    try {
+      final Response<dynamic> response = await _get(
+        '/search',
+        <String, dynamic>{
+          'q': query.trim(),
+          'type': section,
+          'limit': limit,
+          'market': _market,
+        },
+      );
+      final Map<String, dynamic>? payload = SourceJson.map(response.data);
+      final Map<String, dynamic>? page = SourceJson.map(payload?[section]);
+      return _parseCollections(
+        SourceJson.list(page?['items']),
+        type,
+        limit,
+      );
+    } on Object {
+      return const <OnlineCollectionRef>[];
+    }
+  }
+
+  @override
+  Future<List<OnlineTrack>> collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+  }) async {
+    if (collection.id.isEmpty) return const <OnlineTrack>[];
+    try {
+      final Response<dynamic> response = await _get(
+        switch (collection.kind) {
+          OnlineSearchType.artists =>
+            '/artists/${Uri.encodeComponent(collection.id)}/top-tracks',
+          OnlineSearchType.albums =>
+            '/albums/${Uri.encodeComponent(collection.id)}/tracks',
+          _ => '/playlists/${Uri.encodeComponent(collection.id)}/tracks',
+        },
+        <String, dynamic>{'market': _market, 'limit': limit},
+      );
+      final Map<String, dynamic>? payload = SourceJson.map(response.data);
+      final List<Object?> items = collection.kind == OnlineSearchType.artists
+          ? SourceJson.list(payload?['tracks'])
+          : SourceJson.list(payload?['items']);
+      final List<Object?> tracks = collection.kind == OnlineSearchType.playlists
+          ? items
+              .map(
+                (Object? entry) => SourceJson.map(entry)?['track'],
+              )
+              .toList(growable: false)
+          : items;
+      return _parseTracks(tracks, limit);
+    } on Object {
+      return const <OnlineTrack>[];
+    }
+  }
+
+  List<OnlineCollectionRef> _parseCollections(
+    List<Object?> entries,
+    OnlineSearchType type,
+    int limit,
+  ) {
+    final List<OnlineCollectionRef> result = <OnlineCollectionRef>[];
+    for (final Object? entry in entries) {
+      if (result.length >= limit) break;
+      final Map<String, dynamic>? json = SourceJson.map(entry);
+      if (json == null) continue;
+      final String id = SourceJson.text(json['id']);
+      final String title = SourceJson.text(json['name']);
+      if (id.isEmpty || title.isEmpty) continue;
+
+      final List<Object?> images = SourceJson.list(json['images']);
+      final String? artwork = images.isEmpty
+          ? null
+          : SourceJson.url(SourceJson.map(images.first)?['url']);
+      final List<Object?> artists = SourceJson.list(json['artists']);
+      final String artist = artists.isEmpty
+          ? ''
+          : SourceJson.text(SourceJson.map(artists.first)?['name']);
+      final Map<String, dynamic>? owner = SourceJson.map(json['owner']);
+      final String subtitle = artist.isNotEmpty
+          ? artist
+          : SourceJson.text(owner?['display_name']);
+      final Map<String, dynamic>? tracks = SourceJson.map(json['tracks']);
+      final Map<String, dynamic>? external = SourceJson.map(
+        json['external_urls'],
+      );
+      result.add(
+        OnlineCollectionRef(
+          externalId: 'spotify:${type.name}:$id',
+          id: id,
+          title: title.trim(),
+          subtitle: subtitle,
+          artworkUrl: artwork,
+          permalink: SourceJson.url(external?['spotify']),
+          source: MusicSourceId.spotify,
+          kind: type,
+          trackCount: SourceJson.integer(
+            json['total_tracks'] ?? tracks?['total'],
+          ),
+        ),
+      );
+    }
+    return result;
+  }
 
   @override
   Future<ResolvedStream> resolveStream(OnlineTrack track) => Future.error(

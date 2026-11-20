@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/providers/app_providers.dart';
 import '../../../core/services/settings_service.dart';
+import '../../../core/theme/theme_tokens.dart';
 import '../domain/music_source.dart';
 import '../domain/online_source_settings.dart';
 import 'online_music_providers.dart';
@@ -37,6 +38,7 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
   late final TextEditingController _soundCloudToken;
   late final TextEditingController _spotifyToken;
   late final TextEditingController _spotifyMarket;
+  late final TextEditingController _tidalToken;
   bool _saving = false;
 
   @override
@@ -55,6 +57,9 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
         OnlineSourceSettings.defaultSpotifyMarket,
       ),
     );
+    _tidalToken = TextEditingController(
+      text: settings.getString(OnlineSourceSettings.tidalToken) ?? '',
+    );
     unawaited(ref.read(onlineSearchProvider.notifier).checkSources());
   }
 
@@ -63,6 +68,7 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
     _soundCloudToken.dispose();
     _spotifyToken.dispose();
     _spotifyMarket.dispose();
+    _tidalToken.dispose();
     super.dispose();
   }
 
@@ -81,6 +87,10 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
         MusicSourceId.spotify,
         _spotifyToken.text,
         market: _spotifyMarket.text,
+      );
+      await controller.configureSource(
+        MusicSourceId.tidal,
+        _tidalToken.text,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -116,11 +126,13 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              const Text(
-                'Audius y YouTube Music funcionan sin configuración. Para '
-                'SoundCloud y Spotify pega un token OAuth de tu propia app; se '
-                'guarda solo en este dispositivo y no se comparte con terceros.',
-                style: TextStyle(fontSize: 12, color: Colors.white60),
+              Text(
+                'Audius y YouTube Music funcionan sin cuenta ni tokens. '
+                'SoundCloud, Spotify y Tidal necesitan un token OAuth de tu '
+                'propia app; se guarda solo en este dispositivo. Spotify y '
+                'Tidal solo aportan metadatos: el audio se busca en fuentes '
+                'abiertas y se etiqueta su origen real.',
+                style: TextStyle(fontSize: 12, color: context.inkAlpha(0.60)),
               ),
               const SizedBox(height: 16),
               for (final MusicSourceProvider provider in providers)
@@ -132,10 +144,13 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
                         state.sourceStatuses[provider.id] ?? provider.status,
                     highlight: initial == provider.id,
                     child: switch (provider.id) {
-                      MusicSourceId.audius => const Text(
+                      MusicSourceId.audius => Text(
                         'Catálogo abierto. Reproducción y descarga disponibles '
                         'sin credenciales.',
-                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.inkAlpha(0.54),
+                        ),
                       ),
                       MusicSourceId.soundcloud => TextField(
                         controller: _soundCloudToken,
@@ -171,27 +186,49 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
                             ),
                             maxLength: 2,
                           ),
-                          const Text(
-                            'Solo metadatos: Spotify no permite reproducir ni '
-                            'descargar audio desde esta app.',
+                          Text(
+                            'Solo metadatos. El audio se busca en fuentes '
+                            'abiertas y se etiqueta como '
+                            '“Spotify → YouTube Music”.',
                             style: TextStyle(
                               fontSize: 11,
-                              color: Colors.white38,
+                              color: context.inkAlpha(0.38),
                             ),
                           ),
                         ],
                       ),
-                      MusicSourceId.tidal => const Text(
-                        'Tidal requiere credenciales de socio y contenido con '
-                        'DRM. Se muestra su estado, sin búsqueda ni '
-                        'reproducción.',
-                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      MusicSourceId.tidal => Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: <Widget>[
+                          TextField(
+                            controller: _tidalToken,
+                            obscureText: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Token OAuth de Tidal',
+                              hintText: 'OAuth access token',
+                              border: OutlineInputBorder(),
+                              isDense: true,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Solo metadatos: Tidal no ofrece audio abierto. '
+                            'Las pistas se buscan en fuentes anónimas.',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: context.inkAlpha(0.38),
+                            ),
+                          ),
+                        ],
                       ),
-                      MusicSourceId.youtube => const Text(
-                        'Catálogo abierto de YouTube Music vía InnerTube: '
-                        'encuentra artistas y canciones actuales. Solo '
-                        'metadatos y enlace, sin reproducción directa.',
-                        style: TextStyle(fontSize: 12, color: Colors.white54),
+                      MusicSourceId.youtube => Text(
+                        'Búsqueda y reproducción anónimas vía InnerTube: '
+                        'encuentra y escucha música sin iniciar sesión en '
+                        'Google. No necesita tokens.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: context.inkAlpha(0.54),
+                        ),
                       ),
                     },
                   ),
@@ -235,7 +272,7 @@ class _SourceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color color = SourceStatusUi.color(status);
+    final Color color = SourceStatusUi.color(status, context);
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -273,7 +310,7 @@ class _SourceCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               status.detail,
-              style: const TextStyle(fontSize: 11, color: Colors.white54),
+              style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
             ),
           ],
           const SizedBox(height: 10),

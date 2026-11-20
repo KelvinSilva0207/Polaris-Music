@@ -39,18 +39,28 @@ class OnlineTrack {
 
   /// Proyección reproducible. [streamUrl] es la URL directa de audio y
   /// [artworkPath] la carátula ya cacheada en disco.
-  Track toTrack({required String streamUrl, String? artworkPath}) =>
-      Track.online(
-        externalId: externalId,
-        streamUrl: streamUrl,
-        title: title,
-        artist: artist,
-        album: album.isEmpty ? sourceLabel : album,
-        durationMs: durationMs,
-        artworkPath: artworkPath,
-        artworkUrl: artworkUrl,
-        sourceLabel: sourceLabel,
-      );
+  Track toTrack({
+    required String streamUrl,
+    String? artworkPath,
+    Map<String, String> httpHeaders = const <String, String>{},
+    String? sourceLabel,
+    List<StreamAlternative> streamAlternatives = const <StreamAlternative>[],
+  }) {
+    final String label = sourceLabel ?? this.sourceLabel;
+    return Track.online(
+      externalId: externalId,
+      streamUrl: streamUrl,
+      title: title,
+      artist: artist,
+      album: album.isEmpty ? label : album,
+      durationMs: durationMs,
+      artworkPath: artworkPath,
+      artworkUrl: artworkUrl,
+      sourceLabel: label,
+      httpHeaders: httpHeaders,
+      streamAlternatives: streamAlternatives,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>
@@ -70,6 +80,10 @@ class ResolvedStream {
     required this.url,
     this.extension = 'mp3',
     this.mimeType = '',
+    this.httpHeaders = const <String, String>{},
+    this.resolvedVia,
+    this.clientLabel = '',
+    this.alternatives = const <StreamAlternative>[],
   });
 
   final String url;
@@ -77,6 +91,23 @@ class ResolvedStream {
   /// Extensión sugerida para el archivo cuando se descarga.
   final String extension;
   final String mimeType;
+
+  /// Cabeceras que `media_kit` debe enviar al abrir la URL (p. ej. InnerTube).
+  final Map<String, String> httpHeaders;
+
+  /// Etiqueta del origen real cuando la fuente original solo aporta metadatos
+  /// (p. ej. `Spotify → YouTube Music`). La UI y la biblioteca la muestran para
+  /// que nunca se confunda el catálogo consultado con el audio obtenido.
+  final String? resolvedVia;
+
+  /// Cliente InnerTube que generó esta URL (`IOS`, `ANDROID_MUSIC`...).
+  /// Las cabeceras de [httpHeaders] ya incluyen su `User-Agent`; este campo es
+  /// informativo para logs y mensajes de reintento.
+  final String clientLabel;
+
+  /// Misma pista en otros formatos/clientes, ya con sus cabeceras coherentes.
+  /// El reproductor y la descarga los prueban en orden si el primero falla.
+  final List<StreamAlternative> alternatives;
 
   @override
   String toString() => 'ResolvedStream($url)';

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
 import '../../../core/providers/compact_style_provider.dart';
+import '../../../core/theme/color_math.dart';
 import '../../../core/theme/compact_style_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../shared/widgets/compact_surface.dart';
@@ -105,7 +106,7 @@ class TrayMiniPlayer extends ConsumerWidget {
                                   track.title,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w800,
                                   ),
@@ -115,9 +116,9 @@ class TrayMiniPlayer extends ConsumerWidget {
                                   track.artist,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 10.5,
-                                    color: Colors.white60,
+                                    color: context.inkAlpha(0.60),
                                   ),
                                 ),
                                 const SizedBox(height: 2),
@@ -138,16 +139,20 @@ class TrayMiniPlayer extends ConsumerWidget {
                                           shape: const CircleBorder(),
                                           padding: EdgeInsets.zero,
                                           backgroundColor: resolved.accent,
-                                          foregroundColor: Colors.black,
+                                          foregroundColor: ColorMath.onColor(
+                                            resolved.accent,
+                                          ),
                                         ),
                                         child: buffering
-                                            ? const SizedBox(
+                                            ? SizedBox(
                                                 width: 15,
                                                 height: 15,
                                                 child:
                                                     CircularProgressIndicator(
                                                       strokeWidth: 2,
-                                                      color: Colors.black,
+                                                      color: ColorMath.onColor(
+                                                        resolved.accent,
+                                                      ),
                                                     ),
                                               )
                                             : Icon(
@@ -189,7 +194,7 @@ class TrayMiniPlayer extends ConsumerWidget {
                                 ? Icons.volume_off_rounded
                                 : Icons.volume_up_rounded,
                             size: 15,
-                            color: Colors.white54,
+                            color: context.inkAlpha(0.54),
                           ),
                           Expanded(
                             child: SliderTheme(
@@ -213,9 +218,9 @@ class TrayMiniPlayer extends ConsumerWidget {
                           ),
                           Text(
                             '${volume.round()}%',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 10,
-                              color: Colors.white38,
+                              color: context.inkAlpha(0.38),
                             ),
                           ),
                         ],
@@ -260,7 +265,7 @@ class _EmptyState extends StatelessWidget {
               child: Icon(Icons.music_note_rounded, color: accent, size: 22),
             ),
             const SizedBox(width: 12),
-            const Expanded(
+            Expanded(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,12 +277,12 @@ class _EmptyState extends StatelessWidget {
                   SizedBox(height: 3),
                   Text(
                     'Elige una canción desde la biblioteca',
-                    style: TextStyle(fontSize: 10.5, color: Colors.white60),
+                    style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.60)),
                   ),
                 ],
               ),
             ),
-            TextButton(onPressed: onOpen, child: const Text('Abrir')),
+            TextButton(onPressed: onOpen, child: Text('Abrir')),
             _MiniButton(
               icon: Icons.close_rounded,
               tooltip: 'Ocultar en la bandeja',
@@ -311,7 +316,7 @@ class _MiniButton extends StatelessWidget {
         child: SizedBox(
           width: 30,
           height: 30,
-          child: Icon(icon, size: 17, color: Colors.white70),
+          child: Icon(icon, size: 17, color: context.inkAlpha(0.70)),
         ),
       ),
     );

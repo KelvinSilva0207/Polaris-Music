@@ -11,15 +11,19 @@ import '../../../core/models/playback_state.dart';
 import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/compact_style_provider.dart';
+import '../../../core/providers/motion_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme_config.dart';
+import '../../../core/theme/color_math.dart';
 import '../../../core/theme/compact_style_config.dart';
+import '../../../core/theme/motion_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/audio_progress_bar.dart';
 import 'animated_favorite_button.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import '../../../shared/widgets/tactile_icon_button.dart';
 import '../../../shared/widgets/track_properties_modal.dart';
@@ -196,6 +200,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                 panelHeight: null,
                                 includePanel: false,
                                 onOpenLyrics: _toggleLyrics,
+                                showLyrics: _showLyrics,
                               ),
                             ),
                           ),
@@ -210,6 +215,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                   setState(() => _panelTab = value),
                               height: null,
                               onOpenLyrics: _toggleLyrics,
+                              lyricsVisible: _showLyrics,
                             ),
                           ),
                         ],
@@ -256,6 +262,7 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                     math.min(460, constraints.maxHeight * 0.45),
                   ),
                   onOpenLyrics: _toggleLyrics,
+                  showLyrics: _showLyrics,
                 ),
               ],
             );
@@ -281,6 +288,7 @@ class _PlayerColumn extends ConsumerWidget {
     this.panelHeight,
     this.includePanel = true,
     required this.onOpenLyrics,
+    required this.showLyrics,
   });
 
   final Track track;
@@ -292,6 +300,7 @@ class _PlayerColumn extends ConsumerWidget {
   final double? panelHeight;
   final bool includePanel;
   final VoidCallback onOpenLyrics;
+  final bool showLyrics;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -327,10 +336,34 @@ class _PlayerColumn extends ConsumerWidget {
         if (error != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text(
-              error,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: const Color(0xB3260F12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFF6B6B), width: 1),
+              ),
+              child: Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.error_outline_rounded,
+                    color: Color(0xFFFFB4AB),
+                    size: 18,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      error,
+                      style: TextStyle(
+                        color: context.ink,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         if (includePanel) ...<Widget>[
@@ -343,6 +376,7 @@ class _PlayerColumn extends ConsumerWidget {
             onTabChanged: onPanelChanged,
             height: panelHeight ?? 360,
             onOpenLyrics: onOpenLyrics,
+            lyricsVisible: showLyrics,
           ),
         ],
       ],
@@ -359,7 +393,7 @@ class _TrackHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 420),
+      duration: context.motion.duration(const Duration(milliseconds: 420)),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
       transitionBuilder: (Widget child, Animation<double> animation) {
@@ -394,7 +428,7 @@ class _TrackHeader extends ConsumerWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.titleMedium
-                      ?.copyWith(color: Colors.white70),
+                      ?.copyWith(color: context.inkAlpha(0.70)),
                 ),
                 if (track.album.isNotEmpty && track.album != 'Desconocido')
                   Text(
@@ -402,7 +436,7 @@ class _TrackHeader extends ConsumerWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: Colors.white38),
+                        ?.copyWith(color: context.inkAlpha(0.38)),
                   ),
                 const SizedBox(height: 7),
                 _TrackOriginBadge(track: track, accent: accent),
@@ -478,12 +512,12 @@ class _TrackOriginBadge extends StatelessWidget {
       TrackOrigin.online => (Icons.cloud_queue_rounded, 'Streaming'),
     };
     final bool online = track.isOnline;
-    final Color color = online ? accent : Colors.white60;
+    final Color color = online ? accent : context.inkAlpha(0.60);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        color: (online ? accent : Colors.white).withValues(
+        color: (online ? accent : context.ink).withValues(
           alpha: online ? 0.14 : 0.06,
         ),
         border: Border.all(color: color.withValues(alpha: 0.25)),
@@ -577,11 +611,11 @@ class _TimeRow extends StatelessWidget {
         children: <Widget>[
           Text(
             Formatters.duration(position),
-            style: const TextStyle(fontSize: 11, color: Colors.white54),
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
           ),
           Text(
             Formatters.duration(duration),
-            style: const TextStyle(fontSize: 11, color: Colors.white54),
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
           ),
         ],
       ),
@@ -721,7 +755,7 @@ class _TransportControls extends ConsumerWidget {
           tooltip: 'Aleatorio',
           onPressed: controller.toggleShuffle,
           icon: Icons.shuffle_rounded,
-          color: shuffle ? accent : Colors.white54,
+          color: shuffle ? accent : context.inkAlpha(0.54),
           echoColor: accent,
         ),
         TactileIconButton(
@@ -750,7 +784,7 @@ class _TransportControls extends ConsumerWidget {
           icon: repeat == RepeatMode.one
               ? Icons.repeat_one_rounded
               : Icons.repeat_rounded,
-          color: repeat == RepeatMode.off ? Colors.white54 : accent,
+          color: repeat == RepeatMode.off ? context.inkAlpha(0.54) : accent,
           echoColor: accent,
         ),
       ],
@@ -795,7 +829,10 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
       label: widget.playing ? 'Pausar' : 'Reproducir',
       child: AnimatedScale(
         scale: _pressed ? 0.9 : 1,
-        duration: const Duration(milliseconds: 130),
+        duration: context.motion.duration(
+          const Duration(milliseconds: 130),
+          category: MotionCategory.gestures,
+        ),
         curve: Curves.easeOutCubic,
         child: GestureDetector(
           onTapDown: (_) => _setPressed(true),
@@ -803,7 +840,10 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
           onTapCancel: () => _setPressed(false),
           onTap: widget.onPressed,
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 240),
+            duration: context.motion.duration(
+              const Duration(milliseconds: 240),
+              category: MotionCategory.gestures,
+            ),
             curve: Curves.easeOutCubic,
             width: 68,
             height: 68,
@@ -813,7 +853,7 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: <Color>[
-                  Color.lerp(widget.accent, Colors.white, 0.22) ??
+                  Color.lerp(widget.accent, context.ink, 0.22) ??
                       widget.accent,
                   widget.accent,
                 ],
@@ -831,7 +871,9 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
             ),
             child: Center(
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 200),
+                duration: context.motion.duration(
+                  const Duration(milliseconds: 200),
+                ),
                 transitionBuilder:
                     (Widget child, Animation<double> animation) =>
                         ScaleTransition(
@@ -845,13 +887,13 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
                           ),
                         ),
                 child: widget.buffering
-                    ? const SizedBox(
+                    ? SizedBox(
                         key: ValueKey<String>('buffering'),
                         width: 24,
                         height: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.4,
-                          color: Colors.black,
+                          color: ColorMath.onColor(widget.accent),
                         ),
                       )
                     : Icon(
@@ -860,7 +902,7 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
                             : Icons.play_arrow_rounded,
                         key: ValueKey<bool>(widget.playing),
                         size: 38,
-                        color: Colors.black,
+                        color: ColorMath.onColor(widget.accent),
                       ),
               ),
             ),
@@ -888,9 +930,11 @@ class _VolumeRow extends ConsumerWidget {
         Expanded(
           child: VolumeSlider(controller: controller, accent: accent),
         ),
-        const SizedBox(width: 4),
+        const SizedBox(width: 12),
         _SpeedMenu(speed: speed, onChanged: controller.setSpeed),
+        const SizedBox(width: 8),
         _ABLoopButton(controller: controller, accent: accent),
+        const SizedBox(width: 8),
         _SleepMenu(controller: controller),
       ],
     );
@@ -913,13 +957,18 @@ class _ABLoopButton extends ConsumerWidget {
       playerControllerProvider.select((PlayerUiState s) => s.loopB),
     );
     final bool active = a != null && b != null && b > a;
+    // El botón tiene el volumen a la izquierda y el ecualizador justo debajo.
+    // 'over' + desplazamiento negativo abre el menú por encima de la fila.
+    final int itemCount = 2 + ((a != null || b != null) ? 1 : 0);
 
     return PopupMenuButton<String>(
       tooltip: 'Repetidor A-B',
+      position: PopupMenuPosition.over,
+      offset: Offset(0, -(itemCount * kMinInteractiveDimension + 24)),
       icon: Icon(
         Icons.repeat_on_rounded,
         size: 20,
-        color: active ? accent : Colors.white54,
+        color: active ? accent : context.inkAlpha(0.54),
       ),
       onSelected: (String action) {
         switch (action) {
@@ -986,7 +1035,7 @@ class _SpeedMenu extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
         child: Text(
           '${speed.toStringAsFixed(speed == speed.roundToDouble() ? 1 : 2)}×',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
         ),
       ),
     );
@@ -1040,7 +1089,7 @@ class _SleepMenu extends ConsumerWidget {
         child: Icon(
           active ? Icons.bedtime_rounded : Icons.bedtime_outlined,
           size: 20,
-          color: active ? context.accent : Colors.white54,
+          color: active ? context.accent : context.inkAlpha(0.54),
         ),
       ),
     );
@@ -1068,7 +1117,7 @@ class _SleepBadge extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          const Icon(Icons.bedtime_rounded, size: 14, color: Colors.white54),
+          Icon(Icons.bedtime_rounded, size: 14, color: context.inkAlpha(0.54)),
           const SizedBox(width: 6),
           Flexible(
             child: Text(
@@ -1077,12 +1126,12 @@ class _SleepBadge extends ConsumerWidget {
                   : 'Se pausará en ${Formatters.duration(remaining)}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, color: Colors.white54),
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
             ),
           ),
           TextButton(
             onPressed: controller.cancelSleepTimer,
-            child: const Text('Cancelar'),
+            child: Text('Cancelar'),
           ),
         ],
       ),
@@ -1114,13 +1163,13 @@ class _QuickActions extends StatelessWidget {
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (BuildContext context) => Scaffold(
-                appBar: AppBar(title: const Text('Ecualizador')),
+                appBar: AppBar(title: Text('Ecualizador')),
                 body: const EqualizerScreen(),
               ),
             ),
           ),
-          icon: const Icon(Icons.graphic_eq_rounded, size: 18),
-          label: const Text('Ecualizador'),
+          icon: Icon(Icons.graphic_eq_rounded, size: 18),
+          label: Text('Ecualizador'),
           style: style,
         ),
       ],
@@ -1137,6 +1186,7 @@ class _MediaPanel extends ConsumerWidget {
     required this.onTabChanged,
     required this.height,
     required this.onOpenLyrics,
+    required this.lyricsVisible,
   });
 
   final Track track;
@@ -1148,6 +1198,7 @@ class _MediaPanel extends ConsumerWidget {
   /// `null` hace que el panel ocupe todo el espacio disponible (modo ancho).
   final double? height;
   final VoidCallback onOpenLyrics;
+  final bool lyricsVisible;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1166,6 +1217,15 @@ class _MediaPanel extends ConsumerWidget {
     );
     final bool fluid = height == null;
 
+    // El panel hereda los tokens de la superficie compacta activa. `onPanel`
+    // calcula tinta legible sobre ese fondo (oscuro o claro) en lugar de
+    // asumir `context.ink`, que era ilegible cuando el velo era claro.
+    final Color panelInk = context.onPanel;
+    final Color idleInk = panelInk.withValues(alpha: 0.88);
+    final Color segmentIdle = context.tokens.surface.withValues(alpha: 0.62);
+    final Color segmentActive = accent.withValues(alpha: 0.26);
+    final ThemeData theme = Theme.of(context);
+
     final Widget panel = PolarisSurface(
       padding: EdgeInsets.fromLTRB(12, 12, 12, fluid ? 0 : 8),
       borderRadius: 22,
@@ -1175,35 +1235,86 @@ class _MediaPanel extends ConsumerWidget {
           Row(
             children: <Widget>[
               Expanded(
-                child: SegmentedButton<int>(
-                  segments: const <ButtonSegment<int>>[
-                    ButtonSegment<int>(
-                      value: 0,
-                      label: Text('Cola'),
-                      icon: Icon(Icons.queue_music_rounded, size: 18),
+                child: Theme(
+                  data: theme.copyWith(
+                    segmentedButtonTheme: SegmentedButtonThemeData(
+                      style: ButtonStyle(
+                        backgroundColor: WidgetStateProperty.resolveWith<Color>(
+                          (Set<WidgetState> states) =>
+                              states.contains(WidgetState.selected)
+                              ? segmentActive
+                              : segmentIdle,
+                        ),
+                        foregroundColor: WidgetStateProperty.resolveWith<Color>(
+                          (Set<WidgetState> states) =>
+                              states.contains(WidgetState.selected)
+                              ? panelInk
+                              : idleInk,
+                        ),
+                        iconColor: WidgetStateProperty.resolveWith<Color>(
+                          (Set<WidgetState> states) =>
+                              states.contains(WidgetState.selected)
+                              ? panelInk
+                              : idleInk,
+                        ),
+                        side: WidgetStateProperty.all(
+                          BorderSide(color: context.tokens.panelBorder),
+                        ),
+                        padding: WidgetStateProperty.all(
+                          const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        shape: WidgetStateProperty.all(
+                          RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        textStyle: WidgetStateProperty.all(
+                          theme.textTheme.labelLarge?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ) ??
+                              TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                      ),
                     ),
-                    ButtonSegment<int>(
-                      value: 1,
-                      label: Text('Letras'),
-                      icon: Icon(Icons.lyrics_outlined, size: 18),
-                    ),
-                  ],
-                  selected: const <int>{0},
-                  showSelectedIcon: false,
-                  onSelectionChanged: (Set<int> value) {
-                    if (value.first == 1) {
-                      onOpenLyrics();
-                    } else {
+                  ),
+                  child: SegmentedButton<int>(
+                    segments: const <ButtonSegment<int>>[
+                      ButtonSegment<int>(
+                        value: 0,
+                        label: Text('Cola'),
+                        icon: Icon(Icons.queue_music_rounded, size: 18),
+                      ),
+                      ButtonSegment<int>(
+                        value: 1,
+                        label: Text('Letras'),
+                        icon: Icon(Icons.lyrics_outlined, size: 18),
+                      ),
+                    ],
+                    selected: <int>{lyricsVisible ? 1 : 0},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (Set<int> value) {
+                      if (value.first == 1) {
+                        if (!lyricsVisible) onOpenLyrics();
+                      } else if (lyricsVisible) {
+                        onOpenLyrics();
+                      }
                       onTabChanged(0);
-                    }
-                  },
+                    },
+                  ),
                 ),
               ),
               if (tab == 0)
                 IconButton(
                   tooltip: 'Vaciar cola',
+                  color: idleInk,
                   onPressed: queue.isEmpty ? null : controller.clearQueue,
-                  icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+                  icon: Icon(Icons.delete_sweep_outlined, size: 20),
                 ),
             ],
           ),
@@ -1247,11 +1358,12 @@ class _QueueList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Color ink = context.onPanel;
     if (queue.isEmpty) {
-      return const Center(
+      return Center(
         child: Text(
           'La cola está vacía',
-          style: TextStyle(color: Colors.white54),
+          style: TextStyle(color: ink.withValues(alpha: 0.82)),
         ),
       );
     }
@@ -1297,25 +1409,29 @@ class _QueueList extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontWeight: current ? FontWeight.w700 : FontWeight.w500,
-              color: current ? accent : null,
+              color: ink,
             ),
           ),
           subtitle: Text(
             track.artist,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, color: Colors.white54),
+            style: TextStyle(fontSize: 11, color: ink.withValues(alpha: 0.82)),
           ),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Text(
                 Formatters.duration(track.duration),
-                style: const TextStyle(fontSize: 11, color: Colors.white38),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: ink.withValues(alpha: 0.78),
+                ),
               ),
               IconButton(
                 tooltip: 'Quitar de la cola',
-                icon: const Icon(Icons.close_rounded, size: 16),
+                color: ink.withValues(alpha: 0.88),
+                icon: Icon(Icons.close_rounded, size: 16),
                 onPressed: () => controller.removeFromQueue(i),
               ),
             ],
@@ -1324,7 +1440,7 @@ class _QueueList extends StatelessWidget {
         );
 
         return AnimatedContainer(
-          duration: const Duration(milliseconds: 260),
+          duration: context.motion.duration(const Duration(milliseconds: 260)),
           curve: Curves.easeOutCubic,
           margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
           decoration: BoxDecoration(
@@ -1370,13 +1486,38 @@ class _NowPlayingWavesState extends ConsumerState<_NowPlayingWaves>
   );
   ValueNotifier<WindowUiState>? _window;
   bool _backgrounded = false;
+  bool _ambient = true;
+  Duration _scaledPeriod = _period;
 
   @override
   void initState() {
     super.initState();
     _window = ref.read(windowStateProvider);
     _backgrounded = _window!.value.backgrounded;
+    final MotionConfig initial = ref.read(motionConfigProvider);
+    _ambient = initial.ambient;
+    _scaledPeriod = initial.duration(
+      _period,
+      category: MotionCategory.ambient,
+    );
     _window!.addListener(_onWindowChanged);
+    ref.listen(motionConfigProvider, (_, MotionConfig next) {
+      _scaledPeriod = next.duration(_period, category: MotionCategory.ambient);
+      if (next.ambient != _ambient) {
+        setState(() => _ambient = next.ambient);
+      }
+      _sync();
+    });
+    _sync();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scaledPeriod = context.motion.duration(
+      _period,
+      category: MotionCategory.ambient,
+    );
     _sync();
   }
 
@@ -1393,9 +1534,17 @@ class _NowPlayingWavesState extends ConsumerState<_NowPlayingWaves>
     _sync();
   }
 
-  /// El ticker solo corre si hay sonido y la ventana es visible.
+  /// El ticker solo corre si hay sonido, ambiente activo y ventana visible.
   void _sync() {
-    if (widget.playing && !_backgrounded) {
+    if (widget.playing &&
+        _ambient &&
+        !_backgrounded &&
+        _scaledPeriod > Duration.zero) {
+      // AnimationController exige una duración estrictamente positiva.
+      final Duration period = _scaledPeriod == Duration.zero
+          ? const Duration(microseconds: 1)
+          : _scaledPeriod;
+      if (_controller.duration != period) _controller.duration = period;
       if (!_controller.isAnimating) _controller.repeat();
     } else if (_controller.isAnimating) {
       _controller.stop();
@@ -1419,7 +1568,7 @@ class _NowPlayingWavesState extends ConsumerState<_NowPlayingWaves>
           width: 18,
           height: 18,
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.72),
+            color: context.tokens.panelOverlay.withValues(alpha: 0.94),
             borderRadius: BorderRadius.circular(6),
             border: Border.all(color: widget.color.withValues(alpha: 0.35)),
           ),
@@ -1498,9 +1647,14 @@ class _CinematicSwitcherState extends State<_CinematicSwitcher> {
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 460),
+      duration: context.motion.duration(const Duration(milliseconds: 460)),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
+      // El layout por defecto apila la pista saliente sobre la entrante; eso
+      // produce el "ghost". Solo pintamos la entrante y conservamos el
+      // fundido/deslazamiento/escala de la transición.
+      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) =>
+          currentChild ?? const SizedBox.shrink(),
       transitionBuilder: (Widget child, Animation<double> animation) {
         final bool toLyrics =
             child.key is ValueKey<String> &&
@@ -1676,7 +1830,9 @@ class _ArtworkImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? artwork = path;
     Widget content;
-    if (artwork == null || artwork.isEmpty) {
+    // Si la carátula se movió o se borró, se usa el respaldo sin intentar
+    // decodificarla (el errorBuilder sigue cubriendo formatos corruptos).
+    if (artwork == null || artwork.isEmpty || !File(artwork).existsSync()) {
       content = Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -1690,13 +1846,16 @@ class _ArtworkImage extends StatelessWidget {
         ),
         child: Icon(
           Icons.music_note_rounded,
-          color: Colors.white.withValues(alpha: 0.85),
+          color: context.inkAlpha(0.85),
           size: size * 0.36,
         ),
       );
     } else {
       final double ratio = MediaQuery.devicePixelRatioOf(context);
-      final int decodeWidth = (size * ratio).round().clamp(48, 2048);
+      // La carátula principal se ve grande, pero 600 px son suficientes para
+      // un tile de ~300 dp incluso a 2x; decodizar 2048 px multiplicaba la RAM
+      // por cuatro sin diferencias apreciables en pantalla.
+      final int decodeWidth = (size * ratio).round().clamp(48, 600);
       content = Image.file(
         File(artwork),
         key: ValueKey<String>(artwork),
@@ -1718,7 +1877,7 @@ class _ArtworkImage extends StatelessWidget {
                 ),
                 child: Icon(
                   Icons.music_note_rounded,
-                  color: Colors.white.withValues(alpha: 0.8),
+                  color: context.inkAlpha(0.8),
                   size: size * 0.36,
                 ),
               );
@@ -1764,7 +1923,7 @@ class _SquareArtwork extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: <Color>[
               accent.withValues(alpha: 0.55),
-              Colors.white.withValues(alpha: 0.05),
+              context.inkAlpha(0.05),
             ],
           ),
           boxShadow: <BoxShadow>[
@@ -1774,7 +1933,7 @@ class _SquareArtwork extends StatelessWidget {
               spreadRadius: 2,
             ),
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.45),
+              color: context.tokens.shadowColor.withValues(alpha: 0.45),
               blurRadius: 28,
               offset: const Offset(0, 18),
             ),
@@ -1818,8 +1977,8 @@ class _Card3DArtwork extends StatelessWidget {
           padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius),
-            color: Colors.white.withValues(alpha: 0.05),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            color: context.inkAlpha(0.05),
+            border: Border.all(color: context.inkAlpha(0.10)),
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color: accent.withValues(alpha: 0.24),
@@ -1827,7 +1986,7 @@ class _Card3DArtwork extends StatelessWidget {
                 spreadRadius: 2,
               ),
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.55),
+                color: context.tokens.shadowColor.withValues(alpha: 0.55),
                 blurRadius: 34,
                 offset: const Offset(14, 20),
               ),
@@ -1868,14 +2027,25 @@ class _VinylArtwork extends StatefulWidget {
 
 class _VinylArtworkState extends State<_VinylArtwork>
     with SingleTickerProviderStateMixin {
+  static const Duration _period = Duration(seconds: 14);
+
   late final AnimationController _spin = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 14),
+    duration: _period,
   );
+  MotionConfig? _motion;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _motion = context.motion;
+    final Duration duration = _motion!.duration(
+      _period,
+      category: MotionCategory.ambient,
+    );
+    _spin.duration = duration == Duration.zero
+        ? const Duration(microseconds: 1)
+        : duration;
     _syncPlayback();
   }
 
@@ -1889,7 +2059,7 @@ class _VinylArtworkState extends State<_VinylArtwork>
   }
 
   void _syncPlayback() {
-    if (widget.playing && !widget.paused) {
+    if (widget.playing && (_motion?.ambient ?? false) && !widget.paused) {
       if (!_spin.isAnimating) _spin.repeat();
     } else if (_spin.isAnimating) {
       _spin.stop();
@@ -1933,7 +2103,7 @@ class _VinylArtworkState extends State<_VinylArtwork>
                     spreadRadius: 4,
                   ),
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.60),
+                    color: context.tokens.shadowColor.withValues(alpha: 0.60),
                     blurRadius: 30,
                     offset: const Offset(0, 18),
                   ),
@@ -1968,7 +2138,7 @@ class _VinylArtworkState extends State<_VinylArtwork>
                     Container(
                       width: labelSize * 0.10,
                       height: labelSize * 0.10,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: Color(0xFF0B0B0B),
                         shape: BoxShape.circle,
                       ),
@@ -1976,7 +2146,7 @@ class _VinylArtworkState extends State<_VinylArtwork>
                     Container(
                       width: labelSize * 0.035,
                       height: labelSize * 0.035,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: Color(0xFF3A3A3A),
                         shape: BoxShape.circle,
                       ),
@@ -2153,7 +2323,7 @@ class _DynamicBackdrop extends StatelessWidget {
       fit: StackFit.expand,
       children: <Widget>[
         AnimatedContainer(
-          duration: const Duration(milliseconds: 800),
+          duration: context.motion.duration(const Duration(milliseconds: 800)),
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -2181,7 +2351,7 @@ class _DynamicBackdrop extends StatelessWidget {
                 radius: 1.1,
                 colors: <Color>[
                   Colors.transparent,
-                  Colors.black.withValues(alpha: 0.42),
+                  background.withValues(alpha: 0.55),
                 ],
               ),
             ),
@@ -2202,7 +2372,7 @@ class _Glow extends StatelessWidget {
   Widget build(BuildContext context) {
     return IgnorePointer(
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 800),
+        duration: context.motion.duration(const Duration(milliseconds: 800)),
         width: size,
         height: size,
         decoration: BoxDecoration(

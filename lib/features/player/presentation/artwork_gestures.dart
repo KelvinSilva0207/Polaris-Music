@@ -3,6 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
 
+import '../../../core/theme/motion_config.dart';
+import '../../../shared/widgets/motion_scope.dart';
+
 const double _gestureSwipeThreshold = 48;
 
 /// Gestos de carátula estilo Poweramp:
@@ -17,9 +20,10 @@ const double _gestureSwipeThreshold = 48;
 /// deslizamiento. Usamos [Listener] en lugar de [GestureDetector] para decidir
 /// el modo en el instante del toque y que la búsqueda no robe los deslizamientos.
 ///
-/// El feedback es físico y sin texto: la carátula sigue el dedo con un tilted
-/// 3D sutil, vuelve con un resorte (spring) al soltar y un anillo cromático
-/// confirma la acción. No se dibujan flechas ni etiquetas sobre la portada.
+/// El feedback es físico y sin etiquetas: la carátula sigue el dedo con un
+/// tilted 3D sutil, vuelve con un resorte (spring) al soltar y un anillo
+/// cromático confirma la acción. Una punta de flecha del color de acento
+/// sigue la dirección del gesto. No se dibuja texto sobre la portada.
 class ArtworkGestures extends StatefulWidget {
   const ArtworkGestures({
     super.key,
@@ -88,6 +92,18 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final Duration duration = context.motion.duration(
+      const Duration(milliseconds: 380),
+      category: MotionCategory.gestures,
+    );
+    _pulse.duration = duration == Duration.zero
+        ? const Duration(microseconds: 1)
+        : duration;
+  }
+
+  @override
   void dispose() {
     _pulse.dispose();
     _spring.dispose();
@@ -137,12 +153,17 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
       _seekAt(event.localPosition);
       return;
     }
+    if (!context.motion.gestures) return;
     final Offset delta = event.localPosition - start;
     if (delta.distance > _hintThreshold) _drag.value = delta;
   }
 
   /// Resorte: la carátula sigue el dedo y vuelve con inercia elástica.
   void _release(Offset delta) {
+    if (!context.motion.gestures) {
+      _resetMotion();
+      return;
+    }
     _releasing = true;
     final double velocity = -(delta.distance / 0.16).clamp(0, 6).toDouble();
     _spring.animateWith(
@@ -295,6 +316,20 @@ class _ChromaticGesturePainter extends CustomPainter {
       base.withHue((base.hue - 34 + 360) % 360).toColor(),
     ];
 
+    /// Punta de flecha alineada con [dir]; refuerza la dirección sin texto.
+    void drawChevron(Offset tip, Offset dir, Paint paint) {
+      final Offset back = tip - dir * 12;
+      final Offset side = Offset(-dir.dy, dir.dx) * 7;
+      canvas.drawPath(
+        Path()
+          ..moveTo(tip.dx, tip.dy)
+          ..lineTo(back.dx + side.dx, back.dy + side.dy)
+          ..moveTo(tip.dx, tip.dy)
+          ..lineTo(back.dx - side.dx, back.dy - side.dy),
+        paint,
+      );
+    }
+
     if (strength > 0) {
       final double radius = size.width * 0.32 + 5 * strength;
       for (int i = 0; i < channels.length; i++) {
@@ -308,6 +343,20 @@ class _ChromaticGesturePainter extends CustomPainter {
             )
             ..style = PaintingStyle.stroke
             ..strokeWidth = i == 1 ? 2.2 : 1.3,
+        );
+      }
+
+      if (strength > 0.05) {
+        drawChevron(
+          center + dir * (radius + 12 + 10 * strength),
+          dir,
+          Paint()
+            ..color = accent.withValues(
+              alpha: (0.35 + 0.5 * strength).clamp(0, 1).toDouble(),
+            )
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.6
+            ..strokeCap = StrokeCap.round,
         );
       }
     }
@@ -327,6 +376,17 @@ class _ChromaticGesturePainter extends CustomPainter {
             ..strokeWidth = i == 1 ? 2.4 : 1.4,
         );
       }
+
+      // La flecha "dispara" hacia afuera en la dirección confirmada.
+      drawChevron(
+        center + dir * (radius + 10),
+        dir,
+        Paint()
+          ..color = accent.withValues(alpha: (1 - eased) * 0.85)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.8
+          ..strokeCap = StrokeCap.round,
+      );
     }
   }
 

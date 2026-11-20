@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/track.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/lrc_parser.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../../player/domain/player_controller.dart';
 import '../../player/presentation/player_providers.dart';
 import '../data/lyrics_service.dart';
@@ -54,7 +55,7 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
     final double target = _scroll.position.maxScrollExtent * fraction;
     _scroll.animateTo(
       target.clamp(0, _scroll.position.maxScrollExtent),
-      duration: const Duration(milliseconds: 380),
+      duration: context.motion.duration(const Duration(milliseconds: 380)),
       curve: Curves.easeOutCubic,
     );
   }
@@ -71,14 +72,14 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
     );
 
     return lyrics.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
+      loading: () => Center(child: CircularProgressIndicator()),
       error: (Object error, StackTrace stack) => Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
             'No se pudieron cargar las letras.\n$error',
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white54),
+            style: TextStyle(color: context.onPanel.withValues(alpha: 0.70)),
           ),
         ),
       ),
@@ -147,7 +148,9 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                   return TweenAnimationBuilder<double>(
                     key: ValueKey<int>(index),
                     tween: Tween<double>(begin: 0, end: 1),
-                    duration: Duration(milliseconds: 280 + (index % 6) * 26),
+                    duration: context.motion.duration(
+                      Duration(milliseconds: 280 + (index % 6) * 26),
+                    ),
                     curve: Curves.easeOutCubic,
                     builder:
                         (BuildContext context, double value, Widget? child) =>
@@ -163,7 +166,9 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                         vertical: widget.immersive ? 12 : 6,
                       ),
                       child: AnimatedDefaultTextStyle(
-                        duration: const Duration(milliseconds: 220),
+                        duration: context.motion.duration(
+                          const Duration(milliseconds: 220),
+                        ),
                         style: TextStyle(
                           fontSize: isActive ? activeSize : normalSize,
                           height: 1.32,
@@ -173,8 +178,8 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                           color: isActive
                               ? tokens.karaokeColor
                               : isPast
-                              ? Colors.white.withValues(alpha: 0.38)
-                              : Colors.white.withValues(alpha: 0.80),
+                              ? context.onPanel.withValues(alpha: 0.55)
+                              : context.onPanel,
                           shadows: isActive
                               ? <Shadow>[
                                   Shadow(
@@ -240,7 +245,7 @@ class _LyricsToolbar extends StatelessWidget {
             child: Text(
               synced ? label : '$label · sin sincronía',
               style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: Colors.white54),
+                  ?.copyWith(color: context.onPanel.withValues(alpha: 0.70)),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -249,22 +254,22 @@ class _LyricsToolbar extends StatelessWidget {
             IconButton(
               tooltip: 'Descargar de LRCLIB',
               onPressed: onDownload,
-              icon: const Icon(Icons.cloud_download_outlined, size: 18),
+              icon: Icon(Icons.cloud_download_outlined, size: 18),
             ),
             IconButton(
               tooltip: 'Importar archivo .lrc',
               onPressed: onImport,
-              icon: const Icon(Icons.file_open_outlined, size: 18),
+              icon: Icon(Icons.file_open_outlined, size: 18),
             ),
             IconButton(
               tooltip: 'Crear o sincronizar letra',
               onPressed: onEdit,
-              icon: const Icon(Icons.edit_note_rounded, size: 18),
+              icon: Icon(Icons.edit_note_rounded, size: 18),
             ),
           ],
           if (synced)
             FilterChip(
-              label: const Text('Karaoke'),
+              label: Text('Karaoke'),
               selected: karaoke,
               onSelected: onKaraokeChanged,
               visualDensity: VisualDensity.compact,
@@ -294,7 +299,7 @@ class _PlainLyrics extends StatelessWidget {
         Text(
           'Letra sin sincronía · $source',
           style: Theme.of(context).textTheme.bodySmall
-              ?.copyWith(color: Colors.white38),
+              ?.copyWith(color: context.onPanel.withValues(alpha: 0.55)),
         ),
         const SizedBox(height: 16),
         SelectableText(
@@ -330,18 +335,25 @@ class _LyricsEmpty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            const Icon(Icons.lyrics_outlined, size: 46, color: Colors.white24),
+            Icon(
+              Icons.lyrics_outlined,
+              size: 46,
+              color: context.onPanel.withValues(alpha: 0.45),
+            ),
             const SizedBox(height: 14),
-            const Text(
+            Text(
               'Sin letra para esta canción',
               style: TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'Polaris busca primero un archivo .lrc junto al audio, luego la '
               'caché local y finalmente LRCLIB.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white54, fontSize: 12),
+              style: TextStyle(
+                color: context.onPanel.withValues(alpha: 0.70),
+                fontSize: 12,
+              ),
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -351,24 +363,24 @@ class _LyricsEmpty extends StatelessWidget {
               children: <Widget>[
                 OutlinedButton.icon(
                   onPressed: onRetry,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('Buscar de nuevo'),
+                  icon: Icon(Icons.refresh_rounded, size: 18),
+                  label: Text('Buscar de nuevo'),
                 ),
                 if (showTools) ...<Widget>[
                   OutlinedButton.icon(
                     onPressed: onDownload,
-                    icon: const Icon(Icons.cloud_download_outlined, size: 18),
-                    label: const Text('Descargar'),
+                    icon: Icon(Icons.cloud_download_outlined, size: 18),
+                    label: Text('Descargar'),
                   ),
                   OutlinedButton.icon(
                     onPressed: onImport,
-                    icon: const Icon(Icons.file_open_outlined, size: 18),
-                    label: const Text('Importar .lrc'),
+                    icon: Icon(Icons.file_open_outlined, size: 18),
+                    label: Text('Importar .lrc'),
                   ),
                   OutlinedButton.icon(
                     onPressed: onEdit,
-                    icon: const Icon(Icons.edit_note_rounded, size: 18),
-                    label: const Text('Crear letra'),
+                    icon: Icon(Icons.edit_note_rounded, size: 18),
+                    label: Text('Crear letra'),
                   ),
                 ],
               ],

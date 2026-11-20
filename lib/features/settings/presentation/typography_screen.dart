@@ -129,9 +129,9 @@ class _TypographyScreenState extends ConsumerState<TypographyScreen> {
                 ?.copyWith(fontSize: 24, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Familia, tamaño y peso se aplican en vivo a toda la app.',
-            style: TextStyle(color: Colors.white60),
+            style: TextStyle(color: context.inkAlpha(0.60)),
           ),
           const SizedBox(height: 18),
           _Preview(config: config, options: options, accent: accent),
@@ -158,7 +158,7 @@ class _TypographyScreenState extends ConsumerState<TypographyScreen> {
               Text(
                 '${options.where((FontOption o) => o.id == config.familyId).map((FontOption o) => o.description ?? '').firstOrNull ?? ''}'
                 ' · Los colores siguen el acento RGB/HSL activo.',
-                style: const TextStyle(color: Colors.white54, fontSize: 12),
+                style: TextStyle(color: context.inkAlpha(0.54), fontSize: 12),
               ),
             ],
           ),
@@ -201,10 +201,10 @@ class _TypographyScreenState extends ConsumerState<TypographyScreen> {
             title: 'Mis fuentes importadas',
             children: <Widget>[
               if (imported.isEmpty)
-                const Text(
+                Text(
                   'Todavía no has importado fuentes. Puedes usar .ttf y .otf; '
                   ' Polaris guarda una copia segura en sus datos.',
-                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                  style: TextStyle(color: context.inkAlpha(0.54), fontSize: 12),
                 ),
               for (final ImportedFont font in imported)
                 ListTile(
@@ -233,10 +233,10 @@ class _TypographyScreenState extends ConsumerState<TypographyScreen> {
           _Section(
             title: 'Tipografía por vista',
             children: <Widget>[
-              const Text(
+              Text(
                 'Actívala solo donde quieras una identidad distinta: isla, '
                 'mini-reproductor, teléfono o reproductor principal.',
-                style: TextStyle(color: Colors.white54, fontSize: 12),
+                style: TextStyle(color: context.inkAlpha(0.54), fontSize: 12),
               ),
               const SizedBox(height: 10),
               for (final CompactSurface surface in CompactSurface.values)
@@ -265,7 +265,7 @@ class _Preview extends StatelessWidget {
     final String? family = resolveFontFamily(config.familyId);
     final TextStyle base = TextStyle(
       fontFamily: family,
-      color: Colors.white.withValues(alpha: 0.9),
+      color: context.inkAlpha(0.90),
     );
     return Container(
       width: double.infinity,
@@ -311,7 +311,7 @@ class _Preview extends StatelessWidget {
               fontSize: 11 * config.scale,
               fontWeight: config.metadata,
               letterSpacing: 0.6,
-              color: Colors.white54,
+              color: context.inkAlpha(0.54),
             ),
           ),
         ],

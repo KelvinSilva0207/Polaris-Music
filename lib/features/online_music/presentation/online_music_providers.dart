@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/debug/memory_probe.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/services/settings_service.dart';
@@ -12,6 +13,7 @@ import '../data/online_music_service.dart';
 import '../domain/download_task.dart';
 import '../domain/download_track_use_case.dart';
 import '../domain/music_source.dart';
+import '../domain/online_catalog_items.dart';
 import '../domain/music_source_catalog.dart';
 import '../domain/online_music_repository.dart';
 import '../domain/online_source_settings.dart';
@@ -73,6 +75,11 @@ class OnlineSearchState {
     this.sourceFilter,
     this.results = const <SourceResult>[],
     this.sourceStatuses = const <MusicSourceId, MusicSourceStatus>{},
+    this.resultType = OnlineSearchType.songs,
+    this.collections = const <OnlineCollectionRef>[],
+    this.openedCollection,
+    this.collectionLoading = false,
+    this.collectionError,
   });
 
   final String query;
@@ -90,7 +97,26 @@ class OnlineSearchState {
   /// Último estado conocido de disponibilidad por fuente.
   final Map<MusicSourceId, MusicSourceStatus> sourceStatuses;
 
-  bool get isEmpty => !loading && tracks.isEmpty;
+  /// Tipo de resultado visible en la pestaña activa.
+  final OnlineSearchType resultType;
+
+  /// Colecciones devueltas por la búsqueda tipada.
+  final List<OnlineCollectionRef> collections;
+
+  /// Colección abierta actualmente; cuando no es `null`, [tracks] contiene sus
+  /// pistas en lugar de los resultados de búsqueda.
+  final OnlineCollectionRef? openedCollection;
+  final bool collectionLoading;
+  final String? collectionError;
+
+  bool get isEmpty =>
+      !loading &&
+      !collectionLoading &&
+      (openedCollection == null
+          ? (resultType == OnlineSearchType.songs
+              ? tracks.isEmpty
+              : collections.isEmpty)
+          : tracks.isEmpty);
 
   List<SourceResult> get issues => results
       .where((SourceResult result) => !result.ok)
@@ -114,6 +140,13 @@ class OnlineSearchState {
     bool clearSourceFilter = false,
     List<SourceResult>? results,
     Map<MusicSourceId, MusicSourceStatus>? sourceStatuses,
+    OnlineSearchType? resultType,
+    List<OnlineCollectionRef>? collections,
+    OnlineCollectionRef? openedCollection,
+    bool clearOpenedCollection = false,
+    bool? collectionLoading,
+    String? collectionError,
+    bool clearCollectionError = false,
   }) => OnlineSearchState(
     query: query ?? this.query,
     tracks: tracks ?? this.tracks,
@@ -125,6 +158,15 @@ class OnlineSearchState {
         : (sourceFilter ?? this.sourceFilter),
     results: results ?? this.results,
     sourceStatuses: sourceStatuses ?? this.sourceStatuses,
+    resultType: resultType ?? this.resultType,
+    collections: collections ?? this.collections,
+    openedCollection: clearOpenedCollection
+        ? null
+        : (openedCollection ?? this.openedCollection),
+    collectionLoading: collectionLoading ?? this.collectionLoading,
+    collectionError: clearCollectionError
+        ? null
+        : (collectionError ?? this.collectionError),
   );
 }
 
@@ -145,11 +187,69 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
 
   Timer? _debounce;
   int _generation = 0;
+  int _collectionGeneration = 0;
 
   Future<void> loadTrending() => _load(isTrending: true);
 
+  /// Cambia entre Canciones / Álbumes / Artistas / Playlists y recarga.
+  Future<void> setResultType(OnlineSearchType type) async {
+    if (type == state.resultType && state.openedCollection == null) return;
+    _debounce?.cancel();
+    _generation++;
+    state = state.copyWith(
+      resultType: type,
+      tracks: const <OnlineTrack>[],
+      collections: const <OnlineCollectionRef>[],
+      clearOpenedCollection: true,
+      clearCollectionError: true,
+      loading: true,
+    );
+    await _load(isTrending: false, query: state.query);
+  }
+
+  /// Abre una colección pública y muestra sus pistas reproducibles.
+  Future<void> openCollection(OnlineCollectionRef collection) async {
+    _debounce?.cancel();
+    _generation++;
+    final int generation = ++_collectionGeneration;
+    state = state.copyWith(
+      openedCollection: collection,
+      collectionLoading: true,
+      tracks: const <OnlineTrack>[],
+      loading: false,
+      clearCollectionError: true,
+    );
+    try {
+      final List<OnlineTrack> tracks = await _catalog.collectionTracks(
+        collection,
+      );
+      if (!mounted || generation != _collectionGeneration) return;
+      state = state.copyWith(
+        tracks: tracks,
+        collectionLoading: false,
+        loading: false,
+      );
+    } catch (error) {
+      if (!mounted || generation != _collectionGeneration) return;
+      state = state.copyWith(
+        collectionLoading: false,
+        collectionError: 'No se pudo abrir esta colección: $error',
+      );
+    }
+  }
+
+  Future<void> closeCollection() async {
+    _collectionGeneration++;
+    state = state.copyWith(
+      clearOpenedCollection: true,
+      clearCollectionError: true,
+    );
+    await retryCurrent();
+  }
+
   Future<void> _load({required bool isTrending, String? query}) async {
     final int generation = ++_generation;
+    MemoryProbe.mark(isTrending ? 'online:trending' : 'online:search');
     final String term = (query ?? state.query).trim();
     state = state.copyWith(
       query: term,
@@ -158,14 +258,24 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
       clearError: true,
     );
     try {
+      final OnlineSearchType type = state.resultType;
       final CatalogResult result = isTrending
           ? await _catalog.trending(only: _onlySelected)
-          : await _catalog.search(term, only: _onlySelected);
+          : type == OnlineSearchType.songs
+          ? await _catalog.search(term, only: _onlySelected)
+          : await _catalog.searchType(
+            term,
+            type: type,
+            only: _onlySelected,
+          );
       if (!mounted || generation != _generation) return;
       state = state.copyWith(
         loading: false,
         tracks: result.tracks,
+        collections: result.collections(type),
         results: result.sources,
+        clearOpenedCollection: true,
+        clearCollectionError: true,
         sourceStatuses: <MusicSourceId, MusicSourceStatus>{
           ...state.sourceStatuses,
           for (final SourceResult source in result.sources)
@@ -185,10 +295,23 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
     _debounce?.cancel();
     final String query = raw.trim();
     if (query.isEmpty) {
+      // Al borrar la búsqueda se vuelve a la vista de tendencias de canciones;
+      // si se mantuviera la pestaña de colecciones, no habría término que
+      // buscar y la pantalla parecería vacía sin motivo.
+      state = state.copyWith(
+        query: '',
+        resultType: OnlineSearchType.songs,
+        collections: const <OnlineCollectionRef>[],
+      );
       unawaited(loadTrending());
       return;
     }
-    state = state.copyWith(query: raw, loading: true, isTrending: false);
+    state = state.copyWith(
+      query: raw,
+      loading: true,
+      isTrending: false,
+      clearOpenedCollection: true,
+    );
     _debounce = Timer(const Duration(milliseconds: 450), () {
       unawaited(_load(isTrending: false, query: query));
     });
@@ -198,8 +321,14 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
     if (source == state.sourceFilter) return;
     _debounce?.cancel();
     state = source == null
-        ? state.copyWith(clearSourceFilter: true)
-        : state.copyWith(sourceFilter: source);
+        ? state.copyWith(
+          clearSourceFilter: true,
+          clearOpenedCollection: true,
+        )
+        : state.copyWith(
+          sourceFilter: source,
+          clearOpenedCollection: true,
+        );
     if (state.isTrending) {
       await loadTrending();
     } else {

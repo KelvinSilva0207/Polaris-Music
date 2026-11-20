@@ -12,6 +12,7 @@ class DownloadTask {
     required this.track,
     this.status = DownloadStatus.queued,
     this.progress = 0,
+    this.indeterminate = true,
     this.error,
     this.filePath,
   });
@@ -19,8 +20,12 @@ class DownloadTask {
   final OnlineTrack track;
   final DownloadStatus status;
 
-  /// Avance entre 0 y 1 (0 cuando el servidor no informa el tamaño).
+  /// Avance entre 0 y 1.
   final double progress;
+
+  /// `true` cuando el servidor no informa `Content-Length`; la UI muestra un
+  /// indicador circular en vez de un porcentaje bloqueado en 0 %.
+  final bool indeterminate;
   final String? error;
   final String? filePath;
 
@@ -36,12 +41,14 @@ class DownloadTask {
   DownloadTask copyWith({
     DownloadStatus? status,
     double? progress,
+    bool? indeterminate,
     String? error,
     String? filePath,
   }) => DownloadTask(
     track: track,
     status: status ?? this.status,
     progress: progress ?? this.progress,
+    indeterminate: indeterminate ?? this.indeterminate,
     error: error ?? this.error,
     filePath: filePath ?? this.filePath,
   );

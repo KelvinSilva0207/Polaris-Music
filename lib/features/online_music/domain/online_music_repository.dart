@@ -1,3 +1,4 @@
+import 'online_catalog_items.dart';
 import 'online_track.dart';
 
 /// Contrato del catálogo online.
@@ -16,4 +17,22 @@ abstract interface class OnlineMusicRepository {
 
   /// Descarga la carátula a la caché local y devuelve su ruta.
   Future<String?> cacheArtwork(String? artworkUrl);
+
+  /// Variante con contexto de pista: permite nombrar la carátula según el
+  /// proveedor real (incluso cuando el audio se resolvió mediante el puente).
+  Future<String?> cacheArtworkFor(OnlineTrack track) =>
+      cacheArtwork(track.artworkUrl);
+
+  /// Indica si [track] se puede convertir en audio reproducible (directamente
+  /// o mediante el puente de metadatos).
+  bool canStreamTrack(OnlineTrack track);
+
+  /// Indica si [track] se puede descargar a la biblioteca local.
+  bool canDownloadTrack(OnlineTrack track);
+
+  /// Pistas de una colección pública abierta desde la búsqueda.
+  Future<List<OnlineTrack>> collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+  });
 }

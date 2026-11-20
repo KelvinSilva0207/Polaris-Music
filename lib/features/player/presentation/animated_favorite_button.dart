@@ -2,6 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/motion_config.dart';
+import '../../../shared/widgets/motion_scope.dart';
+
 /// Botón de favorito con un latido y una pequeña explosión de partículas.
 ///
 /// Solo se dispara al **añadir** a favoritos, que es el momento en el que el
@@ -58,9 +61,21 @@ class _AnimatedFavoriteButtonState extends State<AnimatedFavoriteButton>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final Duration duration = context.motion.duration(
+      const Duration(milliseconds: 460),
+      category: MotionCategory.gestures,
+    );
+    _controller.duration = duration == Duration.zero
+        ? const Duration(microseconds: 1)
+        : duration;
+  }
+
+  @override
   void didUpdateWidget(covariant AnimatedFavoriteButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.isFavorite && widget.isFavorite) {
+    if (!oldWidget.isFavorite && widget.isFavorite && context.motion.gestures) {
       _controller.forward(from: 0);
     }
   }

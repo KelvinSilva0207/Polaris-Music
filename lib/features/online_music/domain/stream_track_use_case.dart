@@ -13,10 +13,16 @@ class StreamTrackUseCase {
   final OnlineMusicRepository _repository;
 
   Future<Track> call(OnlineTrack track) async {
-    final String? artworkPath = await _repository.cacheArtwork(
-      track.artworkUrl,
-    );
+    final String? artworkPath = await _repository.cacheArtworkFor(track);
     final ResolvedStream stream = await _repository.resolveStream(track);
-    return track.toTrack(streamUrl: stream.url, artworkPath: artworkPath);
+    return track.toTrack(
+      streamUrl: stream.url,
+      artworkPath: artworkPath,
+      httpHeaders: stream.httpHeaders,
+      // Si el audio viene de un puente, el reproductor debe mostrar el origen
+      // real (p. ej. "Spotify → YouTube Music"), no solo el catálogo consultado.
+      sourceLabel: stream.resolvedVia,
+      streamAlternatives: stream.alternatives,
+    );
   }
 }

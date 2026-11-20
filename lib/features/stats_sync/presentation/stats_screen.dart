@@ -41,9 +41,9 @@ class StatsScreen extends ConsumerWidget {
                           ?.copyWith(fontSize: 30),
                     ),
                     const SizedBox(height: 2),
-                    const Text(
+                    Text(
                       'Tu año musical, en datos',
-                      style: TextStyle(color: Colors.white54),
+                      style: TextStyle(color: context.inkAlpha(0.54)),
                     ),
                   ],
                 ),
@@ -167,10 +167,10 @@ class _WrappedCard extends StatelessWidget {
               ),
             )
           else if (empty)
-            const Text(
+            Text(
               'Aún no hay suficientes datos este año. Escucha algo de música y '
               'vuelve a mirar.',
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: context.inkAlpha(0.70)),
             )
           else
             Wrap(
@@ -218,7 +218,7 @@ class _WrappedStat extends StatelessWidget {
         children: <Widget>[
           Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Colors.white60),
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.60)),
           ),
           const SizedBox(height: 2),
           Text(
@@ -251,11 +251,11 @@ class _DailyChart extends StatelessWidget {
       ),
       data: (ListeningStats value) {
         if (value.byDay.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'Sin escuchas registradas todavía.',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: context.inkAlpha(0.54)),
             ),
           );
         }
@@ -321,11 +321,17 @@ class _DailyChart extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     Formatters.date(days.first.day),
-                    style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.inkAlpha(0.38),
+                    ),
                   ),
                   Text(
                     Formatters.date(days.last.day),
-                    style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.inkAlpha(0.38),
+                    ),
                   ),
                 ],
               ),
@@ -353,11 +359,11 @@ class _TopTracks extends StatelessWidget {
           Text('No se pudieron cargar las pistas: $error'),
       data: (ListeningStats value) {
         if (value.topTracks.isEmpty) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'Reproduce algunas canciones para llenar este ranking.',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: context.inkAlpha(0.54)),
             ),
           );
         }
@@ -372,9 +378,9 @@ class _TopTracks extends StatelessWidget {
                     padding: const EdgeInsets.only(right: 4),
                     child: Text(
                       '${track.playCount}×',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Colors.white38,
+                        color: context.inkAlpha(0.38),
                       ),
                     ),
                   ),

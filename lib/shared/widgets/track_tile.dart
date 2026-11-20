@@ -62,7 +62,7 @@ class TrackTile extends ConsumerWidget {
                   child: Text(
                     '${(index ?? 0) + 1}',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: current ? accent : Colors.white38,
+                      color: current ? accent : context.inkAlpha(0.38),
                     ),
                   ),
                 ),
@@ -117,7 +117,7 @@ class TrackTile extends ConsumerWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: Colors.white54,
+                  color: context.inkAlpha(0.54),
                 ),
               ),
             ),
@@ -129,7 +129,7 @@ class TrackTile extends ConsumerWidget {
             ?trailing,
             Text(
               Formatters.duration(track.duration),
-              style: theme.textTheme.bodySmall?.copyWith(color: Colors.white38),
+              style: theme.textTheme.bodySmall?.copyWith(color: context.inkAlpha(0.38)),
             ),
             const SizedBox(width: 4),
             IconButton(
@@ -142,7 +142,7 @@ class TrackTile extends ConsumerWidget {
                 track.isFavorite
                     ? Icons.favorite_rounded
                     : Icons.favorite_border_rounded,
-                color: track.isFavorite ? accent : Colors.white38,
+                color: track.isFavorite ? accent : context.inkAlpha(0.38),
                 size: 20,
               ),
               onPressed: track.isPersisted
@@ -153,9 +153,9 @@ class TrackTile extends ConsumerWidget {
             ),
             PopupMenuButton<String>(
               tooltip: 'Más acciones',
-              icon: const Icon(
+              icon: Icon(
                 Icons.more_vert_rounded,
-                color: Colors.white38,
+                color: context.inkAlpha(0.38),
                 size: 20,
               ),
               onSelected: (String action) =>
@@ -288,7 +288,7 @@ class TrackTile extends ConsumerWidget {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Quitar de la biblioteca'),
+        title: Text('Quitar de la biblioteca'),
         content: Text(
           '“${track.title}” dejará de aparecer en Polaris Music. '
           'El archivo de audio no se elimina del disco.',
@@ -296,11 +296,11 @@ class TrackTile extends ConsumerWidget {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: Text('Cancelar'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Quitar'),
+            child: Text('Quitar'),
           ),
         ],
       ),
@@ -387,7 +387,7 @@ Future<void> showMetadataEditor(
     barrierDismissible: false,
     builder: (BuildContext context) => StatefulBuilder(
       builder: (BuildContext context, StateSetter setState) => AlertDialog(
-        title: const Text('Editar metadatos'),
+        title: Text('Editar metadatos'),
         content: SizedBox(
           width: 440,
           child: SingleChildScrollView(
@@ -406,7 +406,7 @@ Future<void> showMetadataEditor(
                         height: 64,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          color: Colors.white.withValues(alpha: 0.06),
+                          color: context.inkAlpha(0.06),
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(12),
@@ -417,6 +417,20 @@ Future<void> showMetadataEditor(
                                   width: 64,
                                   height: 64,
                                   fit: BoxFit.cover,
+                                  cacheWidth:
+                                      (64 *
+                                              MediaQuery.devicePixelRatioOf(
+                                                context,
+                                              ))
+                                          .round()
+                                          .clamp(24, 160),
+                                  cacheHeight:
+                                      (64 *
+                                              MediaQuery.devicePixelRatioOf(
+                                                context,
+                                              ))
+                                          .round()
+                                          .clamp(24, 160),
                                 ),
                         ),
                       ),
@@ -426,7 +440,7 @@ Future<void> showMetadataEditor(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: <Widget>[
-                          const Text(
+                          Text(
                             'Carátula',
                             style: TextStyle(fontWeight: FontWeight.w600),
                           ),
@@ -436,7 +450,7 @@ Future<void> showMetadataEditor(
                                 ? 'Abriendo imagen…'
                                 : 'Toca la portada para elegir otra imagen',
                             style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(color: Colors.white54),
+                                ?.copyWith(color: context.inkAlpha(0.54)),
                           ),
                         ],
                       ),
@@ -509,7 +523,7 @@ Future<void> showMetadataEditor(
                   'Los cambios se escriben en el archivo de audio cuando el '
                   'formato lo admite y se reflejan en la biblioteca.',
                   style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: Colors.white54),
+                      ?.copyWith(color: context.inkAlpha(0.54)),
                 ),
               ],
             ),
@@ -518,7 +532,7 @@ Future<void> showMetadataEditor(
         actions: <Widget>[
           TextButton(
             onPressed: saving ? null : () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: Text('Cancelar'),
           ),
           FilledButton(
             onPressed: saving
@@ -528,7 +542,7 @@ Future<void> showMetadataEditor(
                     setState(() {});
                     Navigator.pop(context, true);
                   },
-            child: const Text('Guardar'),
+            child: Text('Guardar'),
           ),
         ],
       ),

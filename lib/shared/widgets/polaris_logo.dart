@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/color_math.dart';
 import '../../core/theme/theme_tokens.dart';
 
 /// Logotipo oficial de Polaris Music.
@@ -45,7 +46,7 @@ class PolarisLogo extends StatelessWidget {
           child: Icon(
             Icons.music_note_rounded,
             size: size * 0.55,
-            color: Colors.white,
+            color: ColorMath.onColor(tokens.accent),
           ),
         );
       },

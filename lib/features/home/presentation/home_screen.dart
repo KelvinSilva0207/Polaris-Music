@@ -49,8 +49,8 @@ class HomeScreen extends ConsumerWidget {
                   'MP3, FLAC, WAV, OGG, Opus, M4A y más.',
               action: FilledButton.icon(
                 onPressed: () => onNavigate(AppSection.online),
-                icon: const Icon(Icons.create_new_folder_outlined),
-                label: const Text('Añadir música'),
+                icon: Icon(Icons.create_new_folder_outlined),
+                label: Text('Añadir música'),
               ),
             )
           else ...<Widget>[
@@ -68,8 +68,8 @@ class HomeScreen extends ConsumerWidget {
                             .read(playerControllerProvider.notifier)
                             .playQueue(list);
                       },
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Reproducir todo'),
+                      icon: Icon(Icons.play_arrow_rounded),
+                      label: Text('Reproducir todo'),
                     ),
             ),
             _RecommendationList(recommendations: recommendations),
@@ -120,13 +120,13 @@ class _Greeting extends StatelessWidget {
                 greeting,
                 style: text.headlineMedium?.copyWith(
                   fontSize: 34,
-                  color: Colors.white,
+                  color: context.ink,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Tu universo sonoro, en orden.',
-                style: text.bodyMedium?.copyWith(color: Colors.white54),
+                style: text.bodyMedium?.copyWith(color: context.inkAlpha(0.54)),
               ),
             ],
           ),
@@ -134,7 +134,7 @@ class _Greeting extends StatelessWidget {
         IconButton.filledTonal(
           tooltip: 'Buscar en la biblioteca',
           onPressed: () => onNavigate(AppSection.online),
-          icon: const Icon(Icons.search_rounded),
+          icon: Icon(Icons.search_rounded),
         ),
       ],
     );
@@ -207,11 +207,11 @@ class _StatChip extends StatelessWidget {
                 Text(
                   label,
                   style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: Colors.white54),
+                      ?.copyWith(color: context.inkAlpha(0.54)),
                 ),
                 Text(
                   value,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 17,
                   ),
@@ -234,7 +234,7 @@ class _RecommendationList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return recommendations.when(
-      loading: () => const Padding(
+      loading: () => Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
         child: Center(child: CircularProgressIndicator()),
       ),
@@ -242,11 +242,11 @@ class _RecommendationList extends StatelessWidget {
           _ErrorBox(message: 'No se pudieron calcular recomendaciones: $error'),
       data: (List<Track> tracks) {
         if (tracks.isEmpty) {
-          return const Padding(
+          return Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'Reproduce algunas canciones para recibir recomendaciones.',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: context.inkAlpha(0.54)),
             ),
           );
         }
@@ -269,7 +269,7 @@ class _RecentList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return stats.when(
-      loading: () => const Padding(
+      loading: () => Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
         child: Center(child: CircularProgressIndicator()),
       ),
@@ -277,11 +277,11 @@ class _RecentList extends StatelessWidget {
           _ErrorBox(message: 'No se pudo cargar el historial: $error'),
       data: (ListeningStats value) {
         if (value.recent.isEmpty) {
-          return const Padding(
+          return Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'Aún no hay reproducciones registradas.',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: context.inkAlpha(0.54)),
             ),
           );
         }
@@ -306,7 +306,7 @@ class _FavoriteList extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final AsyncValue<List<Track>> favorites = ref.watch(favoriteTracksProvider);
     return favorites.when(
-      loading: () => const Padding(
+      loading: () => Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
         child: Center(child: CircularProgressIndicator()),
       ),
@@ -314,11 +314,11 @@ class _FavoriteList extends ConsumerWidget {
           _ErrorBox(message: 'No se pudieron cargar los favoritos: $error'),
       data: (List<Track> tracks) {
         if (tracks.isEmpty) {
-          return const Padding(
+          return Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'Marca canciones con el corazón para verlas aquí.',
-              style: TextStyle(color: Colors.white54),
+              style: TextStyle(color: context.inkAlpha(0.54)),
             ),
           );
         }
@@ -346,7 +346,7 @@ class _ErrorBox extends StatelessWidget {
         color: Colors.redAccent.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Text(message, style: const TextStyle(color: Colors.redAccent)),
+      child: Text(message, style: TextStyle(color: Colors.redAccent)),
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -34,37 +35,33 @@ class PolarisSurface extends StatelessWidget {
     final double radius = borderRadius ?? tokens.panelRadius;
     final double sigma = blur ?? tokens.glassBlur;
 
-    switch (tokens.cardStyle) {
-      case CardStyle.glassmorphic:
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(radius),
-          clipBehavior: clipBehavior,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-            child: Container(
-              padding: padding,
-              decoration: tokens.panelDecoration(
-                radius: radius,
-                glow: glowColor,
-              ),
-              child: child,
-            ),
-          ),
-        );
-
-      case CardStyle.neumorphic:
-        return Container(
-          padding: padding,
-          decoration: tokens.panelDecoration(radius: radius, glow: glowColor),
-          child: child,
-        );
-
-      case CardStyle.flatMinimal:
-        return Container(
-          padding: padding,
-          decoration: tokens.panelDecoration(radius: radius, glow: glowColor),
-          child: child,
-        );
+    // Mate: sin BackdropFilter. Es el acabado recomendado en listas largas.
+    if (tokens.finish == SurfaceFinish.matte) {
+      return Container(
+        padding: padding,
+        decoration: tokens.panelDecoration(radius: radius, glow: glowColor),
+        child: child,
+      );
     }
+
+    // Líquido: blur acotado y gradiente orgánico, sin filtros apilados.
+    final double effectiveSigma = tokens.finish == SurfaceFinish.liquid
+        ? math.min(sigma, 16)
+        : sigma;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(radius),
+      clipBehavior: clipBehavior,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(
+          sigmaX: effectiveSigma,
+          sigmaY: effectiveSigma,
+        ),
+        child: Container(
+          padding: padding,
+          decoration: tokens.panelDecoration(radius: radius, glow: glowColor),
+          child: child,
+        ),
+      ),
+    );
   }
 }

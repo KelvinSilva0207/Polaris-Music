@@ -55,12 +55,12 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                           ref.read(libraryQueryProvider.notifier).state = value,
                       decoration: InputDecoration(
                         hintText: 'Buscar por título, artista o álbum…',
-                        prefixIcon: const Icon(Icons.search_rounded),
+                        prefixIcon: Icon(Icons.search_rounded),
                         suffixIcon: _search.text.isEmpty
                             ? null
                             : IconButton(
                                 tooltip: 'Limpiar',
-                                icon: const Icon(Icons.close_rounded),
+                                icon: Icon(Icons.close_rounded),
                                 onPressed: () {
                                   _search.clear();
                                   ref
@@ -82,7 +82,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.radar_rounded),
+                        : Icon(Icons.radar_rounded),
                     label: Text(scan.running ? 'Escaneando' : 'Escanear'),
                   ),
                 ],
@@ -93,23 +93,23 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   if (Platform.isAndroid)
                     OutlinedButton.icon(
                       onPressed: scan.running ? null : _importMetrolist,
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.download_for_offline_outlined,
                         size: 18,
                       ),
-                      label: const Text('Metrolist'),
+                      label: Text('Metrolist'),
                     ),
                   if (Platform.isAndroid) const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _manageFolders,
-                    icon: const Icon(Icons.folder_outlined, size: 18),
-                    label: const Text('Carpetas'),
+                    icon: Icon(Icons.folder_outlined, size: 18),
+                    label: Text('Carpetas'),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _showDuplicates,
-                    icon: const Icon(Icons.copy_all_rounded, size: 18),
-                    label: const Text('Duplicados'),
+                    icon: Icon(Icons.copy_all_rounded, size: 18),
+                    label: Text('Duplicados'),
                   ),
                   const Spacer(),
                   DropdownButtonHideUnderline(
@@ -156,7 +156,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       ? 'Preparando escaneo…'
                       : '${scan.progress!.processed} de ${scan.progress!.total} archivos',
                   style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: Colors.white54),
+                      ?.copyWith(color: context.inkAlpha(0.54)),
                 ),
               ],
               if (scan.summary != null && !scan.running) ...<Widget>[
@@ -167,7 +167,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 const SizedBox(height: 10),
                 Text(
                   scan.error!,
-                  style: const TextStyle(color: Colors.redAccent),
+                  style: TextStyle(color: Colors.redAccent),
                 ),
               ],
             ],
@@ -175,11 +175,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
         ),
         Expanded(
           child: tracks.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
+            loading: () => Center(child: CircularProgressIndicator()),
             error: (Object error, StackTrace stack) => Center(
               child: Text(
                 'No se pudo cargar la biblioteca: $error',
-                style: const TextStyle(color: Colors.redAccent),
+                style: TextStyle(color: Colors.redAccent),
               ),
             ),
             data: (List<Track> list) {
@@ -192,8 +192,8 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       'indexar tus archivos.',
                   action: FilledButton.icon(
                     onPressed: _manageFolders,
-                    icon: const Icon(Icons.create_new_folder_outlined),
-                    label: const Text('Añadir carpeta'),
+                    icon: Icon(Icons.create_new_folder_outlined),
+                    label: Text('Añadir carpeta'),
                   ),
                 );
               }
@@ -206,7 +206,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                         Text(
                           '${Formatters.count(list.length)} pistas',
                           style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: Colors.white54),
+                              ?.copyWith(color: context.inkAlpha(0.54)),
                         ),
                       ],
                     ),
@@ -304,7 +304,7 @@ class _ScanSummaryBar extends StatelessWidget {
       decoration: context.tokens.panelDecoration(radius: 12, elevated: false),
       child: Row(
         children: <Widget>[
-          const Icon(Icons.check_circle_outline_rounded, size: 18),
+          Icon(Icons.check_circle_outline_rounded, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -312,7 +312,7 @@ class _ScanSummaryBar extends StatelessWidget {
               '${summary.updated} actualizados · ${summary.removed} eliminados · '
               '${summary.failed} con error · ${summary.duration.inSeconds}s',
               style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: Colors.white70),
+                  ?.copyWith(color: context.inkAlpha(0.70)),
             ),
           ),
         ],
@@ -331,28 +331,28 @@ class _FoldersDialog extends ConsumerWidget {
     );
 
     return AlertDialog(
-      title: const Text('Carpetas de música'),
+      title: Text('Carpetas de música'),
       content: SizedBox(
         width: 520,
         child: folders.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => Center(child: CircularProgressIndicator()),
           error: (Object error, StackTrace stack) =>
               Text('No se pudieron cargar las carpetas: $error'),
           data: (List<LibraryFolder> list) => Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               if (list.isEmpty)
-                const Padding(
+                Padding(
                   padding: EdgeInsets.symmetric(vertical: 18),
                   child: Text(
                     'Todavía no hay carpetas. Añade una para empezar.',
-                    style: TextStyle(color: Colors.white54),
+                    style: TextStyle(color: context.inkAlpha(0.54)),
                   ),
                 )
               else
                 ...list.map(
                   (LibraryFolder folder) => ListTile(
-                    leading: const Icon(Icons.folder_rounded),
+                    leading: Icon(Icons.folder_rounded),
                     title: Text(folder.name),
                     subtitle: Text(
                       folder.path,
@@ -361,7 +361,7 @@ class _FoldersDialog extends ConsumerWidget {
                     ),
                     trailing: IconButton(
                       tooltip: 'Quitar carpeta',
-                      icon: const Icon(Icons.delete_outline_rounded),
+                      icon: Icon(Icons.delete_outline_rounded),
                       onPressed: () => ref
                           .read(libraryRepositoryProvider)
                           .removeFolder(folder.id),
@@ -371,8 +371,8 @@ class _FoldersDialog extends ConsumerWidget {
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () => _addFolder(context, ref),
-                icon: const Icon(Icons.add_rounded),
-                label: const Text('Añadir carpeta'),
+                icon: Icon(Icons.add_rounded),
+                label: Text('Añadir carpeta'),
               ),
             ],
           ),
@@ -381,7 +381,7 @@ class _FoldersDialog extends ConsumerWidget {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar'),
+          child: Text('Cerrar'),
         ),
       ],
     );
@@ -429,21 +429,21 @@ class _DuplicatesDialog extends ConsumerWidget {
     );
 
     return AlertDialog(
-      title: const Text('Posibles duplicados'),
+      title: Text('Posibles duplicados'),
       content: SizedBox(
         width: 560,
         height: 420,
         child: groups.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => Center(child: CircularProgressIndicator()),
           error: (Object error, StackTrace stack) =>
               Text('No se pudo buscar duplicados: $error'),
           data: (List<DuplicateGroup> list) {
             if (list.isEmpty) {
-              return const Center(
+              return Center(
                 child: Text(
                   'No se encontraron duplicados por título, artista y duración.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white54),
+                  style: TextStyle(color: context.inkAlpha(0.54)),
                 ),
               );
             }
@@ -460,7 +460,7 @@ class _DuplicatesDialog extends ConsumerWidget {
                   ),
                   trailing: TextButton(
                     onPressed: () => _keepFirst(context, ref, group),
-                    child: const Text('Conservar 1'),
+                    child: Text('Conservar 1'),
                   ),
                 );
               },
@@ -471,7 +471,7 @@ class _DuplicatesDialog extends ConsumerWidget {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('Cerrar'),
+          child: Text('Cerrar'),
         ),
       ],
     );

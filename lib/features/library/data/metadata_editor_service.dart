@@ -10,6 +10,7 @@ import '../../../core/constants/app_paths.dart';
 import '../../../core/models/track.dart';
 import '../../../core/utils/file_utils.dart';
 import '../../../core/utils/logger.dart';
+import '../../../core/utils/metadata_text.dart';
 import 'library_repository.dart';
 
 /// Valores del formulario de edición de etiquetas.
@@ -70,6 +71,19 @@ class MetadataEditorService {
   }) async {
     if (track.id <= 0 || track.path.isEmpty) return null;
 
+    // Si el formulario recuperó texto corrupto de un tag antiguo, se repara
+    // antes de escribirlo de nuevo en el archivo y en la base de datos.
+    final MetadataEditValues cleanValues = MetadataEditValues(
+      title: MetadataText.repair(values.title.trim()),
+      artist: MetadataText.repair(values.artist.trim()),
+      album: MetadataText.repair(values.album.trim()),
+      albumArtist: MetadataText.repair(values.albumArtist.trim()),
+      genre: MetadataText.repair(values.genre.trim()),
+      year: values.year,
+      trackNumber: values.trackNumber,
+      discNumber: values.discNumber,
+    );
+
     String? artworkPath;
     if (artworkBytes != null && artworkBytes.isNotEmpty) {
       artworkPath = await _cacheArtwork(
@@ -81,7 +95,7 @@ class MetadataEditorService {
 
     final MetadataWriteRequest request = MetadataWriteRequest(
       path: track.path,
-      values: values,
+      values: cleanValues,
       artworkPath: artworkPath,
     );
     try {
@@ -98,11 +112,11 @@ class MetadataEditorService {
 
     await _repository.updateMetadata(
       track,
-      title: values.title,
-      artist: values.artist,
-      album: values.album,
-      albumArtist: values.albumArtist,
-      genre: values.genre,
+      title: cleanValues.title,
+      artist: cleanValues.artist,
+      album: cleanValues.album,
+      albumArtist: cleanValues.albumArtist,
+      genre: cleanValues.genre,
       year: values.year,
       trackNumber: values.trackNumber,
       discNumber: values.discNumber,

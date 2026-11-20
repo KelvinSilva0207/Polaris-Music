@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import '../../../core/services/settings_service.dart';
 import '../domain/music_source.dart';
+import '../domain/online_catalog_items.dart';
 import '../domain/online_source_settings.dart';
 import '../domain/online_track.dart';
 import 'source_helpers.dart';
@@ -161,6 +162,97 @@ class SoundCloudSource implements MusicSourceProvider {
         status: MusicSourceErrorMapper.map(error, id),
       );
     }
+  }
+
+  /// SoundCloud no tiene un índice de álbumes propio: las playlists marcadas
+  /// como `is_album` se muestran en Álbumes y el resto en Playlists.
+  @override
+  Future<List<OnlineCollectionRef>> searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+  }) async {
+    if (query.trim().isEmpty || type == OnlineSearchType.songs) {
+      return const <OnlineCollectionRef>[];
+    }
+    final MusicSourceStatus current = status;
+    if (!current.available && current.issue == MusicSourceIssue.notConfigured) {
+      return const <OnlineCollectionRef>[];
+    }
+    try {
+      final Response<dynamic> response = await _get(
+        type == OnlineSearchType.artists ? '/users' : '/playlists',
+        <String, dynamic>{'q': query.trim(), 'limit': limit},
+      );
+      return _parseCollections(response.data, type, limit);
+    } on Object {
+      return const <OnlineCollectionRef>[];
+    }
+  }
+
+  @override
+  Future<List<OnlineTrack>> collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+  }) async {
+    if (collection.id.isEmpty) return const <OnlineTrack>[];
+    try {
+      final Response<dynamic> response = await _get(
+        collection.kind == OnlineSearchType.artists
+            ? '/users/${Uri.encodeComponent(collection.id)}/tracks'
+            : '/playlists/${Uri.encodeComponent(collection.id)}',
+        <String, dynamic>{'limit': limit, 'access': 'playable'},
+      );
+      return _parseTracks(response.data, limit);
+    } on Object {
+      return const <OnlineTrack>[];
+    }
+  }
+
+  List<OnlineCollectionRef> _parseCollections(
+    Object? payload,
+    OnlineSearchType type,
+    int limit,
+  ) {
+    final Map<String, dynamic>? map = SourceJson.map(payload);
+    final Object? collection = map?['collection'] ?? map?['data'] ?? payload;
+    final List<OnlineCollectionRef> result = <OnlineCollectionRef>[];
+    for (final Object? entry in SourceJson.list(collection)) {
+      if (result.length >= limit) break;
+      final Map<String, dynamic>? json = SourceJson.map(entry);
+      if (json == null) continue;
+      final String id = SourceJson.text(json['id']);
+      final String title = SourceJson.text(json['title']);
+      if (id.isEmpty || title.isEmpty) continue;
+      final bool isAlbum =
+          SourceJson.text(json['is_album']).toLowerCase() == 'true';
+      if (type == OnlineSearchType.albums && !isAlbum) continue;
+      if (type == OnlineSearchType.playlists && isAlbum) continue;
+
+      final Map<String, dynamic>? user = SourceJson.map(json['user']);
+      final String? artwork = SourceJson.soundCloudArtwork(
+        json['artwork_url'] ?? user?['avatar_url'],
+      );
+      result.add(
+        OnlineCollectionRef(
+          externalId: 'soundcloud:${type.name}:$id',
+          id: id,
+          title: title,
+          subtitle:
+              SourceJson.text(user?['username']).isNotEmpty
+                  ? SourceJson.text(user?['username'])
+                  : SourceJson.text(json['description']),
+          artworkUrl: artwork,
+          permalink: SourceJson.url(json['permalink_url']),
+          source: MusicSourceId.soundcloud,
+          kind: type,
+          trackCount: SourceJson.integer(
+            json['track_count'] ?? SourceJson.list(json['tracks']).length,
+          ),
+        ),
+      );
+    }
+    return result;
   }
 
   @override

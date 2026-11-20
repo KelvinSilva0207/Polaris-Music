@@ -7,9 +7,12 @@ import 'package:path/path.dart' as p;
 import '../../../core/constants/app_paths.dart';
 import '../../../core/utils/file_utils.dart';
 import '../../../core/utils/logger.dart';
+import '../domain/music_source.dart';
+import '../domain/online_catalog_items.dart';
 import '../domain/online_music_repository.dart';
 import '../domain/online_track.dart';
 import 'audius_models.dart';
+import 'source_helpers.dart';
 
 /// Error legible del catálogo online.
 class OnlineMusicException implements Exception {
@@ -154,6 +157,10 @@ class OnlineMusicService implements OnlineMusicRepository {
   }
 
   @override
+  Future<String?> cacheArtworkFor(OnlineTrack track) =>
+      cacheArtwork(track.artworkUrl);
+
+  @override
   Future<String?> cacheArtwork(String? artworkUrl) async {
     if (artworkUrl == null || artworkUrl.isEmpty) return null;
     try {
@@ -219,6 +226,113 @@ class OnlineMusicService implements OnlineMusicRepository {
     if (value.contains('flac')) return 'flac';
     if (value.contains('wav')) return 'wav';
     return 'mp3';
+  }
+
+  @override
+  bool canStreamTrack(OnlineTrack track) => true;
+
+  @override
+  bool canDownloadTrack(OnlineTrack track) => true;
+
+  /// Busca playlists, álbumes (playlists marcadas como `is_album`) y artistas.
+  Future<List<OnlineCollectionRef>> searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+  }) async {
+    final String term = query.trim();
+    if (term.isEmpty || type == OnlineSearchType.songs) {
+      return const <OnlineCollectionRef>[];
+    }
+    final String path = type == OnlineSearchType.artists
+        ? '/v1/users/search'
+        : '/v1/playlists/search';
+    final List<Object?> entries = await _fetchList(path, <String, dynamic>{
+      'query': term,
+      'limit': limit,
+      'app_name': _appName,
+    });
+
+    final List<OnlineCollectionRef> result = <OnlineCollectionRef>[];
+    for (final Object? entry in entries) {
+      if (result.length >= limit) break;
+      final Map<String, dynamic>? json = SourceJson.map(entry);
+      if (json == null) continue;
+      final String id = SourceJson.text(
+        type == OnlineSearchType.artists ? json['id'] : json['playlist_id'],
+      );
+      final String title = SourceJson.text(
+        type == OnlineSearchType.artists ? json['name'] : json['playlist_name'],
+      );
+      if (id.isEmpty || title.isEmpty) continue;
+      final bool isAlbum =
+          SourceJson.text(json['is_album']).toLowerCase() == 'true';
+      if (type == OnlineSearchType.albums && !isAlbum) continue;
+      if (type == OnlineSearchType.playlists && isAlbum) continue;
+
+      final Map<String, dynamic>? user = SourceJson.map(json['user']);
+      final String subtitle = type == OnlineSearchType.artists
+          ? SourceJson.text(json['handle'])
+          : SourceJson.text(user?['name']);
+      result.add(
+        OnlineCollectionRef(
+          externalId: 'audius:${type.name}:$id',
+          id: id,
+          title: title,
+          subtitle: subtitle,
+          artworkUrl: _audiusArtwork(json['artwork']),
+          permalink: SourceJson.url(json['permalink']),
+          source: MusicSourceId.audius,
+          kind: type,
+          trackCount: SourceJson.integer(json['track_count']),
+        ),
+      );
+    }
+    return result;
+  }
+
+  Future<List<Object?>> _fetchList(
+    String path,
+    Map<String, dynamic> query,
+  ) async {
+    final String host = await _host();
+    try {
+      final Response<dynamic> response = await _dio.get<dynamic>(
+        '$host$path',
+        queryParameters: query,
+        options: Options(responseType: ResponseType.json),
+      );
+      final Object? payload = response.data;
+      final Object? list = payload is Map ? payload['data'] : payload;
+      return list is List ? list.cast<Object?>() : const <Object?>[];
+    } on DioException catch (error, stack) {
+      AppLog.w(_tag, 'Fallo consultando $path', error, stack);
+      throw const OnlineMusicException(
+        'No se pudo consultar el catálogo de Audius. Revisa tu conexión.',
+      );
+    }
+  }
+
+  static String? _audiusArtwork(Object? value) {
+    final Map<String, dynamic>? artwork = SourceJson.map(value);
+    if (artwork == null) return null;
+    return SourceJson.url(artwork['480x480']) ??
+        SourceJson.url(artwork['150x150']);
+  }
+
+  @override
+  Future<List<OnlineTrack>> collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+  }) async {
+    final String path = collection.kind == OnlineSearchType.artists
+        ? '/v1/users/${Uri.encodeComponent(collection.id)}/tracks'
+        : '/v1/playlists/${Uri.encodeComponent(collection.id)}/tracks';
+    final List<OnlineTrack> tracks = await _fetchTracks(
+      path,
+      <String, dynamic>{'limit': limit, 'app_name': _appName},
+    );
+    return tracks.take(limit).toList(growable: false);
   }
 
   Future<void> dispose() async {

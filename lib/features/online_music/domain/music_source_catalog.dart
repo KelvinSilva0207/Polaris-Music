@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'music_source.dart';
+import 'online_catalog_items.dart';
 import 'online_track.dart';
 
 /// Resultado de una consulta a varias fuentes.
@@ -27,6 +28,18 @@ class CatalogResult {
       }
     }
     return List<OnlineTrack>.unmodifiable(merged);
+  }
+
+  /// Unión deduplicada de colecciones del tipo solicitado.
+  List<OnlineCollectionRef> collections(OnlineSearchType type) {
+    final List<OnlineCollectionRef> merged = <OnlineCollectionRef>[];
+    final Set<String> seen = <String>{};
+    for (final SourceResult result in sources) {
+      for (final OnlineCollectionRef item in result.collections(type)) {
+        if (seen.add(item.externalId)) merged.add(item);
+      }
+    }
+    return List<OnlineCollectionRef>.unmodifiable(merged);
   }
 
   List<SourceResult> get failed => sources
@@ -73,6 +86,37 @@ class MusicSourceCatalog {
   Future<CatalogResult> trending({Set<MusicSourceId>? only, int limit = 25}) =>
       _query(query: '', isTrending: true, only: only, limit: limit);
 
+  /// Búsqueda tipada (canciones / álbumes / artistas / playlists).
+  ///
+  /// Reutiliza [_query] con una consulta distinta para que el manejo de
+  /// errores por fuente sea idéntico al de la búsqueda de canciones.
+  Future<CatalogResult> searchType(
+    String query, {
+    required OnlineSearchType type,
+    Set<MusicSourceId>? only,
+    int limit = 25,
+  }) => _query(
+    query: query.trim(),
+    isTrending: false,
+    only: only,
+    limit: limit,
+    type: type,
+  );
+
+  /// Carga las pistas de una colección pública usando su proveedor de origen.
+  Future<List<OnlineTrack>> collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+  }) async {
+    final MusicSourceProvider? provider = providerFor(collection.source);
+    if (provider == null) return const <OnlineTrack>[];
+    try {
+      return await provider.collectionTracks(collection, limit: limit);
+    } on Object {
+      return const <OnlineTrack>[];
+    }
+  }
+
   /// Comprueba todas las fuentes en paralelo y devuelve sus estados.
   Future<Map<MusicSourceId, MusicSourceStatus>> checkAll() async {
     final List<MusicSourceStatus> checked = await Future.wait(
@@ -93,6 +137,7 @@ class MusicSourceCatalog {
     required bool isTrending,
     required Set<MusicSourceId>? only,
     required int limit,
+    OnlineSearchType type = OnlineSearchType.songs,
   }) async {
     final List<MusicSourceProvider> selected = _providers
         .where(
@@ -104,9 +149,21 @@ class MusicSourceCatalog {
     final List<SourceResult> results = await Future.wait(
       selected.map((MusicSourceProvider provider) async {
         try {
-          return isTrending
-              ? await provider.trending(limit: limit)
-              : await provider.search(query, limit: limit);
+          if (isTrending) return await provider.trending(limit: limit);
+          if (type == OnlineSearchType.songs) {
+            return await provider.search(query, limit: limit);
+          }
+          final List<OnlineCollectionRef> collections = await provider
+              .searchCollections(query, type: type, limit: limit);
+          return SourceResult(
+            source: provider.id,
+            status: provider.status,
+            albums: type == OnlineSearchType.albums ? collections : const <OnlineCollectionRef>[],
+            artists: type == OnlineSearchType.artists ? collections : const <OnlineCollectionRef>[],
+            playlists: type == OnlineSearchType.playlists
+                ? collections
+                : const <OnlineCollectionRef>[],
+          );
         } catch (error) {
           return SourceResult(
             source: provider.id,

@@ -43,11 +43,11 @@ class ParametricEqView extends StatelessWidget {
             ),
           )
         else
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
             child: Text(
               'Máximo de filtros alcanzado (8).',
-              style: TextStyle(fontSize: 12, color: Colors.white38),
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.38)),
             ),
           ),
       ],
@@ -75,9 +75,9 @@ class _FilterCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
+        color: context.inkAlpha(0.04),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(color: context.inkAlpha(0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -96,8 +96,8 @@ class _FilterCard extends StatelessWidget {
               const Spacer(),
               DropdownButton<ParametricFilterType>(
                 value: filter.type,
-                dropdownColor: const Color(0xFF1B1428),
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+                dropdownColor: context.tokens.panelOverlay,
+                style: TextStyle(color: context.onPanel, fontSize: 12),
                 underline: const SizedBox.shrink(),
                 items: <DropdownMenuItem<ParametricFilterType>>[
                   for (final ParametricFilterType type
@@ -116,7 +116,7 @@ class _FilterCard extends StatelessWidget {
               IconButton(
                 tooltip: 'Eliminar filtro',
                 icon: const Icon(Icons.close_rounded, size: 18),
-                color: Colors.white38,
+                color: context.inkAlpha(0.38),
                 onPressed: () => onRemove(index),
               ),
             ],
@@ -220,7 +220,7 @@ class _ControlRow extends StatelessWidget {
           width: 78,
           child: Text(
             label,
-            style: const TextStyle(fontSize: 11, color: Colors.white54),
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
           ),
         ),
         Expanded(child: child),
@@ -229,7 +229,7 @@ class _ControlRow extends StatelessWidget {
           child: Text(
             value,
             textAlign: TextAlign.end,
-            style: const TextStyle(fontSize: 11, color: Colors.white70),
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.70)),
           ),
         ),
       ],

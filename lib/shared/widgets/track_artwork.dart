@@ -41,13 +41,23 @@ class TrackArtwork extends StatelessWidget {
       ),
       child: Icon(
         icon,
-        color: Colors.white.withValues(alpha: 0.85),
+        color: context.inkAlpha(0.85),
         size: size * 0.45,
       ),
     );
 
     final String? artwork = path;
-    if (artwork == null || artwork.isEmpty) return fallback;
+    // Comprobación barata: evita intentar decodificar un archivo movido o
+    // borrado y muestra directamente el respaldo limpio.
+    if (artwork == null || artwork.isEmpty || !File(artwork).existsSync()) {
+      return fallback;
+    }
+
+    // Listas, cola y mini reproductores: nunca hace falta decodizar la carátula
+    // completa; 160 px cubre con holgura un tile de ~56 px a 3x.
+    final int decodeSize = (size * MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(24, 160);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
@@ -56,6 +66,8 @@ class TrackArtwork extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.cover,
+        cacheWidth: decodeSize,
+        cacheHeight: decodeSize,
         errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
             fallback,
       ),

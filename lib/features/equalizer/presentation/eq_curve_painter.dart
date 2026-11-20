@@ -13,11 +13,13 @@ class EqCurvePainter extends CustomPainter {
   const EqCurvePainter({
     required this.config,
     required this.accent,
+    required this.surfaceColor,
     this.gridColor = const Color(0x1AFFFFFF),
   });
 
   final EqualizerConfig config;
   final Color accent;
+  final Color surfaceColor;
   final Color gridColor;
 
   static const double _dbSpan = 18;
@@ -27,7 +29,7 @@ class EqCurvePainter extends CustomPainter {
     final Rect area = Offset.zero & size;
     canvas.drawRRect(
       RRect.fromRectAndRadius(area, const Radius.circular(14)),
-      Paint()..color = Colors.black.withValues(alpha: 0.18),
+      Paint()..color = surfaceColor,
     );
 
     final Paint grid = Paint()
@@ -92,6 +94,7 @@ class EqCurvePainter extends CustomPainter {
   bool shouldRepaint(covariant EqCurvePainter oldDelegate) =>
       oldDelegate.config != config ||
       oldDelegate.accent != accent ||
+      oldDelegate.surfaceColor != surfaceColor ||
       oldDelegate.gridColor != gridColor;
 }
 
@@ -103,6 +106,8 @@ class EqCurveView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Las etiquetas viven fuera del painter: reciben la tinta del tema aquí.
+    final Color labelColor = context.inkAlpha(0.38);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -112,18 +117,19 @@ class EqCurveView extends StatelessWidget {
             painter: EqCurvePainter(
               config: config,
               accent: context.tokens.accent,
+              surfaceColor: context.tokens.panelColor,
             ),
           ),
         ),
         const SizedBox(height: 4),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: const <Widget>[
-            Text('20', style: TextStyle(fontSize: 10, color: Colors.white38)),
-            Text('100', style: TextStyle(fontSize: 10, color: Colors.white38)),
-            Text('1k', style: TextStyle(fontSize: 10, color: Colors.white38)),
-            Text('10k', style: TextStyle(fontSize: 10, color: Colors.white38)),
-            Text('20k', style: TextStyle(fontSize: 10, color: Colors.white38)),
+          children: <Widget>[
+            Text('20', style: TextStyle(fontSize: 10, color: labelColor)),
+            Text('100', style: TextStyle(fontSize: 10, color: labelColor)),
+            Text('1k', style: TextStyle(fontSize: 10, color: labelColor)),
+            Text('10k', style: TextStyle(fontSize: 10, color: labelColor)),
+            Text('20k', style: TextStyle(fontSize: 10, color: labelColor)),
           ],
         ),
       ],

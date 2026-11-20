@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
+import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/lrc_parser.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import '../data/lyrics_service.dart';
@@ -113,13 +114,13 @@ class _InArtworkLyricsState extends ConsumerState<InArtworkLyrics> {
             children: <Widget>[
               Icon(Icons.lyrics_rounded, size: 16, color: widget.accent),
               const SizedBox(width: 6),
-              const Expanded(
+              Expanded(
                 child: Text(
                   'Letras',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: Colors.white70,
+                    color: context.onPanel.withValues(alpha: 0.85),
                   ),
                 ),
               ),

@@ -1,12 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'app_providers.dart';
+import 'motion_provider.dart';
 import '../constants/app_constants.dart';
 import '../di/service_locator.dart';
 import '../services/settings_service.dart';
+import '../services/window_service.dart';
 import '../theme/app_theme_config.dart';
+import '../theme/color_math.dart';
+import '../theme/motion_config.dart';
 import '../utils/logger.dart';
 import '../utils/palette_extractor.dart';
 
@@ -85,6 +91,70 @@ class ThemeController extends StateNotifier<ThemeState> {
   }
 
   Future<void> resetToDefaults() => _persist(AppThemeConfig.defaults);
+
+  /// Aplica un tema de la galería (paleta + acabado en una sola escritura).
+  Future<void> applyCatalogTheme(AppThemePreset preset) =>
+      _persist(AppThemeConfig.fromPreset(preset));
+
+  /// Cambia solo el acabado; la paleta actual se conserva.
+  Future<void> setFinish(SurfaceFinish finish) =>
+      _persist(_touch(config.copyWith(finish: finish)));
+
+  Future<void> setSecondary(Color color) =>
+      _persist(_touch(config.copyWith(secondary: color)));
+
+  /// Opacidad del acabado: superficies sólidas y velo de cristal.
+  Future<void> setSurfaceOpacity(double value) {
+    final double opacity = value.isNaN ? 0 : value.clamp(0.35, 1).toDouble();
+    return _persist(
+      _touch(
+        config.copyWith(
+          surfaceOpacity: opacity,
+          glassOpacity:
+              config.finish == SurfaceFinish.matte ? config.glassOpacity : opacity,
+        ),
+      ),
+    );
+  }
+
+  /// Ajusta el espectro RGB y recalcula acento, secundario y degradado.
+  Future<void> setRgb({
+    double? hue,
+    double? saturation,
+    double? brightness,
+    bool? flow,
+  }) {
+    final AppThemeConfig current = config;
+    final AppThemeConfig partial = current.copyWith(
+      rgbHue: hue?.clamp(0, 360).toDouble(),
+      rgbSaturation: saturation?.clamp(0, 1).toDouble(),
+      rgbBrightness: brightness?.clamp(0.05, 1).toDouble(),
+      rgbFlow: flow,
+    );
+    final Color primary = partial.rgbColor;
+    final Color secondaryColor = HsvColor(
+      h: (partial.rgbHue + 48) % 360,
+      s: partial.rgbSaturation,
+      v: partial.rgbBrightness,
+    ).toColor();
+    return _persist(
+        partial.copyWith(
+          preset: AppThemePreset.rgbDynamic,
+          paletteMode: ColorPaletteMode.fixedPreset,
+          accent: primary,
+          progressColor: primary,
+          volumeColor: secondaryColor,
+          karaokeColor: primary,
+          secondary: secondaryColor,
+          backdrop: <Color>[
+            Color.lerp(primary, current.background, 0.62) ?? current.background,
+            current.background,
+            Color.lerp(secondaryColor, current.background, 0.76) ??
+                current.background,
+          ],
+        ),
+    );
+  }
 
   Future<void> setCardStyle(CardStyle style) =>
       _persist(_touch(config.copyWith(cardStyle: style)));
@@ -173,6 +243,7 @@ class ThemeController extends StateNotifier<ThemeState> {
       'profiles': state.profiles
           .map((CustomThemeProfile profile) => profile.toJson())
           .toList(),
+      'motion': MotionController.readConfig(_settings).toJson(),
     });
   }
 
@@ -213,6 +284,18 @@ class ThemeController extends StateNotifier<ThemeState> {
 
     state = state.copyWith(profiles: next);
     await _persistProfiles(next);
+
+    // Compatibilidad con exportaciones antiguas: sin el bloque `motion` se
+    // conserva la configuración de movimiento ya persistida.
+    final Object? motionRaw = json['motion'];
+    if (motionRaw is Map<Object?, Object?>) {
+      final MotionConfig motion = MotionConfig.fromJson(motionRaw);
+      await _settings.setString(
+        AppConstants.keyMotionConfig,
+        jsonEncode(motion.toJson()),
+      );
+    }
+
     await _persist(imported);
     return importedProfiles.length;
   }
@@ -262,6 +345,82 @@ final Provider<AppThemeConfig> themeConfigProvider = Provider<AppThemeConfig>((
 ) {
   return ref.watch(themeControllerProvider).config;
 });
+
+/// Desplazamiento del tono RGB, en grados, mientras el flujo está activo.
+///
+/// No se persiste: al desactivar el flujo vuelve a aplicarse el HSV elegido.
+final StateNotifierProvider<RgbFlowController, double> rgbFlowPhaseProvider =
+    StateNotifierProvider<RgbFlowController, double>((Ref ref) {
+  return RgbFlowController(ref);
+});
+
+/// Configuración que alimenta `MaterialApp`: incluye el flujo cromático.
+final Provider<AppThemeConfig> flowingThemeConfigProvider =
+    Provider<AppThemeConfig>((Ref ref) {
+  final AppThemeConfig config = ref.watch(themeConfigProvider);
+  final double phase = ref.watch(rgbFlowPhaseProvider);
+  return config.withRgbFlow(phase);
+});
+
+/// Reloj de baja frecuencia del flujo cromático.
+///
+/// Un `Timer` base de 1.8 s evita repintar a 60 fps; `MaterialApp` interpola el
+/// cambio de tema. La velocidad de movimiento acorta o alarga el periodo, y el
+/// reloj se detiene en segundo plano o cuando el flujo se desactiva.
+class RgbFlowController extends StateNotifier<double> {
+  RgbFlowController(this._ref) : super(0) {
+    _window = _ref.read(windowStateProvider);
+    _window!.addListener(_onWindowChanged);
+    _ref.listen<AppThemeConfig>(themeConfigProvider, (_, _) => _sync());
+    _ref.listen<MotionConfig>(motionConfigProvider, (_, _) => _sync());
+    _sync();
+  }
+
+  static const Duration _interval = Duration(milliseconds: 1800);
+  static const double _step = 6;
+
+  final Ref _ref;
+  ValueNotifier<WindowUiState>? _window;
+  Timer? _timer;
+  double _speed = 0;
+
+  void _onWindowChanged() => _sync();
+
+  void _sync() {
+    final MotionConfig motion = _ref.read(motionConfigProvider);
+    final bool enabled =
+        _ref.read(themeConfigProvider).rgbFlow &&
+        motion.ambient &&
+        !(_window?.value.backgrounded ?? false);
+    if (!enabled) {
+      _timer?.cancel();
+      _timer = null;
+      return;
+    }
+
+    final double rawSpeed = motion.speed;
+    final double speed = (rawSpeed.isNaN ? 1 : rawSpeed)
+        .clamp(0.4, 1.6)
+        .toDouble();
+    if (_timer != null && _speed == speed) return;
+
+    _timer?.cancel();
+    _speed = speed;
+    _timer = Timer.periodic(
+      Duration(microseconds: (_interval.inMicroseconds / speed).round()),
+      (_) {
+        state = (state + _step) % 360;
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _window?.removeListener(_onWindowChanged);
+    super.dispose();
+  }
+}
 
 /// Acento real del reproductor: paleta de la carátula o color fijo.
 final FutureProviderFamily<Color, String?> artworkAccentProvider =

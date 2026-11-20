@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/color_math.dart';
+import '../../../core/theme/theme_tokens.dart';
 
 /// Diálogo de color libre: rueda cromática HSV, deslizadores de tono,
 /// saturación, brillo y opacidad, entrada HEX y campos RGB.
@@ -118,7 +119,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
             const Spacer(),
             Text(
               formatted,
-              style: const TextStyle(fontSize: 10, color: Colors.white54),
+              style: TextStyle(fontSize: 10, color: context.inkAlpha(0.54)),
             ),
           ],
         ),
@@ -170,7 +171,7 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                     decoration: BoxDecoration(
                       color: _color,
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white24),
+                      border: Border.all(color: context.inkAlpha(0.24)),
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -202,7 +203,11 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
                             _pick(details.localPosition, size),
                         child: CustomPaint(
                           size: Size.square(size),
-                          painter: _ColorWheelPainter(hsv: _hsv),
+                          painter: _ColorWheelPainter(
+                            hsv: _hsv,
+                            outlineColor: context.inkAlpha(0.24),
+                            selectorColor: context.ink,
+                          ),
                         ),
                       ),
                     );
@@ -283,9 +288,15 @@ class _ColorPickerDialogState extends State<ColorPickerDialog> {
 /// Rueda cromática: el ángulo es el tono y el radio la saturación. El brillo
 /// se aplica a todos los colores antes de dibujarlos.
 class _ColorWheelPainter extends CustomPainter {
-  const _ColorWheelPainter({required this.hsv});
+  const _ColorWheelPainter({
+    required this.hsv,
+    required this.outlineColor,
+    required this.selectorColor,
+  });
 
   final HsvColor hsv;
+  final Color outlineColor;
+  final Color selectorColor;
 
   static const List<Color> _spectrum = <Color>[
     Color(0xFFFF0000),
@@ -346,7 +357,7 @@ class _ColorWheelPainter extends CustomPainter {
       radius,
       Paint()
         ..style = PaintingStyle.stroke
-        ..color = Colors.white24
+        ..color = outlineColor
         ..strokeWidth = 1.5,
     );
 
@@ -361,7 +372,7 @@ class _ColorWheelPainter extends CustomPainter {
       selector,
       9,
       Paint()
-        ..color = Colors.white
+        ..color = selectorColor
         ..strokeWidth = 2
         ..style = PaintingStyle.stroke,
     );
@@ -370,7 +381,9 @@ class _ColorWheelPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ColorWheelPainter oldDelegate) =>
-      oldDelegate.hsv != hsv;
+      oldDelegate.hsv != hsv ||
+      oldDelegate.outlineColor != outlineColor ||
+      oldDelegate.selectorColor != selectorColor;
 }
 
 /// Canal RGB en bytes, usando los componentes normalizados de Flutter.

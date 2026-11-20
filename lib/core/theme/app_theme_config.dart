@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'color_math.dart';
+
 /// Estilo de los contenedores (tarjetas, paneles y hojas).
 enum CardStyle {
   glassmorphic('Glass', 'Vidrio translúcido con desenfoque y bordes suaves'),
@@ -11,6 +13,39 @@ enum CardStyle {
 
   final String label;
   final String description;
+}
+
+/// Acabado de superficie, independiente de la paleta de color.
+///
+/// Es la segunda capa del sistema de temas: cualquier paleta puede combinarse
+/// con cualquiera de estos materiales. `cardStyle` sigue siendo el estilo de
+/// bajo nivel que consumen los widgets, y el acabado lo deriva de forma
+/// coherente.
+enum SurfaceFinish {
+  glass(
+    'Glass',
+    'Cristal translúcido, bordes luminosos finos y blur optimizado',
+  ),
+  liquid(
+    'Liquid',
+    'Gradientes orgánicos, brillos suaves y superficies envolventes',
+  ),
+  matte(
+    'Mate / Sólido',
+    'Alto contraste, sin transparencias ni desenfoques; consuma menos GPU',
+  );
+
+  const SurfaceFinish(this.label, this.description);
+
+  final String label;
+  final String description;
+
+  /// Estilo de contenedor que mejor representa este acabado.
+  CardStyle get cardStyle => switch (this) {
+    SurfaceFinish.glass => CardStyle.glassmorphic,
+    SurfaceFinish.liquid => CardStyle.glassmorphic,
+    SurfaceFinish.matte => CardStyle.flatMinimal,
+  };
 }
 
 /// Forma de la carátula en la pantalla de reproducción.
@@ -62,6 +97,7 @@ enum ThemeColorTarget {
   backdropMiddle('Degradado · centro', 'Segunda parada del fondo dinámico'),
   backdropEnd('Degradado · final', 'Última parada del fondo dinámico'),
   accent('Acento primario', 'Botones, indicadores e iconos activos'),
+  secondary('Acento secundario', 'Brillos, degradados y flujo cromático'),
   surface('Contenedores y tarjetas', 'Color base de las superficies'),
   progress('Barra de progreso', 'Progreso de la canción'),
   volume('Barra de volumen', 'Nivel de volumen y altavoz'),
@@ -79,17 +115,45 @@ enum ThemeColorTarget {
 
 /// Perfiles visuales incluidos con Polaris.
 enum AppThemePreset {
+  dark(
+    'Oscuro / Dark',
+    'Carbón profundo con acento violeta y acabado mate de alto contraste.',
+  ),
+  light(
+    'Claro / Light',
+    'Blanco perlado, tinta oscura y paneles legibles en Cola y Letras.',
+  ),
+  rgbDynamic(
+    'RGB Dinámico',
+    'Espectro HSV configurable con flujo cromático suave opcional.',
+  ),
   polarisVioletGlass(
-    'Polaris Violet Glass',
+    'Violet Glass',
     'Violeta profundo, vidrio intenso y carátula circular con resplandor.',
+  ),
+  bronzeVinyl(
+    'Bronze Vinyl',
+    'Bronce cálido, vinilo giratorio y progreso circular envolvente.',
+  ),
+  cyberNeon(
+    'Cyber Neon',
+    'Azul noche con neón cian y magenta sobre cristal.',
+  ),
+  nordicFrost(
+    'Nordic Frost',
+    'Blanco nórdico, azul frío y vidrio muy ligero.',
+  ),
+  emeraldStudio(
+    'Emerald Studio',
+    'Verde esmeralda sobre carbón, acabado sólido y limpio.',
+  ),
+  crimsonVelvet(
+    'Crimson Velvet',
+    'Carmesí profundo con gradientes envolventes y brillo ámbar.',
   ),
   monolithMinimal(
     'Monolith Minimal',
     'Carbón mate, tarjetas sutiles y onda de audio minimalista.',
-  ),
-  bronzeVinyl(
-    'Bronze Vinyl & Warm Dark',
-    'Bronce cálido, vinilo giratorio y progreso circular envolvente.',
   ),
   custom(
     'Personalizado',
@@ -118,6 +182,14 @@ class AppThemeConfig {
     required this.background,
     required this.surface,
     required this.backdrop,
+    this.finish = SurfaceFinish.glass,
+    this.secondary = const Color(0xFF22D3EE),
+    this.surfaceOpacity = 0.94,
+    this.rgbHue = 267,
+    this.rgbSaturation = 0.78,
+    this.rgbBrightness = 0.96,
+    this.rgbFlow = false,
+    this.brightness = Brightness.dark,
     this.panelRadius = 18,
     this.artworkRadius = 24,
     this.glassBlur = 24,
@@ -143,6 +215,26 @@ class AppThemeConfig {
 
   /// Colores del degradado de fondo, de arriba-izquierda a abajo-derecha.
   final List<Color> backdrop;
+
+  /// Segunda capa del tema: material de todas las superficies.
+  final SurfaceFinish finish;
+
+  /// Color secundario para brillos, degradados y flujo cromático.
+  final Color secondary;
+
+  /// Opacidad de las superficies sólidas del editor libre.
+  final double surfaceOpacity;
+
+  /// Parámetros HSV del modo RGB Dinámico.
+  final double rgbHue;
+  final double rgbSaturation;
+  final double rgbBrightness;
+
+  /// Activa el flujo cromático suave (animación lenta y acotada).
+  final bool rgbFlow;
+
+  /// Determina texto e iconos oscuros o claros en toda la aplicación.
+  final Brightness brightness;
 
   /// Radio compartido por paneles, tarjetas y hojas.
   final double panelRadius;
@@ -184,10 +276,13 @@ class AppThemeConfig {
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.linearClassic,
     paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.glass,
     accent: Color(0xFF8B5CF6),
+    secondary: Color(0xFF22D3EE),
     background: Color(0xFF0D0515),
     surface: Color(0xFF1A0B2A),
     backdrop: <Color>[Color(0xFF1A0B2A), Color(0xFF0D0515)],
+    surfaceOpacity: 0.92,
     panelRadius: 28,
     artworkRadius: 32,
     glassBlur: 20,
@@ -208,10 +303,13 @@ class AppThemeConfig {
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.waveform,
     paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.matte,
     accent: Color(0xFF39FF14),
+    secondary: Color(0xFFB8FF8A),
     background: Color(0xFF121212),
     surface: Color(0xFF1A1A1A),
     backdrop: <Color>[Color(0xFF1E1E1E), Color(0xFF121212), Color(0xFF0A0A0A)],
+    surfaceOpacity: 1,
     panelRadius: 16,
     artworkRadius: 16,
     glassBlur: 18,
@@ -232,10 +330,13 @@ class AppThemeConfig {
     artworkShape: ArtworkShape.circleVinyl,
     progressBarType: ProgressBarType.circularAroundArtwork,
     paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.liquid,
     accent: Color(0xFFD4A76A),
+    secondary: Color(0xFFF0C99A),
     background: Color(0xFF1F1F1F),
     surface: Color(0xFF242424),
     backdrop: <Color>[Color(0xFF2A2A2A), Color(0xFF1F1F1F), Color(0xFF141414)],
+    surfaceOpacity: 0.94,
     panelRadius: 22,
     artworkRadius: 22,
     glassBlur: 18,
@@ -250,15 +351,195 @@ class AppThemeConfig {
     neumorphicDark: Color(0xFF000000),
   );
 
+  /// Carbón profundo con acento violeta y acabado mate.
+  static const AppThemeConfig dark = AppThemeConfig(
+    preset: AppThemePreset.dark,
+    cardStyle: CardStyle.flatMinimal,
+    artworkShape: ArtworkShape.squareRounded,
+    progressBarType: ProgressBarType.linearClassic,
+    paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.matte,
+    accent: Color(0xFF9E8CFF),
+    secondary: Color(0xFF4DD0E1),
+    background: Color(0xFF0B0B0F),
+    surface: Color(0xFF17171D),
+    backdrop: <Color>[Color(0xFF1C1C24), Color(0xFF0B0B0F)],
+    surfaceOpacity: 1,
+    panelRadius: 18,
+    artworkRadius: 20,
+    glassBlur: 0,
+    glassOpacity: 0,
+    borderColor: Color(0x22FFFFFF),
+    shadowOpacity: 0.30,
+  );
+
+  /// Blanco perlado con tinta oscura: Cola y Letras mantienen contraste.
+  static const AppThemeConfig light = AppThemeConfig(
+    preset: AppThemePreset.light,
+    cardStyle: CardStyle.flatMinimal,
+    artworkShape: ArtworkShape.squareRounded,
+    progressBarType: ProgressBarType.linearClassic,
+    paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.matte,
+    accent: Color(0xFF3355E8),
+    secondary: Color(0xFF7B4BD8),
+    background: Color(0xFFF5F7FB),
+    surface: Color(0xFFFFFFFF),
+    backdrop: <Color>[Color(0xFFFFFFFF), Color(0xFFE9EDF6)],
+    surfaceOpacity: 1,
+    brightness: Brightness.light,
+    panelRadius: 20,
+    artworkRadius: 22,
+    glassBlur: 0,
+    glassOpacity: 0,
+    progressColor: Color(0xFF3355E8),
+    volumeColor: Color(0xFF3355E8),
+    karaokeColor: Color(0xFF3355E8),
+    borderColor: Color(0x330B0B12),
+    shadowColor: Color(0xFF243049),
+    shadowOpacity: 0.16,
+    neumorphicLight: Color(0xFFFFFFFF),
+    neumorphicDark: Color(0xFFDCE2EF),
+  );
+
+  /// Espectro HSV con flujo cromático suave opcional.
+  static const AppThemeConfig rgbDynamic = AppThemeConfig(
+    preset: AppThemePreset.rgbDynamic,
+    cardStyle: CardStyle.glassmorphic,
+    artworkShape: ArtworkShape.card3D,
+    progressBarType: ProgressBarType.waveform,
+    paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.liquid,
+    accent: Color(0xFF8B5CF6),
+    secondary: Color(0xFF22D3EE),
+    background: Color(0xFF0A0715),
+    surface: Color(0xFF160E28),
+    backdrop: <Color>[Color(0xFF241244), Color(0xFF0A0715), Color(0xFF062A35)],
+    surfaceOpacity: 0.92,
+    rgbHue: 267,
+    rgbSaturation: 0.78,
+    rgbBrightness: 0.96,
+    rgbFlow: true,
+    panelRadius: 26,
+    artworkRadius: 28,
+    glassBlur: 18,
+    glassOpacity: 0.12,
+  );
+
+  /// Neón cian/magenta sobre cristal oscuro.
+  static const AppThemeConfig cyberNeon = AppThemeConfig(
+    preset: AppThemePreset.cyberNeon,
+    cardStyle: CardStyle.glassmorphic,
+    artworkShape: ArtworkShape.card3D,
+    progressBarType: ProgressBarType.waveform,
+    paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.glass,
+    accent: Color(0xFF00E5FF),
+    secondary: Color(0xFFFF2D95),
+    background: Color(0xFF04060F),
+    surface: Color(0xFF0D1226),
+    backdrop: <Color>[Color(0xFF101A38), Color(0xFF04060F), Color(0xFF260A2B)],
+    surfaceOpacity: 0.90,
+    panelRadius: 22,
+    artworkRadius: 20,
+    glassBlur: 16,
+    glassOpacity: 0.12,
+    progressColor: Color(0xFF00E5FF),
+    volumeColor: Color(0xFFFF2D95),
+    karaokeColor: Color(0xFF00E5FF),
+  );
+
+  /// Blanco nórdico con azul frío y vidrio ligero.
+  static const AppThemeConfig nordicFrost = AppThemeConfig(
+    preset: AppThemePreset.nordicFrost,
+    cardStyle: CardStyle.glassmorphic,
+    artworkShape: ArtworkShape.squareRounded,
+    progressBarType: ProgressBarType.linearClassic,
+    paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.glass,
+    accent: Color(0xFF2D6FA3),
+    secondary: Color(0xFF66B7C9),
+    background: Color(0xFFEAF1F7),
+    surface: Color(0xFFF8FCFF),
+    backdrop: <Color>[Color(0xFFFFFFFF), Color(0xFFDCEAF4)],
+    surfaceOpacity: 0.94,
+    brightness: Brightness.light,
+    panelRadius: 24,
+    artworkRadius: 24,
+    glassBlur: 12,
+    glassOpacity: 0.10,
+    progressColor: Color(0xFF2D6FA3),
+    volumeColor: Color(0xFF2D6FA3),
+    karaokeColor: Color(0xFF2D6FA3),
+    borderColor: Color(0x33243B52),
+    shadowColor: Color(0xFF37566C),
+    shadowOpacity: 0.14,
+    neumorphicLight: Color(0xFFFFFFFF),
+    neumorphicDark: Color(0xFFD5E2EC),
+  );
+
+  /// Verde esmeralda sobre carbón, acabado sólido.
+  static const AppThemeConfig emeraldStudio = AppThemeConfig(
+    preset: AppThemePreset.emeraldStudio,
+    cardStyle: CardStyle.flatMinimal,
+    artworkShape: ArtworkShape.squareRounded,
+    progressBarType: ProgressBarType.waveform,
+    paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.matte,
+    accent: Color(0xFF34D399),
+    secondary: Color(0xFFA7F3D0),
+    background: Color(0xFF08170F),
+    surface: Color(0xFF10251A),
+    backdrop: <Color>[Color(0xFF143524), Color(0xFF08170F)],
+    surfaceOpacity: 1,
+    panelRadius: 16,
+    artworkRadius: 18,
+    glassBlur: 0,
+    glassOpacity: 0,
+    progressColor: Color(0xFF34D399),
+    volumeColor: Color(0xFF34D399),
+    karaokeColor: Color(0xFF34D399),
+  );
+
+  /// Carmesí profundo con gradientes envolventes.
+  static const AppThemeConfig crimsonVelvet = AppThemeConfig(
+    preset: AppThemePreset.crimsonVelvet,
+    cardStyle: CardStyle.glassmorphic,
+    artworkShape: ArtworkShape.circleVinyl,
+    progressBarType: ProgressBarType.circularAroundArtwork,
+    paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.liquid,
+    accent: Color(0xFFF43F5E),
+    secondary: Color(0xFFFB923C),
+    background: Color(0xFF1A070C),
+    surface: Color(0xFF2A0B14),
+    backdrop: <Color>[Color(0xFF4A0E1D), Color(0xFF1A070C), Color(0xFF3A1608)],
+    surfaceOpacity: 0.92,
+    panelRadius: 30,
+    artworkRadius: 30,
+    glassBlur: 20,
+    glassOpacity: 0.12,
+    progressColor: Color(0xFFF43F5E),
+    volumeColor: Color(0xFFFB923C),
+    karaokeColor: Color(0xFFF43F5E),
+  );
+
   /// Configuración usada la primera vez que se abre la app.
   static const AppThemeConfig defaults = polarisVioletGlass;
 
   /// Devuelve una copia con preset y valores del perfil base solicitado.
   factory AppThemeConfig.fromPreset(AppThemePreset preset) {
     return switch (preset) {
+      AppThemePreset.dark => dark,
+      AppThemePreset.light => light,
+      AppThemePreset.rgbDynamic => rgbDynamic,
       AppThemePreset.polarisVioletGlass => polarisVioletGlass,
-      AppThemePreset.monolithMinimal => monolithMinimal,
       AppThemePreset.bronzeVinyl => bronzeVinyl,
+      AppThemePreset.cyberNeon => cyberNeon,
+      AppThemePreset.nordicFrost => nordicFrost,
+      AppThemePreset.emeraldStudio => emeraldStudio,
+      AppThemePreset.crimsonVelvet => crimsonVelvet,
+      AppThemePreset.monolithMinimal => monolithMinimal,
       AppThemePreset.custom => polarisVioletGlass,
     };
   }
@@ -270,9 +551,62 @@ class AppThemeConfig {
     bronzeVinyl,
   ];
 
+  /// Galería completa de temas y acabados de Personalización.
+  static const List<AppThemeConfig> catalog = <AppThemeConfig>[
+    dark,
+    light,
+    rgbDynamic,
+    polarisVioletGlass,
+    bronzeVinyl,
+    cyberNeon,
+    nordicFrost,
+    emeraldStudio,
+    crimsonVelvet,
+  ];
+
   bool get isGlass => cardStyle == CardStyle.glassmorphic;
 
   bool get usesDynamicPalette => paletteMode == ColorPaletteMode.dynamicArtwork;
+
+  bool get isLight => brightness == Brightness.light;
+
+  /// Color construido a partir de los parámetros HSV del modo RGB Dinámico.
+  Color get rgbColor => HsvColor(
+    h: rgbHue,
+    s: rgbSaturation,
+    v: rgbBrightness,
+  ).toColor();
+
+  /// Devuelve la configuración con el flujo cromático aplicado.
+  ///
+  /// El desplazamiento es transientivo: no se persiste, así que el usuario
+  /// siempre recupera el tono elegido al desactivar el flujo.
+  AppThemeConfig withRgbFlow(double degrees) {
+    if (!rgbFlow || degrees == 0) return this;
+    final double hue = (rgbHue + degrees) % 360;
+    final Color primary = HsvColor(
+      h: hue,
+      s: rgbSaturation,
+      v: rgbBrightness,
+    ).toColor();
+    final Color nextSecondary = HsvColor(
+      h: (hue + 48) % 360,
+      s: rgbSaturation,
+      v: rgbBrightness,
+    ).toColor();
+    return copyWith(
+      accent: primary,
+      secondary: nextSecondary,
+      progressColor: primary,
+      volumeColor: nextSecondary,
+      karaokeColor: primary,
+      backdrop: <Color>[
+        Color.lerp(primary, background, 0.62) ?? background,
+        background,
+        Color.lerp(nextSecondary, background, 0.76) ?? background,
+      ],
+    );
+  }
 
   /// Color actual de un objetivo editable. Los tres degradados se leen del
   /// array `backdrop`, usando el primero como fallback si no hay más paradas.
@@ -284,6 +618,7 @@ class AppThemeConfig {
     ThemeColorTarget.backdropEnd =>
       backdrop.length > 2 ? backdrop[2] : backdrop.last,
     ThemeColorTarget.accent => accent,
+    ThemeColorTarget.secondary => secondary,
     ThemeColorTarget.surface => surface,
     ThemeColorTarget.progress => progressColor,
     ThemeColorTarget.volume => volumeColor,
@@ -318,6 +653,8 @@ class AppThemeConfig {
         return copyWith(backdrop: next);
       case ThemeColorTarget.accent:
         return copyWith(accent: color);
+      case ThemeColorTarget.secondary:
+        return copyWith(secondary: color);
       case ThemeColorTarget.surface:
         return copyWith(surface: color);
       case ThemeColorTarget.progress:
@@ -347,6 +684,14 @@ class AppThemeConfig {
     Color? background,
     Color? surface,
     List<Color>? backdrop,
+    SurfaceFinish? finish,
+    Color? secondary,
+    double? surfaceOpacity,
+    double? rgbHue,
+    double? rgbSaturation,
+    double? rgbBrightness,
+    bool? rgbFlow,
+    Brightness? brightness,
     double? panelRadius,
     double? artworkRadius,
     double? glassBlur,
@@ -360,9 +705,22 @@ class AppThemeConfig {
     Color? neumorphicLight,
     Color? neumorphicDark,
   }) {
+    final SurfaceFinish nextFinish = finish ?? this.finish;
+    final CardStyle nextCardStyle = cardStyle ??
+        (finish == null ? this.cardStyle : nextFinish.cardStyle);
+    final double nextBlur = glassBlur ??
+        (nextFinish == SurfaceFinish.matte
+            ? 0
+            : (finish != null && this.glassBlur == 0 ? 18 : this.glassBlur));
+    final double nextGlassOpacity = glassOpacity ??
+        (nextFinish == SurfaceFinish.matte
+            ? 0
+            : (finish != null && this.glassOpacity == 0
+                ? 0.12
+                : this.glassOpacity));
     return AppThemeConfig(
       preset: preset ?? this.preset,
-      cardStyle: cardStyle ?? this.cardStyle,
+      cardStyle: nextCardStyle,
       artworkShape: artworkShape ?? this.artworkShape,
       progressBarType: progressBarType ?? this.progressBarType,
       paletteMode: paletteMode ?? this.paletteMode,
@@ -370,10 +728,18 @@ class AppThemeConfig {
       background: background ?? this.background,
       surface: surface ?? this.surface,
       backdrop: backdrop ?? this.backdrop,
+      finish: finish ?? this.finish,
+      secondary: secondary ?? this.secondary,
+      surfaceOpacity: surfaceOpacity ?? this.surfaceOpacity,
+      rgbHue: rgbHue ?? this.rgbHue,
+      rgbSaturation: rgbSaturation ?? this.rgbSaturation,
+      rgbBrightness: rgbBrightness ?? this.rgbBrightness,
+      rgbFlow: rgbFlow ?? this.rgbFlow,
+      brightness: brightness ?? this.brightness,
       panelRadius: panelRadius ?? this.panelRadius,
       artworkRadius: artworkRadius ?? this.artworkRadius,
-      glassBlur: glassBlur ?? this.glassBlur,
-      glassOpacity: glassOpacity ?? this.glassOpacity,
+      glassBlur: nextBlur,
+      glassOpacity: nextGlassOpacity,
       progressColor: progressColor ?? this.progressColor,
       volumeColor: volumeColor ?? this.volumeColor,
       karaokeColor: karaokeColor ?? this.karaokeColor,
@@ -395,6 +761,14 @@ class AppThemeConfig {
     'background': background.toARGB32(),
     'surface': surface.toARGB32(),
     'backdrop': backdrop.map((Color color) => color.toARGB32()).toList(),
+    'finish': finish.name,
+    'secondary': secondary.toARGB32(),
+    'surfaceOpacity': surfaceOpacity,
+    'rgbHue': rgbHue,
+    'rgbSaturation': rgbSaturation,
+    'rgbBrightness': rgbBrightness,
+    'rgbFlow': rgbFlow,
+    'brightness': brightness.name,
     'panelRadius': panelRadius,
     'artworkRadius': artworkRadius,
     'glassBlur': glassBlur,
@@ -440,6 +814,28 @@ class AppThemeConfig {
       backdrop: backdrop == null || backdrop.length < 2
           ? base.backdrop
           : backdrop,
+      finish: _enumByName(SurfaceFinish.values, json['finish']) ?? base.finish,
+      secondary: _color(json['secondary'], base.secondary),
+      surfaceOpacity: _clamp01(
+        _double(json['surfaceOpacity'], base.surfaceOpacity),
+        base.surfaceOpacity,
+      ),
+      rgbHue: _double(json['rgbHue'], base.rgbHue)
+          .clamp(0.0, 360.0)
+          .toDouble(),
+      rgbSaturation: _clamp01(
+        _double(json['rgbSaturation'], base.rgbSaturation),
+        base.rgbSaturation,
+      ),
+      rgbBrightness: _double(
+        json['rgbBrightness'],
+        base.rgbBrightness,
+      )
+          .clamp(0.05, 1.0)
+          .toDouble(),
+      rgbFlow: json['rgbFlow'] is bool ? json['rgbFlow']! as bool : base.rgbFlow,
+      brightness:
+          _enumByName(Brightness.values, json['brightness']) ?? base.brightness,
       panelRadius: _double(json['panelRadius'], base.panelRadius),
       artworkRadius: _double(json['artworkRadius'], base.artworkRadius),
       glassBlur: _blur(json['glassBlur'], base.glassBlur),
@@ -471,6 +867,14 @@ class AppThemeConfig {
           background == other.background &&
           surface == other.surface &&
           listEquals(backdrop, other.backdrop) &&
+          finish == other.finish &&
+          secondary == other.secondary &&
+          surfaceOpacity == other.surfaceOpacity &&
+          rgbHue == other.rgbHue &&
+          rgbSaturation == other.rgbSaturation &&
+          rgbBrightness == other.rgbBrightness &&
+          rgbFlow == other.rgbFlow &&
+          brightness == other.brightness &&
           panelRadius == other.panelRadius &&
           artworkRadius == other.artworkRadius &&
           glassBlur == other.glassBlur &&
@@ -495,6 +899,14 @@ class AppThemeConfig {
     background,
     surface,
     Object.hashAll(backdrop),
+    finish,
+    secondary,
+    surfaceOpacity,
+    rgbHue,
+    rgbSaturation,
+    rgbBrightness,
+    rgbFlow,
+    brightness,
     panelRadius,
     artworkRadius,
     glassBlur,

@@ -45,7 +45,7 @@ class MusicSourceErrorMapper {
       if (status == null) {
         return _status(
           MusicSourceIssue.offline,
-          'Sin conexión con ${source.label}.',
+          'Sin conexión con ${source.label} (${error.type.name}).',
         );
       }
       if (status == 401) {
@@ -84,18 +84,28 @@ class MusicSourceErrorMapper {
       if (status >= 500) {
         return _status(
           MusicSourceIssue.unavailable,
-          '${source.label} no responde ahora mismo.',
+          '${source.label} no responde ahora mismo ($status): '
+          '${_detail(body)}.',
         );
       }
       return _status(
         MusicSourceIssue.unavailable,
-        '${source.label} rechazó la consulta ($status).',
+        '${source.label} rechazó la consulta ($status): ${_detail(body)}.',
       );
     }
     return _status(
       MusicSourceIssue.unavailable,
-      'No se pudo consultar ${source.label}.',
+      'No se pudo interpretar la respuesta de ${source.label}: '
+      '${_detail('${error.runtimeType}: $error')}.',
     );
+  }
+
+  /// Recorta el detalle técnico para que el banner siga siendo legible y no
+  /// arrastre cuerpos de respuesta completos ni credenciales.
+  static String _detail(String raw) {
+    final String clean = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (clean.isEmpty) return 'sin detalle técnico';
+    return clean.length <= 160 ? clean : '${clean.substring(0, 157)}…';
   }
 
   static MusicSourceStatus _status(MusicSourceIssue issue, String detail) =>

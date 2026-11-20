@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/theme_tokens.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_logo.dart';
 import '../../library/presentation/library_providers.dart';
 
@@ -153,14 +154,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                           children: List<Widget>.generate(3, (int index) {
                             final bool active = index == _index;
                             return AnimatedContainer(
-                              duration: const Duration(milliseconds: 220),
+                              duration: context.motion.duration(
+                                const Duration(milliseconds: 220),
+                              ),
                               margin: const EdgeInsets.symmetric(horizontal: 4),
                               width: active ? 26 : 8,
                               height: 8,
                               decoration: BoxDecoration(
                                 color: active
                                     ? tokens.accent
-                                    : Colors.white.withValues(alpha: 0.18),
+                                    : context.inkAlpha(0.18),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             );
@@ -235,9 +238,9 @@ class _WelcomePage extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Tu universo sonoro, en orden.',
-            style: TextStyle(color: Colors.white60, fontSize: 16),
+            style: TextStyle(color: context.inkAlpha(0.60), fontSize: 16),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 30),
@@ -267,12 +270,12 @@ class _WelcomePage extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 26),
-          const Text(
+          Text(
             'Polaris indexa tu música local, lee sus etiquetas y carátulas, '
             'y te deja escucharla sin distracciones. Todo se guarda en tu '
             'equipo: sin cuentas ni nube obligatoria.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white54, height: 1.5),
+            style: TextStyle(color: context.inkAlpha(0.54), height: 1.5),
           ),
         ],
       ),
@@ -327,10 +330,10 @@ class _PermissionsPage extends StatelessWidget {
                 ?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Polaris solo lee los archivos de las carpetas que elijas. Nada se '
             'sube a internet salvo las búsquedas de letras que tú provoques.',
-            style: TextStyle(color: Colors.white60, height: 1.5),
+            style: TextStyle(color: context.inkAlpha(0.60), height: 1.5),
           ),
           const SizedBox(height: 24),
           const _PermissionRow(
@@ -367,7 +370,7 @@ class _PermissionsPage extends StatelessWidget {
               style: TextStyle(
                 color: message!.toLowerCase().contains('concedido')
                     ? context.tokens.accent
-                    : Colors.white60,
+                    : context.inkAlpha(0.60),
                 fontSize: 13,
               ),
             ),
@@ -417,9 +420,9 @@ class _PermissionRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: Colors.white54,
+                    color: context.inkAlpha(0.54),
                     height: 1.4,
                   ),
                 ),
@@ -456,10 +459,10 @@ class _LibraryPage extends StatelessWidget {
                 ?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Añade una o varias carpetas. Polaris recorrerá sus subcarpetas y '
             'leerá título, artista, álbum, carátula y letras embebidas.',
-            style: TextStyle(color: Colors.white60, height: 1.5),
+            style: TextStyle(color: context.inkAlpha(0.60), height: 1.5),
           ),
           const SizedBox(height: 28),
           Container(
@@ -485,9 +488,12 @@ class _LibraryPage extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 6),
-                const Text(
+                Text(
                   'Puedes añadir más desde Ajustes → Biblioteca.',
-                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.inkAlpha(0.54),
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 18),
@@ -500,10 +506,14 @@ class _LibraryPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 22),
-          const Text(
+          Text(
             'Formatos habituales: MP3, FLAC, WAV, AAC/M4A, OGG, Opus, WMA, '
             'APEv2, AIFF, DSF y más.',
-            style: TextStyle(fontSize: 12, color: Colors.white38, height: 1.5),
+            style: TextStyle(
+              fontSize: 12,
+              color: context.inkAlpha(0.38),
+              height: 1.5,
+            ),
           ),
         ],
       ),

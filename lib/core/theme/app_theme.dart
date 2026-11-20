@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_theme_config.dart';
+import 'color_math.dart';
 import 'theme_tokens.dart';
 import 'typography_config.dart';
 import 'typography_theme.dart';
@@ -24,19 +25,23 @@ class AppTheme {
         typography ??
         const ResolvedTypography(TypographyConfig(), 'Polaris Sans');
     final Color accent = config.accent;
+    final Brightness brightness = config.brightness;
+    final Color ink = ColorMath.onColor(config.surface);
     final ColorScheme scheme =
         ColorScheme.fromSeed(
           seedColor: accent,
-          brightness: Brightness.dark,
+          brightness: brightness,
         ).copyWith(
           surface: config.surface,
           primary: accent,
-          secondary: accent.withValues(alpha: 0.75),
+          secondary: config.secondary,
+          onSurface: ink,
+          onPrimary: ColorMath.onColor(accent),
         );
 
     final ThemeData base = ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
+      brightness: brightness,
       colorScheme: scheme,
       scaffoldBackgroundColor: config.background,
       canvasColor: config.background,
@@ -65,6 +70,10 @@ class AppTheme {
           neumorphicDark: config.neumorphicDark,
           glassEnabled: config.isGlass,
           glassOpacity: config.glassOpacity,
+          finish: config.finish,
+          secondary: config.secondary,
+          surfaceOpacity: config.surfaceOpacity,
+          brightness: brightness,
           typography: type.config,
         ),
       ],
@@ -101,7 +110,7 @@ class AppTheme {
       sliderTheme: SliderThemeData(
         activeTrackColor: accent,
         thumbColor: accent,
-        inactiveTrackColor: Colors.white.withValues(alpha: 0.12),
+        inactiveTrackColor: ink.withValues(alpha: 0.16),
         overlayColor: accent.withValues(alpha: 0.16),
         trackHeight: 3,
       ),
@@ -118,14 +127,14 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.04),
+        fillColor: ink.withValues(alpha: 0.04),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+          borderSide: BorderSide(color: ink.withValues(alpha: 0.12)),
         ),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 16,
@@ -133,17 +142,17 @@ class AppTheme {
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: Colors.white.withValues(alpha: 0.06),
+        color: ink.withValues(alpha: 0.12),
         thickness: 1,
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: Color.lerp(config.surface, Colors.white, 0.06),
+        backgroundColor: Color.lerp(config.surface, ink, 0.06),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
-          color: Color.lerp(config.surface, Colors.white, 0.08),
+          color: Color.lerp(config.surface, ink, 0.08),
           borderRadius: BorderRadius.circular(8),
         ),
       ),
@@ -155,7 +164,8 @@ class AppTheme {
         base.textTheme,
         type.family,
         type.config,
-      ),
+      ).apply(bodyColor: ink, displayColor: ink),
+      iconTheme: IconThemeData(color: ink),
     );
   }
 

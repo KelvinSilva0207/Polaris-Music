@@ -49,6 +49,9 @@ class MediaSessionService {
     if (handler != null) {
       try {
         await handler.stop();
+        if (handler is PolarisAudioHandler) {
+          await handler.disposeHandler();
+        }
         // ignore: deprecated_member_use
         await AudioService.stop();
       } catch (error, stack) {
@@ -211,7 +214,11 @@ class MediaSessionService {
     await _repeatSub?.cancel();
     await _shuffleSub?.cancel();
     await _smtc?.dispose();
+    if (_androidHandler is PolarisAudioHandler) {
+      await (_androidHandler! as PolarisAudioHandler).disposeHandler();
+    }
     await _androidHandler?.stop();
+    _androidHandler = null;
   }
 }
 

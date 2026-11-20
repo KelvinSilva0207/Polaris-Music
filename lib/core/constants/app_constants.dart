@@ -6,7 +6,7 @@ class AppConstants {
   AppConstants._();
 
   static const String appName = 'Polaris Music';
-  static const String appVersionFallback = '1.0.5';
+  static const String appVersionFallback = '1.0.6';
   static const String githubOwner = 'KelvinSilva0207';
   static const String githubRepo = 'Polaris-Music';
   static const String githubReleasesUrl =
@@ -193,6 +193,7 @@ class AppConstants {
   static const String keyAccentColor = 'theme.accent';
   static const String keyThemeConfig = 'theme.config';
   static const String keyThemeProfiles = 'theme.profiles';
+  static const String keyMotionConfig = 'ui.motion';
   static const String keyCompactIslandStyle = 'ui.style.island';
   static const String keyCompactMiniStyle = 'ui.style.mini';
   static const String keyCompactPhoneStyle = 'ui.style.phone';

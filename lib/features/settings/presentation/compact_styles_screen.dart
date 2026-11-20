@@ -70,12 +70,12 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Diseños compactos'),
+        title: Text('Diseños compactos'),
         actions: <Widget>[
           IconButton(
             tooltip: 'Restablecer esta superficie',
             onPressed: () => _controller.reset(_surface),
-            icon: const Icon(Icons.restore_rounded),
+            icon: Icon(Icons.restore_rounded),
           ),
         ],
       ),
@@ -88,9 +88,9 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
                 ?.copyWith(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Los cambios se guardan al instante y no afectan a las otras vistas.',
-            style: TextStyle(fontSize: 12, color: Colors.white54),
+            style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -110,7 +110,7 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
           const SizedBox(height: 8),
           Text(
             _surface.description,
-            style: const TextStyle(fontSize: 11, color: Colors.white38),
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.38)),
           ),
           const SizedBox(height: 18),
           _Preview(surface: _surface, style: style),
@@ -242,8 +242,8 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Resplandor'),
-            subtitle: const Text('Sombras de color alrededor de la superficie'),
+            title: Text('Resplandor'),
+            subtitle: Text('Sombras de color alrededor de la superficie'),
             value: style.glow,
             onChanged: (bool value) => _controller.setGlow(_surface, value),
           ),
@@ -252,8 +252,8 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
             _SectionTitle(title: 'Ocultado automático'),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Ocultar la isla cuando no haya interacción'),
-              subtitle: const Text(
+              title: Text('Ocultar la isla cuando no haya interacción'),
+              subtitle: Text(
                 'Vuelve a aparecer al cambiar de modo de ventana',
               ),
               value: style.autoHide,
@@ -319,7 +319,7 @@ class _Preview extends StatelessWidget {
                       surface.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
                       ),
@@ -327,14 +327,14 @@ class _Preview extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       'Vista previa en vivo',
-                      style: TextStyle(fontSize: 10, color: Colors.white60),
+                      style: TextStyle(fontSize: 10, color: context.inkAlpha(0.60)),
                     ),
                     const SizedBox(height: 6),
                     LinearProgressIndicator(
                       value: 0.42,
                       minHeight: 3,
                       color: resolved.accent,
-                      backgroundColor: Colors.white12,
+                      backgroundColor: context.inkAlpha(0.12),
                     ),
                   ],
                 ),
@@ -358,10 +358,10 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w800,
-          color: Colors.white70,
+          color: context.inkAlpha(0.70),
         ),
       ),
     );
@@ -379,11 +379,11 @@ class _Label extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(title, style: const TextStyle(fontSize: 12)),
+        Text(title, style: TextStyle(fontSize: 12)),
         const SizedBox(height: 2),
         Text(
           subtitle,
-          style: const TextStyle(fontSize: 10, color: Colors.white38),
+          style: TextStyle(fontSize: 10, color: context.inkAlpha(0.38)),
         ),
       ],
     );
@@ -415,7 +415,7 @@ class _ColorRow extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           borderRadius: BorderRadius.circular(9),
-          border: Border.all(color: Colors.white24),
+          border: Border.all(color: context.inkAlpha(0.24)),
         ),
       ),
       title: Text(title),
@@ -423,16 +423,16 @@ class _ColorRow extends StatelessWidget {
         inherited
             ? 'Heredado del tema'
             : ColorMath.toHex(color, withAlpha: true),
-        style: const TextStyle(fontSize: 10, color: Colors.white54),
+        style: TextStyle(fontSize: 10, color: context.inkAlpha(0.54)),
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          TextButton(onPressed: onInherit, child: const Text('Heredar')),
+          TextButton(onPressed: onInherit, child: Text('Heredar')),
           IconButton(
             tooltip: 'Elegir color',
             onPressed: onPick,
-            icon: const Icon(Icons.colorize_rounded, size: 18),
+            icon: Icon(Icons.colorize_rounded, size: 18),
           ),
         ],
       ),
@@ -467,11 +467,11 @@ class _Slider extends StatelessWidget {
       children: <Widget>[
         Row(
           children: <Widget>[
-            Text(title, style: const TextStyle(fontSize: 12)),
+            Text(title, style: TextStyle(fontSize: 12)),
             const Spacer(),
             Text(
               '${(value * scale).round()}$suffix',
-              style: const TextStyle(fontSize: 10, color: Colors.white54),
+              style: TextStyle(fontSize: 10, color: context.inkAlpha(0.54)),
             ),
           ],
         ),

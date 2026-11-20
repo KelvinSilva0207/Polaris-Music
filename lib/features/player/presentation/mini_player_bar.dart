@@ -25,7 +25,7 @@ class _MiniProgress extends ConsumerWidget {
     return LinearProgressIndicator(
       value: progress.clamp(0.0, 1.0),
       minHeight: 2,
-      backgroundColor: Colors.white.withValues(alpha: 0.06),
+      backgroundColor: context.inkAlpha(0.06),
       valueColor: AlwaysStoppedAnimation<Color>(accent),
     );
   }
@@ -45,6 +45,11 @@ class MiniPlayerBar extends ConsumerWidget {
     final bool playing = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playing),
     );
+    final bool buffering = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.playback.buffering,
+      ),
+    );
     final PlayerController controller = ref.read(
       playerControllerProvider.notifier,
     );
@@ -63,19 +68,19 @@ class MiniPlayerBar extends ConsumerWidget {
             padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
             child: Row(
               children: <Widget>[
-                const Icon(
+                Icon(
                   Icons.music_off_rounded,
                   size: 20,
-                  color: Colors.white54,
+                  color: context.inkAlpha(0.54),
                 ),
                 const SizedBox(width: 10),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Sin reproducción activa',
-                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                    style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
                   ),
                 ),
-                TextButton(onPressed: onOpen, child: const Text('Abrir')),
+                TextButton(onPressed: onOpen, child: Text('Abrir')),
               ],
             ),
           ),
@@ -120,7 +125,7 @@ class MiniPlayerBar extends ConsumerWidget {
                                 track.title,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13,
                                 ),
@@ -129,29 +134,43 @@ class MiniPlayerBar extends ConsumerWidget {
                                 track.artist,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.white54,
+                                  color: context.inkAlpha(0.54),
                                 ),
                               ),
                             ],
                           ),
                         ),
                         IconButton(
-                          tooltip: playing ? 'Pausar' : 'Reproducir',
+                          tooltip: buffering
+                              ? 'Cargando…'
+                              : (playing ? 'Pausar' : 'Reproducir'),
                           onPressed: controller.togglePlay,
-                          icon: Icon(
-                            playing
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded,
-                            color: resolved.accent,
-                            size: 28,
-                          ),
+                          icon: buffering
+                              ? SizedBox(
+                                  width: 28,
+                                  height: 28,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(5),
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      color: resolved.accent,
+                                    ),
+                                  ),
+                                )
+                              : Icon(
+                                  playing
+                                      ? Icons.pause_rounded
+                                      : Icons.play_arrow_rounded,
+                                  color: resolved.accent,
+                                  size: 28,
+                                ),
                         ),
                         IconButton(
                           tooltip: 'Siguiente',
                           onPressed: controller.next,
-                          icon: const Icon(Icons.skip_next_rounded, size: 24),
+                          icon: Icon(Icons.skip_next_rounded, size: 24),
                         ),
                       ],
                     ),

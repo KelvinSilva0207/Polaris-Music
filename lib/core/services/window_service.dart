@@ -8,10 +8,13 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+import 'package:nativeapi/nativeapi.dart' as native;
 import 'package:window_manager/legacy.dart';
 
 import '../constants/app_constants.dart';
+import '../debug/memory_probe.dart';
 import '../utils/logger.dart';
+import 'island_shape.dart';
 
 /// Modos de presentación de escritorio.
 enum WindowMode { normal, mini, phone, island }
@@ -71,8 +74,16 @@ class WindowService with WindowListener {
   bool _quitting = false;
   bool _maximized = false;
   bool _backgrounded = false;
+  bool _frameless = false;
   WindowMode _mode = WindowMode.normal;
   Rect? _savedBounds;
+  native.Window? _nativeWindow;
+  Size _capsuleSize = islandCompactCapsule;
+  double _capsuleRadius = islandDefaultRadius;
+
+  /// Fondo nativo de la ventana. Lo fija el tema activo desde `PolarisApp` para
+  /// que los bordes visibles durante el resize no muestren un negro fijo.
+  Color _windowBackground = const Color(0xFF0B0710);
 
   /// Estado observable por la UI (shell, ajustes y barra de título).
   final ValueNotifier<WindowUiState> state = ValueNotifier<WindowUiState>(
@@ -87,6 +98,14 @@ class WindowService with WindowListener {
   bool get maximized => _maximized;
   bool get backgrounded => _backgrounded;
 
+  /// Ventana nativa subyacente. Se guarda una sola referencia: `nativeapi`
+  /// asocia un finalizador a cada `Window`, así que conviene no crear una
+  /// instancia nueva en cada cambio de forma.
+  native.Window? get _native {
+    if (!isSupported) return null;
+    return _nativeWindow ??= native.WindowManager.instance.getCurrent();
+  }
+
   /// Si la bandeja está disponible, cerrar la ventana la oculta en lugar de
   /// terminar el proceso.
   bool hideOnClose = false;
@@ -96,6 +115,13 @@ class WindowService with WindowListener {
   static const Size miniSize = Size(430, 152);
   static const Size phoneSize = Size(412, 820);
   static const Size islandSize = Size(400, 128);
+
+  /// Tamaños de la cápsula que dibuja `IslandWindow`. La región de la ventana
+  /// se recorta a estas medidas para que el escritorio se vea y reciba clics
+  /// alrededor de la píldora.
+  static const Size islandCompactCapsule = Size(196, 64);
+  static const Size islandExpandedCapsule = Size(376, 104);
+  static const double islandDefaultRadius = 38;
 
   Future<void> initialize() async {
     if (!isSupported || _initialized) return;
@@ -141,6 +167,17 @@ class WindowService with WindowListener {
   void _setBackgrounded(bool value) {
     if (_backgrounded == value) return;
     _backgrounded = value;
+    MemoryProbe.mark(value ? 'view:background' : 'view:foreground');
+    if (value) {
+      // Al minimizar u ocultar hacia la bandeja no hay carátulas visibles:
+      // liberamos también las ya decodificadas, no solo las decodificaciones
+      // en curso. Al restaurar se re-decodifican desde disco (sin red y sin
+      // pérdida de calidad), así que `clear()` no oculta ninguna imagen visible.
+      final ImageCache cache = PaintingBinding.instance.imageCache;
+      cache
+        ..clearLiveImages()
+        ..clear();
+    }
     state.value = state.value.copyWith(backgrounded: value);
   }
 
@@ -157,6 +194,16 @@ class WindowService with WindowListener {
 
   Future<void> toggleAlwaysOnTop() => setAlwaysOnTop(!_alwaysOnTop);
 
+  /// Actualiza el color nativo de fondo cuando cambia el preset del tema.
+  /// La isla conserva su transparencia real: solo se aplica en los otros modos.
+  Future<void> setWindowBackground(Color color) async {
+    if (!isSupported || _windowBackground == color) return;
+    _windowBackground = color;
+    if (_mode != WindowMode.island) {
+      await windowManager.setBackgroundColor(color);
+    }
+  }
+
   Future<void> setMode(WindowMode mode) async {
     if (!isSupported) return;
     if (_mode == mode && state.value.visible) return;
@@ -169,11 +216,30 @@ class WindowService with WindowListener {
       _savedBounds = await windowManager.getBounds();
     }
 
+    // La isla es la misma ventana de Flutter convertida en isla: se quita el marco
+    // nativo por completo (barra de título y botones incluidos) y se vuelve a
+    // poner al restaurar cualquier otro modo. `TitleBarStyle.hidden` por sí
+    // solo no elimina el marco en Windows.
+    if (mode == WindowMode.island) {
+      if (!_frameless) {
+        await windowManager.setAsFrameless();
+        _frameless = true;
+      }
+      _native?.isWindowControlButtonsVisible = false;
+    } else if (_frameless) {
+      await _clearIslandShape();
+      await windowManager.setTitleBarStyle(
+        TitleBarStyle.hidden,
+        windowButtonVisibility: false,
+      );
+      _frameless = false;
+    }
+
     _mode = mode;
 
     switch (mode) {
       case WindowMode.normal:
-        await windowManager.setBackgroundColor(const Color(0xFF08080C));
+        await windowManager.setBackgroundColor(_windowBackground);
         await windowManager.setResizable(true);
         await windowManager.setSkipTaskbar(false);
         await windowManager.setMaximumSize(const Size(10000, 10000));
@@ -184,7 +250,7 @@ class WindowService with WindowListener {
         await windowManager.setBounds(bounds);
         await windowManager.setAlwaysOnTop(_alwaysOnTop);
       case WindowMode.mini:
-        await windowManager.setBackgroundColor(const Color(0xFF08080C));
+        await windowManager.setBackgroundColor(_windowBackground);
         await windowManager.setResizable(false);
         await windowManager.setMinimumSize(Size.zero);
         await windowManager.setSize(miniSize);
@@ -193,7 +259,7 @@ class WindowService with WindowListener {
         await windowManager.setSkipTaskbar(true);
         await windowManager.setAlignment(Alignment.bottomRight);
       case WindowMode.phone:
-        await windowManager.setBackgroundColor(const Color(0xFF08080C));
+        await windowManager.setBackgroundColor(_windowBackground);
         await windowManager.setResizable(false);
         await windowManager.setMinimumSize(Size.zero);
         await windowManager.setSize(phoneSize);
@@ -207,8 +273,9 @@ class WindowService with WindowListener {
           animate: false,
         );
       case WindowMode.island:
-        // Fondo transparente: la tarjeta de Flutter dibuja la isla y el resto
-        // de la ventana deja ver el escritorio.
+        // Fondo transparente de verdad: Flutter pinta la píldora y lo demás
+        // deja ver el escritorio. Junto con la región redondeada de abajo,
+        // tampoco se capturan clics fuera de la cápsula.
         await windowManager.setBackgroundColor(const Color(0x00000000));
         await windowManager.setResizable(false);
         await windowManager.setMinimumSize(Size.zero);
@@ -216,6 +283,9 @@ class WindowService with WindowListener {
         await windowManager.setAlignment(Alignment.topCenter, animate: true);
         await windowManager.setAlwaysOnTop(true);
         await windowManager.setSkipTaskbar(true);
+        _capsuleSize = islandCompactCapsule;
+        _capsuleRadius = islandDefaultRadius;
+        await _applyIslandShape();
     }
 
     if (!state.value.visible) {
@@ -224,6 +294,50 @@ class WindowService with WindowListener {
       _setBackgrounded(false);
     }
     AppLog.i(_tag, 'Modo de ventana: ${mode.name}');
+  }
+
+  /// La cápsula crece al pasar el ratón o al expandirse la isla. La región de
+  /// la ventana se actualiza con ella para que el área libre siga siendo
+  /// transparente al ratón y el borde/sombra propios de la píldora no se corten.
+  Future<void> setIslandCapsule(Size capsuleSize, double radius) async {
+    if (!isSupported || _mode != WindowMode.island) return;
+    if (_capsuleSize == capsuleSize && _capsuleRadius == radius) return;
+    _capsuleSize = capsuleSize;
+    _capsuleRadius = radius;
+    await _applyIslandShape();
+  }
+
+  Future<void> _applyIslandShape() async {
+    final native.Window? window = _native;
+    if (window == null || !_frameless || !native.Window.isShapeSupported()) {
+      return;
+    }
+    final List<Offset> points = IslandShape.points(
+      windowSize: islandSize,
+      capsuleSize: _capsuleSize,
+      radius: _capsuleRadius,
+    );
+    final native.WindowShape? shape = native.WindowShape.create();
+    if (shape == null) return;
+    try {
+      for (final Offset point in points) {
+        shape.addPoint(native.Point(x: point.dx, y: point.dy));
+      }
+      if (!window.setShape(shape)) {
+        AppLog.w(_tag, 'No se pudo aplicar la región de la isla');
+      }
+    } catch (error, stack) {
+      AppLog.w(_tag, 'Error al aplicar la región de la isla', error, stack);
+    } finally {
+      // `SetWindowRgn` copia la región; la lista de puntos ya no es necesaria.
+      shape.dispose();
+    }
+  }
+
+  Future<void> _clearIslandShape() async {
+    final native.Window? window = _native;
+    if (window == null || !window.isShaped) return;
+    window.setShape(null);
   }
 
   Future<void> cycleMode() => setMode(switch (_mode) {

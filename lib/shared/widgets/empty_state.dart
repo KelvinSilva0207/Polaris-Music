@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/theme_tokens.dart';
+
 /// Estado vacío reutilizable.
 class EmptyState extends StatelessWidget {
   const EmptyState({
@@ -24,14 +26,14 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 54, color: Colors.white24),
+            Icon(icon, size: 54, color: context.inkAlpha(0.24)),
             const SizedBox(height: 16),
             Text(title, style: text.titleMedium, textAlign: TextAlign.center),
             if (message != null) ...<Widget>[
               const SizedBox(height: 8),
               Text(
                 message!,
-                style: text.bodySmall?.copyWith(color: Colors.white54),
+                style: text.bodySmall?.copyWith(color: context.inkAlpha(0.54)),
                 textAlign: TextAlign.center,
               ),
             ],

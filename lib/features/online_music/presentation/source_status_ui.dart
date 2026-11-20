@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/theme_tokens.dart';
 import '../domain/music_source.dart';
 
 /// Presentación común de estados de fuente para listas y diálogos.
 abstract final class SourceStatusUi {
-  static Color color(MusicSourceStatus status) {
+  static Color color(MusicSourceStatus status, BuildContext context) {
     if (status.available) return const Color(0xFF4ADE80);
+    final Color muted = context.inkAlpha(0.54);
     return switch (status.issue) {
       MusicSourceIssue.authentication => const Color(0xFFFBBF24),
       MusicSourceIssue.region => const Color(0xFFF87171),
       MusicSourceIssue.rateLimited => const Color(0xFFFB923C),
-      MusicSourceIssue.notConfigured => Colors.white38,
+      MusicSourceIssue.notConfigured => muted,
       MusicSourceIssue.offline => const Color(0xFF94A3B8),
-      MusicSourceIssue.unsupported => Colors.white30,
+      MusicSourceIssue.unsupported => context.inkAlpha(0.38),
       MusicSourceIssue.unavailable => const Color(0xFFF87171),
-      null => Colors.white38,
+      null => muted,
     };
   }
 

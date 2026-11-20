@@ -32,6 +32,7 @@ import '../../../features/player/presentation/player_providers.dart';
 import '../../../features/profiles_backup/domain/profiles_service.dart';
 import '../../../features/profiles_backup/presentation/profiles_providers.dart';
 import '../../../features/stats_sync/presentation/stats_screen.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import 'color_picker_dialog.dart';
@@ -104,9 +105,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ?.copyWith(fontSize: 30),
         ),
         const SizedBox(height: 2),
-        const Text(
+        Text(
           'Personaliza Polaris a tu manera',
-          style: TextStyle(color: Colors.white54),
+          style: TextStyle(color: context.inkAlpha(0.54)),
         ),
         const SizedBox(height: 22),
         _Section(
@@ -174,13 +175,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     Expanded(
                       child: Text(
                         ColorMath.toHex(accent, withAlpha: true),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    const Icon(Icons.colorize_rounded, size: 18),
+                    Icon(Icons.colorize_rounded, size: 18),
                   ],
                 ),
               ),
@@ -193,8 +194,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const CustomizationScreen(),
                 ),
               ),
-              icon: const Icon(Icons.tune_rounded, size: 18),
-              label: const Text('Personalización avanzada'),
+              icon: Icon(Icons.tune_rounded, size: 18),
+              label: Text('Personalización avanzada'),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
@@ -204,8 +205,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       const CompactStylesScreen(),
                 ),
               ),
-              icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
-              label: const Text('Diseños compactos (isla, mini, teléfono…)'),
+              icon: Icon(Icons.dashboard_customize_outlined, size: 18),
+              label: Text('Diseños compactos (isla, mini, teléfono…)'),
             ),
             const SizedBox(height: 8),
             OutlinedButton.icon(
@@ -214,8 +215,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   builder: (BuildContext context) => const TypographyScreen(),
                 ),
               ),
-              icon: const Icon(Icons.text_fields_rounded, size: 18),
-              label: const Text('Tipografía y fuentes propias'),
+              icon: Icon(Icons.text_fields_rounded, size: 18),
+              label: Text('Tipografía y fuentes propias'),
             ),
           ],
         ),
@@ -226,8 +227,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: <Widget>[
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('ReplayGain'),
-              subtitle: const Text(
+              title: Text('ReplayGain'),
+              subtitle: Text(
                 'Normaliza el volumen usando las etiquetas de la pista',
               ),
               value: replayGain,
@@ -237,8 +238,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Pausar al desconectar auriculares'),
-              subtitle: const Text(
+              title: Text('Pausar al desconectar auriculares'),
+              subtitle: Text(
                 'Detecta la desconexión o el cambio de salida de audio',
               ),
               value: pauseOnHeadphonesDisconnect,
@@ -249,8 +250,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Pausar si el volumen llega a cero'),
-              subtitle: const Text(
+              title: Text('Pausar si el volumen llega a cero'),
+              subtitle: Text(
                 'Tanto el deslizador de la app como el volumen multimedia',
               ),
               value: pauseOnVolumeZero,
@@ -259,8 +260,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Reproducción sin pausas (gapless)'),
-              subtitle: const Text(
+              title: Text('Reproducción sin pausas (gapless)'),
+              subtitle: Text(
                 'Delegado al motor mpv: une pistas del mismo álbum',
               ),
               value: gapless,
@@ -270,8 +271,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Crossfade entre pistas'),
-              subtitle: const Text(
+              title: Text('Crossfade entre pistas'),
+              subtitle: Text(
                 'Dos decks mpv: la pista entrante se funde con la saliente',
               ),
               value: crossfade,
@@ -283,7 +284,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Row(
                 children: <Widget>[
                   const SizedBox(width: 4),
-                  const Text('Duración', style: TextStyle(fontSize: 12)),
+                  Text('Duración', style: TextStyle(fontSize: 12)),
                   Expanded(
                     child: Slider(
                       value: crossfadeMs.toDouble().clamp(0, 12000),
@@ -300,15 +301,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     child: Text(
                       '${(crossfadeMs / 1000).toStringAsFixed(1)} s',
                       textAlign: TextAlign.end,
-                      style: const TextStyle(fontSize: 12),
+                      style: TextStyle(fontSize: 12),
                     ),
                   ),
                 ],
               ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Omitir silencios largos'),
-              subtitle: const Text(
+              title: Text('Omitir silencios largos'),
+              subtitle: Text(
                 'Recorta el inicio y el final de cada pista (offsets de mpv)',
               ),
               value: silenceTrim,
@@ -341,8 +342,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: <Widget>[
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Escanear al iniciar'),
-              subtitle: const Text(
+              title: Text('Escanear al iniciar'),
+              subtitle: Text(
                 'Reindexa las carpetas configuradas al abrir la app',
               ),
               value: scanOnStartup,
@@ -360,34 +361,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               children: <Widget>[
                 OutlinedButton.icon(
                   onPressed: () => widget.onNavigate(AppSection.library),
-                  icon: const Icon(Icons.folder_outlined, size: 18),
-                  label: const Text('Gestionar carpetas'),
+                  icon: Icon(Icons.folder_outlined, size: 18),
+                  label: Text('Gestionar carpetas'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () =>
                       ref.read(scanControllerProvider.notifier).scan(),
-                  icon: const Icon(Icons.radar_rounded, size: 18),
-                  label: const Text('Escanear ahora'),
+                  icon: Icon(Icons.radar_rounded, size: 18),
+                  label: Text('Escanear ahora'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => showDialog<void>(
                     context: context,
                     builder: (BuildContext context) => AlertDialog(
-                      title: const Text('Duplicados'),
-                      content: const Text(
+                      title: Text('Duplicados'),
+                      content: Text(
                         'La detección de duplicados está disponible en la '
                         'pantalla de Biblioteca.',
                       ),
                       actions: <Widget>[
                         TextButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('Entendido'),
+                          child: Text('Entendido'),
                         ),
                       ],
                     ),
                   ),
-                  icon: const Icon(Icons.copy_all_rounded, size: 18),
-                  label: const Text('Duplicados'),
+                  icon: Icon(Icons.copy_all_rounded, size: 18),
+                  label: Text('Duplicados'),
                 ),
               ],
             ),
@@ -398,11 +399,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           title: 'Inicio y estadísticas',
           icon: Icons.dashboard_customize_outlined,
           children: <Widget>[
-            const Text(
+            Text(
               'Polaris abre directamente en el reproductor. El resumen de '
               'bienvenida y las estadísticas de escucha están aquí para no '
               'ocupar la navegación principal.',
-              style: TextStyle(fontSize: 12, color: Colors.white54),
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -413,13 +414,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onPressed: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (BuildContext context) => Scaffold(
-                        appBar: AppBar(title: const Text('Resumen')),
+                        appBar: AppBar(title: Text('Resumen')),
                         body: HomeScreen(onNavigate: widget.onNavigate),
                       ),
                     ),
                   ),
-                  icon: const Icon(Icons.auto_awesome_outlined, size: 18),
-                  label: const Text('Resumen y bienvenida'),
+                  icon: Icon(Icons.auto_awesome_outlined, size: 18),
+                  label: Text('Resumen y bienvenida'),
                 ),
                 OutlinedButton.icon(
                   onPressed: () => Navigator.of(context).push(
@@ -428,8 +429,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           const Scaffold(body: StatsScreen()),
                     ),
                   ),
-                  icon: const Icon(Icons.insights_rounded, size: 18),
-                  label: const Text('Estadísticas'),
+                  icon: Icon(Icons.insights_rounded, size: 18),
+                  label: Text('Estadísticas'),
                 ),
               ],
             ),
@@ -440,23 +441,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           title: 'Ecualizador',
           icon: Icons.graphic_eq_rounded,
           children: <Widget>[
-            const Text(
+            Text(
               'Diez bandas de estudio, preamplificador y curvas guardadas. '
               'También disponible desde los controles del reproductor.',
-              style: TextStyle(fontSize: 12, color: Colors.white54),
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
             ),
             const SizedBox(height: 10),
             OutlinedButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (BuildContext context) => Scaffold(
-                    appBar: AppBar(title: const Text('Ecualizador')),
+                    appBar: AppBar(title: Text('Ecualizador')),
                     body: const EqualizerScreen(),
                   ),
                 ),
               ),
-              icon: const Icon(Icons.equalizer_rounded, size: 18),
-              label: const Text('Abrir ecualizador'),
+              icon: Icon(Icons.equalizer_rounded, size: 18),
+              label: Text('Abrir ecualizador'),
             ),
           ],
         ),
@@ -471,8 +472,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: <Widget>[
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: const Text('Minimizar a isla flotante'),
-              subtitle: const Text(
+              title: Text('Minimizar a isla flotante'),
+              subtitle: Text(
                 'Al minimizar, la ventana se transforma en una isla siempre '
                 'encima con carátula y controles rápidos',
               ),
@@ -494,8 +495,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 children: <Widget>[
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
-                    title: const Text('Siempre encima'),
-                    subtitle: const Text(
+                    title: Text('Siempre encima'),
+                    subtitle: Text(
                       'Mantiene la ventana sobre otras apps',
                     ),
                     value: state.alwaysOnTop,
@@ -569,9 +570,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: <Widget>[
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.power_off_rounded),
-                title: const Text('Cerrar aplicación completamente'),
-                subtitle: const Text(
+                leading: Icon(Icons.power_off_rounded),
+                title: Text('Cerrar aplicación completamente'),
+                subtitle: Text(
                   'Detiene el audio, quita la notificación y finaliza Polaris.',
                 ),
                 onTap: _confirmFullExit,
@@ -588,30 +589,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: <Widget>[
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.code_rounded),
-              title: const Text('Créditos y tecnologías'),
-              subtitle: const Text('Flutter, media_kit, Drift y más'),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              leading: Icon(Icons.code_rounded),
+              title: Text('Créditos y tecnologías'),
+              subtitle: Text('Flutter, media_kit, Drift y más'),
+              trailing: Icon(Icons.chevron_right_rounded),
               onTap: () => _showCredits(context),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: const PolarisLogo(size: 26),
-              title: const Text('Repositorio en GitHub'),
+              title: Text('Repositorio en GitHub'),
               subtitle: Text(
                 '${AppConstants.githubOwner}/${AppConstants.githubRepo}',
               ),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              trailing: Icon(Icons.chevron_right_rounded),
               onTap: () => ref
                   .read(updateServiceProvider)
                   .openReleasePage(UpdateInfo.upToDate),
             ),
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.replay_rounded),
-              title: const Text('Repetir introducción'),
-              subtitle: const Text('Vuelve a ver la bienvenida y los permisos'),
-              trailing: const Icon(Icons.chevron_right_rounded),
+              leading: Icon(Icons.replay_rounded),
+              title: Text('Repetir introducción'),
+              subtitle: Text('Vuelve a ver la bienvenida y los permisos'),
+              trailing: Icon(Icons.chevron_right_rounded),
               onTap: () async {
                 await ref
                     .read(settingsServiceProvider)
@@ -638,19 +639,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Cerrar Polaris por completo'),
-        content: const Text(
+        title: Text('Cerrar Polaris por completo'),
+        content: Text(
           'Se detendrá la reproducción y desaparecerá la notificación '
           'persistente de Android. ¿Continuar?',
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
+            child: Text('Cancelar'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Cerrar'),
+            child: Text('Cerrar'),
           ),
         ],
       ),
@@ -672,17 +673,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           'escuchar música como se merece.',
       children: <Widget>[
         const SizedBox(height: 12),
-        const Text(
+        Text(
           'Polaris Music es un reproductor modular para Windows y Android.',
           style: TextStyle(fontSize: 13),
         ),
         const SizedBox(height: 10),
-        const Text(
+        Text(
           'Tecnologías principales:',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
-        const Text(
+        Text(
           '· Flutter + Riverpod + GetIt\n'
           '· media_kit (libmpv) para decodificación\n'
           '· Drift + SQLite para la biblioteca\n'
@@ -693,11 +694,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           style: TextStyle(fontSize: 12, height: 1.5),
         ),
         const SizedBox(height: 10),
-        const Text(
+        Text(
           'El ecualizador de 10 bandas aplica filtros reales mediante libmpv en '
           'Windows y Android. El crossfade sigue pendiente porque requiere dos '
           'motores reproduciendo a la vez.',
-          style: TextStyle(fontSize: 12, color: Colors.white60),
+          style: TextStyle(fontSize: 12, color: context.inkAlpha(0.60)),
         ),
       ],
     );
@@ -722,7 +723,7 @@ class _TrimSlider extends StatelessWidget {
         const SizedBox(width: 4),
         SizedBox(
           width: 42,
-          child: Text(label, style: const TextStyle(fontSize: 12)),
+          child: Text(label, style: TextStyle(fontSize: 12)),
         ),
         Expanded(
           child: Slider(
@@ -738,7 +739,7 @@ class _TrimSlider extends StatelessWidget {
           child: Text(
             '${(value / 1000).toStringAsFixed(1)} s',
             textAlign: TextAlign.end,
-            style: const TextStyle(fontSize: 12),
+            style: TextStyle(fontSize: 12),
           ),
         ),
       ],
@@ -795,11 +796,11 @@ class _SettingLabel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        Text(title, style: TextStyle(fontWeight: FontWeight.w600)),
         const SizedBox(height: 2),
         Text(
           subtitle,
-          style: const TextStyle(fontSize: 12, color: Colors.white54),
+          style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
         ),
       ],
     );
@@ -823,7 +824,7 @@ class _PresetChip extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
+        duration: context.motion.duration(const Duration(milliseconds: 220)),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
           color: config.accent.withValues(alpha: selected ? 0.20 : 0.08),
@@ -919,11 +920,11 @@ class _HotkeysSection extends ConsumerWidget {
                   title: 'Atajos de teclado',
                   icon: Icons.keyboard_alt_outlined,
                   children: <Widget>[
-                    const Text(
+                    Text(
                       'Funcionan con Polaris minimizado o en la bandeja. '
                       'Dentro de la app, la barra espaciadora reproduce o '
                       'pausa.',
-                      style: TextStyle(fontSize: 12, color: Colors.white54),
+                      style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
                     ),
                     const SizedBox(height: 6),
                     for (final HotkeyAction action in HotkeyAction.values)
@@ -939,11 +940,11 @@ class _HotkeysSection extends ConsumerWidget {
                         subtitle: Text(
                           (bindings[action] ?? service.bindingFor(action))
                               .label,
-                          style: const TextStyle(fontSize: 12),
+                          style: TextStyle(fontSize: 12),
                         ),
                         trailing: TextButton(
                           onPressed: () => _capture(context, service, action),
-                          child: const Text('Cambiar'),
+                          child: Text('Cambiar'),
                         ),
                       ),
                     if (error != null)
@@ -951,7 +952,7 @@ class _HotkeysSection extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 6),
                         child: Row(
                           children: <Widget>[
-                            const Icon(
+                            Icon(
                               Icons.warning_amber_rounded,
                               size: 16,
                               color: Colors.orangeAccent,
@@ -960,7 +961,7 @@ class _HotkeysSection extends ConsumerWidget {
                             Expanded(
                               child: Text(
                                 error,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.orangeAccent,
                                 ),
@@ -972,8 +973,8 @@ class _HotkeysSection extends ConsumerWidget {
                     const SizedBox(height: 4),
                     OutlinedButton.icon(
                       onPressed: service.resetDefaults,
-                      icon: const Icon(Icons.restore_rounded, size: 18),
-                      label: const Text('Restablecer atajos'),
+                      icon: Icon(Icons.restore_rounded, size: 18),
+                      label: Text('Restablecer atajos'),
                     ),
                   ],
                 );
@@ -1039,7 +1040,7 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            const Text(
+            Text(
               'Pulsa la combinación que quieras usar. Debe incluir Ctrl, Alt '
               'o Win para no interferir mientras escribes en otras apps.',
               style: TextStyle(fontSize: 13),
@@ -1058,7 +1059,7 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
                 children: <Widget>[
                   Icon(Icons.keyboard_rounded, size: 20, color: tokens.accent),
                   const SizedBox(width: 8),
-                  const Text(
+                  Text(
                     'Esperando teclas…',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
@@ -1069,7 +1070,7 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
               const SizedBox(height: 10),
               Text(
                 _error!,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   color: Colors.orangeAccent,
                 ),
@@ -1081,7 +1082,7 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
+          child: Text('Cancelar'),
         ),
       ],
     );
@@ -1145,18 +1146,18 @@ class _ProfilesSection extends ConsumerWidget {
       icon: Icons.group_outlined,
       children: <Widget>[
         profiles.when(
-          loading: () => const Padding(
+          loading: () => Padding(
             padding: EdgeInsets.symmetric(vertical: 12),
             child: LinearProgressIndicator(),
           ),
           error: (Object error, StackTrace stack) => Text(
             'No se pudieron cargar los perfiles: $error',
-            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+            style: TextStyle(color: Colors.redAccent, fontSize: 12),
           ),
           data: (List<ProfileSummary> list) => list.isEmpty
-              ? const Text(
+              ? Text(
                   'Sin perfiles todavía. Crea uno para separar preferencias.',
-                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                  style: TextStyle(color: context.inkAlpha(0.54), fontSize: 12),
                 )
               : Column(
                   children: list
@@ -1169,20 +1170,20 @@ class _ProfilesSection extends ConsumerWidget {
                                 : Icons.circle_outlined,
                             color: profile.isActive
                                 ? context.tokens.accent
-                                : Colors.white38,
+                                : context.inkAlpha(0.38),
                           ),
                           title: Text(profile.name),
                           subtitle: Text(
                             profile.isActive
                                 ? 'Perfil activo'
                                 : 'Toca para activar',
-                            style: const TextStyle(fontSize: 11),
+                            style: TextStyle(fontSize: 11),
                           ),
                           trailing: profile.isActive
                               ? null
                               : IconButton(
                                   tooltip: 'Eliminar perfil',
-                                  icon: const Icon(
+                                  icon: Icon(
                                     Icons.delete_outline_rounded,
                                     size: 18,
                                   ),
@@ -1207,29 +1208,29 @@ class _ProfilesSection extends ConsumerWidget {
           children: <Widget>[
             OutlinedButton.icon(
               onPressed: () => _createProfile(context, ref),
-              icon: const Icon(Icons.person_add_alt_1_rounded, size: 18),
-              label: const Text('Nuevo perfil'),
+              icon: Icon(Icons.person_add_alt_1_rounded, size: 18),
+              label: Text('Nuevo perfil'),
             ),
             OutlinedButton.icon(
               onPressed: () => _export(context, ref),
-              icon: const Icon(Icons.archive_outlined, size: 18),
-              label: const Text('Exportar respaldo'),
+              icon: Icon(Icons.archive_outlined, size: 18),
+              label: Text('Exportar respaldo'),
             ),
             OutlinedButton.icon(
               onPressed: () => _import(context, ref),
-              icon: const Icon(Icons.unarchive_outlined, size: 18),
-              label: const Text('Importar respaldo'),
+              icon: Icon(Icons.unarchive_outlined, size: 18),
+              label: Text('Importar respaldo'),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
+        Text(
           'El respaldo v2 incluye preferencias (también las de cada salida de '
           'audio), perfiles, presets de EQ con DSP completo, listas, favoritos, '
           'letras y temas RGB/HSL. Los respaldos v1 también se pueden importar. '
           'Las pistas se referencian por ruta, así que la música debe estar en '
           'la misma ubicación para restaurarlas.',
-          style: TextStyle(fontSize: 11, color: Colors.white38),
+          style: TextStyle(fontSize: 11, color: context.inkAlpha(0.38)),
         ),
       ],
     );
@@ -1240,7 +1241,7 @@ class _ProfilesSection extends ConsumerWidget {
     final bool? accepted = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Nuevo perfil'),
+        title: Text('Nuevo perfil'),
         content: TextField(
           controller: name,
           autofocus: true,
@@ -1249,11 +1250,11 @@ class _ProfilesSection extends ConsumerWidget {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+            child: Text('Cancelar'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Crear'),
+            child: Text('Crear'),
           ),
         ],
       ),
@@ -1268,19 +1269,19 @@ class _ProfilesSection extends ConsumerWidget {
     final bool? zip = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Exportar respaldo'),
-        content: const Text(
+        title: Text('Exportar respaldo'),
+        content: Text(
           'Elige el formato. El ZIP ocupa menos y está listo para compartir; '
           'el JSON es legible y fácil de inspeccionar.',
         ),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('JSON'),
+            child: Text('JSON'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('ZIP'),
+            child: Text('ZIP'),
           ),
         ],
       ),
@@ -1294,20 +1295,20 @@ class _ProfilesSection extends ConsumerWidget {
         await showDialog<void>(
           context: context,
           builder: (BuildContext context) => AlertDialog(
-            title: const Text('Respaldo creado'),
+            title: Text('Respaldo creado'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text('Archivo guardado en:'),
+                Text('Archivo guardado en:'),
                 const SizedBox(height: 8),
-                SelectableText(path, style: const TextStyle(fontSize: 12)),
+                SelectableText(path, style: TextStyle(fontSize: 12)),
               ],
             ),
             actions: <Widget>[
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cerrar'),
+                child: Text('Cerrar'),
               ),
             ],
           ),
@@ -1356,7 +1357,7 @@ class _ProfilesSection extends ConsumerWidget {
       await showDialog<void>(
         context: context,
         builder: (BuildContext context) => AlertDialog(
-          title: const Text('Respaldo importado'),
+          title: Text('Respaldo importado'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1373,14 +1374,14 @@ class _ProfilesSection extends ConsumerWidget {
                 ),
                 if (summary.warnings.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 10),
-                  const Text(
+                  Text(
                     'Avisos:',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   ...summary.warnings.map(
                     (String warning) => Text(
                       '• $warning',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         color: Colors.orangeAccent,
                       ),
@@ -1393,7 +1394,7 @@ class _ProfilesSection extends ConsumerWidget {
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Cerrar'),
+              child: Text('Cerrar'),
             ),
           ],
         ),
@@ -1425,7 +1426,7 @@ class _PermissionsSection extends ConsumerWidget {
                     'multimedia.'
               : 'Windows no requiere permisos en tiempo de ejecución: Polaris '
                     'solo lee las carpetas que añadas manualmente.',
-          style: const TextStyle(fontSize: 12, color: Colors.white54),
+          style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
         ),
         const SizedBox(height: 12),
         Wrap(
@@ -1449,8 +1450,8 @@ class _PermissionsSection extends ConsumerWidget {
                   );
                 }
               },
-              icon: const Icon(Icons.audio_file_outlined, size: 18),
-              label: const Text('Acceso a audio'),
+              icon: Icon(Icons.audio_file_outlined, size: 18),
+              label: Text('Acceso a audio'),
             ),
             OutlinedButton.icon(
               onPressed: () async {
@@ -1469,8 +1470,8 @@ class _PermissionsSection extends ConsumerWidget {
                   );
                 }
               },
-              icon: const Icon(Icons.folder_shared_outlined, size: 18),
-              label: const Text('Acceso total'),
+              icon: Icon(Icons.folder_shared_outlined, size: 18),
+              label: Text('Acceso total'),
             ),
             OutlinedButton.icon(
               onPressed: () async {
@@ -1489,14 +1490,14 @@ class _PermissionsSection extends ConsumerWidget {
                   );
                 }
               },
-              icon: const Icon(Icons.notifications_outlined, size: 18),
-              label: const Text('Notificaciones'),
+              icon: Icon(Icons.notifications_outlined, size: 18),
+              label: Text('Notificaciones'),
             ),
             TextButton.icon(
               onPressed: () =>
                   ref.read(permissionServiceProvider).openSettings(),
-              icon: const Icon(Icons.settings_outlined, size: 18),
-              label: const Text('Abrir ajustes del sistema'),
+              icon: Icon(Icons.settings_outlined, size: 18),
+              label: Text('Abrir ajustes del sistema'),
             ),
           ],
         ),
@@ -1538,33 +1539,33 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
               ),
             ),
             current.when(
-              loading: () => const Text('…'),
-              error: (_, _) => const Text('desconocida'),
+              loading: () => Text('…'),
+              error: (_, _) => Text('desconocida'),
               data: (String value) => Text('v$value'),
             ),
           ],
         ),
         const SizedBox(height: 10),
         latest.when(
-          loading: () => const Padding(
+          loading: () => Padding(
             padding: EdgeInsets.symmetric(vertical: 8),
             child: LinearProgressIndicator(),
           ),
           error: (Object error, StackTrace stack) => Text(
             'No se pudo consultar GitHub: $error',
-            style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+            style: TextStyle(color: Colors.redAccent, fontSize: 12),
           ),
           data: (UpdateInfo? info) {
             if (info == null) {
-              return const Text(
+              return Text(
                 'Sin conexión con GitHub o no hay releases publicadas.',
-                style: TextStyle(fontSize: 12, color: Colors.white54),
+                style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
               );
             }
             if (!info.isUpdateAvailable) {
               return Text(
                 'Estás al día. Última versión publicada: v${info.latestVersion}',
-                style: const TextStyle(fontSize: 12, color: Colors.white54),
+                style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
               );
             }
             return Column(
@@ -1580,12 +1581,12 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                 if (info.title.isNotEmpty)
                   Text(
                     info.title,
-                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
                   ),
                 if (info.publishedAt != null)
                   Text(
                     'Publicada el ${Formatters.date(info.publishedAt!)}',
-                    style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    style: TextStyle(fontSize: 11, color: context.inkAlpha(0.38)),
                   ),
                 if (info.changelog.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 8),
@@ -1594,10 +1595,10 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                     child: SingleChildScrollView(
                       child: Text(
                         info.changelog,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           height: 1.4,
-                          color: Colors.white60,
+                          color: context.inkAlpha(0.60),
                         ),
                       ),
                     ),
@@ -1611,14 +1612,14 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                   const SizedBox(height: 4),
                   Text(
                     '${((_progress ?? 0) * 100).toStringAsFixed(0)} %',
-                    style: const TextStyle(fontSize: 11),
+                    style: TextStyle(fontSize: 11),
                   ),
                 ],
                 if (_downloaded != null) ...<Widget>[
                   const SizedBox(height: 8),
                   SelectableText(
                     'Descargado en: $_downloaded',
-                    style: const TextStyle(fontSize: 11),
+                    style: TextStyle(fontSize: 11),
                   ),
                   if (canInstallHere &&
                       _downloaded!.toLowerCase().endsWith('.exe')) ...<Widget>[
@@ -1631,7 +1632,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.restart_alt_rounded, size: 18),
+                          : Icon(Icons.restart_alt_rounded, size: 18),
                       label: Text(
                         _installing
                             ? 'Iniciando instalador…'
@@ -1639,16 +1640,16 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
+                    Text(
                       'La app se cerrará para instalar la nueva versión y se '
                       'volverá a abrir automáticamente.',
-                      style: TextStyle(fontSize: 11, color: Colors.white54),
+                      style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
                     ),
                   ] else ...<Widget>[
                     const SizedBox(height: 6),
                     OutlinedButton.icon(
                       onPressed: () => unawaited(_openOrInstall(_downloaded!)),
-                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                      icon: Icon(Icons.open_in_new_rounded, size: 16),
                       label: Text(
                         Platform.isAndroid
                             ? 'Instalar APK'
@@ -1667,14 +1668,14 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                         onPressed: _progress != null || _installing
                             ? null
                             : () => _download(info),
-                        icon: const Icon(Icons.download_rounded, size: 18),
-                        label: const Text('Descargar'),
+                        icon: Icon(Icons.download_rounded, size: 18),
+                        label: Text('Descargar'),
                       ),
                     OutlinedButton.icon(
                       onPressed: () =>
                           ref.read(updateServiceProvider).openReleasePage(info),
-                      icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                      label: const Text('Ver release'),
+                      icon: Icon(Icons.open_in_new_rounded, size: 18),
+                      label: Text('Ver release'),
                     ),
                   ],
                 ),
@@ -1693,14 +1694,14 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                 ref.invalidate(currentVersionProvider);
                 ref.read(updatePromptProvider.notifier).check();
               },
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Buscar actualizaciones'),
+              icon: Icon(Icons.refresh_rounded, size: 18),
+              label: Text('Buscar actualizaciones'),
             ),
             TextButton.icon(
               onPressed: () =>
                   ref.read(updateServiceProvider).openDownloadsFolder(),
-              icon: const Icon(Icons.folder_open_rounded, size: 18),
-              label: const Text('Carpeta del instalador'),
+              icon: Icon(Icons.folder_open_rounded, size: 18),
+              label: Text('Carpeta del instalador'),
             ),
           ],
         ),
@@ -1765,7 +1766,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: const Text('Instalar actualización'),
+        title: Text('Instalar actualización'),
         content: Text(
           'Polaris Music se cerrará para instalar la versión '
           '${info.latestVersion}.\n\n'
@@ -1775,11 +1776,11 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
+            child: Text('Cancelar'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Instalar y reiniciar'),
+            child: Text('Instalar y reiniciar'),
           ),
         ],
       ),

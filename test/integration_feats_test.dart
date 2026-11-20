@@ -5,7 +5,7 @@ import 'package:polaris_music/features/online_music/domain/online_track.dart';
 
 void main() {
   group('Integración de fuentes', () {
-    test('YouTube Music se enruta con su prefijo y sin stream directo', () {
+    test('YouTube Music se enruta con su prefijo y permite stream anónimo', () {
       expect(
         MusicSourceIdX.fromExternalId('youtube:abc123'),
         MusicSourceId.youtube,

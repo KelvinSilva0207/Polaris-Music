@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:polaris_music/core/models/playback_state.dart';
 import 'package:polaris_music/core/services/backup_service.dart';
 import 'package:polaris_music/core/services/system_audio_service.dart';
 import 'package:polaris_music/features/player/domain/player_controller.dart';
@@ -36,6 +37,37 @@ void main() {
       expect(cleared.loopA, isNull);
       expect(cleared.loopB, isNull);
       expect(cleared.loopActive, isFalse);
+    });
+  });
+
+  group('Avisos y buffering', () {
+    test('el aviso se puede fijar y limpiar con null', () {
+      const PlayerUiState base = PlayerUiState();
+      expect(base.notice, isNull);
+
+      final PlayerUiState shown = base.copyWith(
+        notice: 'Archivo no disponible',
+      );
+      expect(shown.notice, 'Archivo no disponible');
+
+      final PlayerUiState hidden = shown.copyWith(notice: null);
+      expect(hidden.notice, isNull);
+    });
+
+    test('copyWith limpia buffering y error tras un fallo', () {
+      const PlaybackSnapshot stuck = PlaybackSnapshot(
+        buffering: true,
+        playing: true,
+        error: 'sin archivo',
+      );
+      final PlaybackSnapshot clean = stuck.copyWith(
+        buffering: false,
+        playing: false,
+        error: null,
+      );
+      expect(clean.buffering, isFalse);
+      expect(clean.playing, isFalse);
+      expect(clean.error, isNull);
     });
   });
 

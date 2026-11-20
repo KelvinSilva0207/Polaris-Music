@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/app_providers.dart';
+import '../../core/providers/motion_provider.dart';
 
 /// Insignia discreta de «pista en reproducción».
 ///
@@ -39,6 +40,7 @@ class _PlayingIndicatorState extends ConsumerState<PlayingIndicator>
   void initState() {
     super.initState();
     ref.listen(windowStateProvider, (_, _) => _sync());
+    ref.listen(motionConfigProvider, (_, _) => _sync());
     _sync();
   }
 
@@ -52,7 +54,8 @@ class _PlayingIndicatorState extends ConsumerState<PlayingIndicator>
     // Además de pausar/estar inactiva, se detiene cuando la ventana pasa a
     // segundo plano: la música sigue, pero no hay ticks de UI innecesarios.
     final bool backgrounded = ref.read(windowStateProvider).value.backgrounded;
-    if (widget.active && widget.playing && !backgrounded) {
+    final bool ambient = ref.read(motionConfigProvider).ambient;
+    if (widget.active && widget.playing && ambient && !backgrounded) {
       if (!_controller.isAnimating) _controller.repeat();
     } else if (_controller.isAnimating) {
       _controller.stop();

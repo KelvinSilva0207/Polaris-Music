@@ -61,7 +61,7 @@ class WindowTitleBar extends ConsumerWidget {
                         fontSize: compact ? 11.5 : 12.5,
                         fontWeight: FontWeight.w600,
                         letterSpacing: 0.2,
-                        color: Colors.white.withValues(alpha: 0.72),
+                        color: context.inkAlpha(0.72),
                       ),
                     ),
                   ),
@@ -103,7 +103,7 @@ class WindowTitleBar extends ConsumerWidget {
 
         return DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.16),
+            color: tokens.surface.withValues(alpha: 0.62),
             border: Border(
               bottom: BorderSide(
                 color: tokens.panelBorder.withValues(alpha: 0.55),
@@ -146,7 +146,7 @@ class _TitleBarButton extends StatelessWidget {
             size: 17,
             color: danger
                 ? const Color(0xFFFF8A80)
-                : Colors.white.withValues(alpha: 0.72),
+                : context.inkAlpha(0.72),
           ),
         ),
       ),

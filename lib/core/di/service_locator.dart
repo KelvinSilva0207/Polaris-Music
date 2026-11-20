@@ -5,6 +5,7 @@ import '../../features/library/data/metadata_editor_service.dart';
 import '../../features/lyrics/data/lyrics_service.dart';
 import '../../features/online_music/data/audius_source.dart';
 import '../../features/online_music/data/download_manager.dart';
+import '../../features/online_music/data/metadata_audio_bridge.dart';
 import '../../features/online_music/data/online_catalog_repository.dart';
 import '../../features/online_music/data/online_music_service.dart';
 import '../../features/online_music/data/soundcloud_source.dart';
@@ -166,6 +167,14 @@ class ServiceLocator {
       BackupService(database, settingsService: settings),
     );
     sl.registerSingleton<LibraryRepository>(LibraryRepository(database));
+    // Reparación puntual de carátulas borradas por escaneos anteriores; no
+    // lee imágenes y funciona incluso si el escaneo automático está desactivado.
+    // Un fallo aquí nunca debe impedir que la interfaz arranque.
+    try {
+      await sl<LibraryRepository>().scanner.restoreArtworkPaths();
+    } catch (error, stack) {
+      AppLog.w('Bootstrap', 'No se pudieron recuperar carátulas', error, stack);
+    }
     sl.registerSingleton<MetadataEditorService>(
       MetadataEditorService(sl<LibraryRepository>()),
     );
@@ -205,10 +214,14 @@ class ServiceLocator {
         sl<TidalSource>(),
       ]),
     );
+    sl.registerLazySingleton<MetadataAudioBridge>(
+      () => MetadataAudioBridge(sl<MusicSourceCatalog>()),
+    );
     sl.registerLazySingleton<OnlineMusicRepository>(
       () => OnlineCatalogRepository(
         catalog: sl<MusicSourceCatalog>(),
         artworkCache: sl<ArtworkCache>(),
+        bridge: sl<MetadataAudioBridge>(),
       ),
     );
     sl.registerLazySingleton<DownloadManager>(
@@ -247,6 +260,9 @@ class ServiceLocator {
     if (sl.isRegistered<SystemAudioService>()) {
       await sl<SystemAudioService>().dispose();
     }
+    if (sl.isRegistered<PlaybackStatsRecorder>()) {
+      await sl<PlaybackStatsRecorder>().dispose();
+    }
     if (sl.isRegistered<AudioEngineService>()) {
       await sl<AudioEngineService>().dispose();
     }
@@ -262,6 +278,9 @@ class ServiceLocator {
     }
     if (sl.isRegistered<TrayService>()) {
       await sl<TrayService>().dispose();
+    }
+    if (sl.isRegistered<WindowService>()) {
+      await sl<WindowService>().dispose();
     }
     if (sl.isRegistered<MediaSessionService>()) {
       await sl<MediaSessionService>().dispose();
@@ -283,6 +302,12 @@ class ServiceLocator {
     }
     if (sl.isRegistered<LibraryRepository>()) {
       await sl<LibraryRepository>().dispose();
+    }
+    if (sl.isRegistered<PlaybackStatsRecorder>()) {
+      await sl<PlaybackStatsRecorder>().dispose();
+    }
+    if (sl.isRegistered<SettingsService>()) {
+      await sl<SettingsService>().dispose();
     }
     if (sl.isRegistered<AudioEngineService>()) {
       await sl<AudioEngineService>().dispose();

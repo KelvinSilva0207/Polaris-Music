@@ -5,10 +5,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/motion_config.dart';
+import '../../core/theme/theme_tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../features/player/domain/player_controller.dart';
 import '../../features/player/presentation/player_providers.dart';
-import '../../core/theme/theme_tokens.dart';
+import 'motion_scope.dart';
 
 /// Barra de progreso de la música.
 ///
@@ -145,9 +147,9 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                         child: DecoratedBox(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(railHeight),
-                            color: Colors.white.withValues(alpha: 0.10),
+                            color: context.inkAlpha(0.10),
                             border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.06),
+                              color: context.inkAlpha(0.06),
                             ),
                           ),
                         ),
@@ -164,7 +166,7 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                             gradient: LinearGradient(
                               colors: <Color>[
                                 accent.withValues(alpha: 0.85),
-                                Color.lerp(accent, Colors.white, 0.28) ??
+                                Color.lerp(accent, context.ink, 0.28) ??
                                     accent,
                               ],
                             ),
@@ -183,13 +185,16 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                         left: thumbLeft,
                         top: railTop + (railHeight - thumbHeight) / 2,
                         child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
+                          duration: context.motion.duration(
+                            const Duration(milliseconds: 160),
+                            category: MotionCategory.gestures,
+                          ),
                           curve: Curves.easeOutCubic,
                           width: thumbWidth,
                           height: thumbHeight,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(thumbWidth),
-                            color: Colors.white,
+                            color: context.ink,
                             border: Border.all(
                               color: accent.withValues(alpha: 0.65),
                             ),
@@ -266,8 +271,8 @@ class _TimePill extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
         color: glass
-            ? Colors.white.withValues(alpha: 0.16)
-            : Colors.black.withValues(alpha: 0.72),
+            ? context.inkAlpha(0.16)
+            : context.tokens.panelOverlay.withValues(alpha: 0.94),
         border: Border.all(color: accent.withValues(alpha: 0.45)),
         boxShadow: <BoxShadow>[
           BoxShadow(color: accent.withValues(alpha: 0.22), blurRadius: 10),
@@ -279,7 +284,7 @@ class _TimePill extends StatelessWidget {
           fontSize: 11,
           height: 1.1,
           fontWeight: FontWeight.w700,
-          color: Colors.white,
+          color: context.onPanel,
           fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
         ),
       ),
@@ -297,11 +302,11 @@ class _TimeLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 180),
+      duration: context.motion.duration(const Duration(milliseconds: 180)),
       style: TextStyle(
         fontSize: 11,
         fontWeight: active ? FontWeight.w700 : FontWeight.w500,
-        color: active ? accent : Colors.white54,
+        color: active ? accent : context.inkAlpha(0.54),
         fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
       ),
       child: Text(label),
@@ -366,7 +371,10 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
             onTap: () =>
                 _setVolume(muted ? (_lastAudible <= 0 ? 50 : _lastAudible) : 0),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
+              duration: context.motion.duration(
+                const Duration(milliseconds: 220),
+                category: MotionCategory.gestures,
+              ),
               padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
@@ -380,7 +388,10 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
                 ),
               ),
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
+                duration: context.motion.duration(
+                  const Duration(milliseconds: 180),
+                  category: MotionCategory.gestures,
+                ),
                 transitionBuilder: (
                   Widget child,
                   Animation<double> animation,
@@ -439,7 +450,10 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
                               final bool lit = index < litSegments;
                               return Expanded(
                                 child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 140),
+                                  duration: context.motion.duration(
+                                    const Duration(milliseconds: 140),
+                                    category: MotionCategory.gestures,
+                                  ),
                                   height: lit ? 7 : 3,
                                   margin: const EdgeInsets.symmetric(
                                     horizontal: 1,
@@ -448,9 +462,7 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
                                     borderRadius: BorderRadius.circular(3),
                                     color: lit
                                         ? accent.withValues(alpha: 0.85)
-                                        : Colors.white.withValues(
-                                            alpha: _hovering ? 0.22 : 0.12,
-                                          ),
+                                        : context.inkAlpha(_hovering ? 0.22 : 0.12,),
                                     boxShadow: lit
                                         ? <BoxShadow>[
                                             BoxShadow(
@@ -475,7 +487,7 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
                                 height: 12,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: Colors.white,
+                                  color: context.ink,
                                   border: Border.all(
                                     color: accent.withValues(alpha: 0.7),
                                     width: 2,
@@ -507,7 +519,7 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: _hovering ? FontWeight.w700 : FontWeight.w500,
-              color: _hovering ? accent : Colors.white54,
+              color: _hovering ? accent : context.inkAlpha(0.54),
               fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
             ),
           ),

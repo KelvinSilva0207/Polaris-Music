@@ -93,6 +93,45 @@ void main() {
       expect(flat.panelColor, surface.withValues(alpha: 0.94));
     });
 
+    test('el velo glass sigue siendo oscuro con opacidad compacta', () {
+      const PolarisTokens player = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        surface: surface,
+        glassOpacity: 0.94,
+      );
+
+      final Color veil = player.glassPanelColor;
+      expect(veil.r, lessThan(0.35));
+      expect(veil.g, lessThan(0.35));
+      expect(veil.b, lessThan(0.5));
+      expect(ColorMath.onColor(player.panelOverlay), Colors.white);
+    });
+
+    test('la cola del reproductor es legible con la opacidad de player', () {
+      const PolarisTokens player = PolarisTokens(
+        accent: Color(0xFF8B5CF6),
+        surface: surface,
+        cardStyle: CardStyle.glassmorphic,
+        // CompactStyleConfig.player.opacity
+        glassOpacity: 0.94,
+      );
+
+      // La tinta de la cola es `onPanel`; el fondo es el velo glass. Si el
+      // velo volviera a ser blanco, el contraste caería a ~1:1 y fallaría.
+      final double veilLuminance = player.glassPanelColor.computeLuminance();
+      final double inkLuminance = ColorMath.onColor(player.panelOverlay)
+          .computeLuminance();
+      final double high = veilLuminance > inkLuminance
+          ? veilLuminance
+          : inkLuminance;
+      final double low = veilLuminance > inkLuminance
+          ? inkLuminance
+          : veilLuminance;
+
+      expect(veilLuminance, lessThan(0.12));
+      expect((high + 0.05) / (low + 0.05), greaterThanOrEqualTo(7));
+    });
+
     test('las sombras siguen el estilo de tarjeta', () {
       const PolarisTokens glass = PolarisTokens(
         accent: Color(0xFF8B5CF6),
@@ -263,6 +302,78 @@ void main() {
         ColorMath.onColor(const Color(0xFF000000)),
         const Color(0xFFFFFFFF),
       );
+    });
+  });
+
+  group('Catálogo de temas y acabados', () {
+    test('la galería incluye todos los temas con su acabado', () {
+      expect(AppThemeConfig.catalog, hasLength(9));
+      expect(
+        AppThemeConfig.catalog.map((AppThemeConfig entry) => entry.preset),
+        containsAll(<AppThemePreset>[
+          AppThemePreset.dark,
+          AppThemePreset.light,
+          AppThemePreset.rgbDynamic,
+          AppThemePreset.cyberNeon,
+          AppThemePreset.nordicFrost,
+          AppThemePreset.emeraldStudio,
+          AppThemePreset.crimsonVelvet,
+        ]),
+      );
+      expect(AppThemeConfig.dark.finish, SurfaceFinish.matte);
+      expect(AppThemeConfig.light.brightness, Brightness.light);
+      expect(AppThemeConfig.light.isLight, isTrue);
+      expect(AppThemeConfig.rgbDynamic.rgbFlow, isTrue);
+    });
+
+    test('el acabado se combina con cualquier paleta', () {
+      for (final AppThemeConfig palette in AppThemeConfig.catalog) {
+        for (final SurfaceFinish finish in SurfaceFinish.values) {
+          final AppThemeConfig combined = palette.copyWith(finish: finish);
+          expect(combined.finish, finish);
+          expect(combined.cardStyle, finish.cardStyle);
+          if (finish == SurfaceFinish.matte) {
+            expect(combined.glassBlur, 0);
+          }
+        }
+      }
+    });
+
+    test('el flujo cromático desplaza el HSV de forma transitoria', () {
+      final AppThemeConfig base = AppThemeConfig.rgbDynamic;
+      final AppThemeConfig flowed = base.withRgbFlow(90);
+
+      expect(flowed.accent, isNot(base.accent));
+      expect(flowed.secondary, isNot(base.secondary));
+      expect(flowed.backdrop.first, isNot(base.backdrop.first));
+      expect(base.rgbHue, 267);
+      expect(
+        base.copyWith(rgbFlow: false).withRgbFlow(90).accent,
+        base.accent,
+      );
+    });
+
+    test('el acabado y el flujo sobreviven al viaje JSON', () {
+      final AppThemeConfig original = AppThemeConfig.rgbDynamic.copyWith(
+        finish: SurfaceFinish.liquid,
+        secondary: const Color(0xFF123456),
+        surfaceOpacity: 0.72,
+        rgbHue: 42,
+        rgbSaturation: 0.4,
+        rgbBrightness: 0.8,
+        rgbFlow: true,
+        brightness: Brightness.light,
+      );
+
+      final AppThemeConfig restored = AppThemeConfig.fromJson(
+        original.toJson(),
+      );
+
+      expect(restored, original);
+      expect(restored.finish, SurfaceFinish.liquid);
+      expect(restored.secondary, const Color(0xFF123456));
+      expect(restored.rgbHue, 42);
+      expect(restored.brightness, Brightness.light);
     });
   });
 

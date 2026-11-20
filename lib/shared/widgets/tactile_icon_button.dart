@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/motion_config.dart';
 import '../../core/theme/theme_tokens.dart';
+import 'motion_scope.dart';
 
 /// Botón de transporte con respuesta táctil breve y legible.
 ///
@@ -63,6 +65,18 @@ class _TactileIconButtonState extends State<TactileIconButton>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final Duration duration = context.motion.duration(
+      const Duration(milliseconds: 260),
+      category: MotionCategory.gestures,
+    );
+    _controller.duration = duration == Duration.zero
+        ? const Duration(microseconds: 1)
+        : duration;
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -70,7 +84,7 @@ class _TactileIconButtonState extends State<TactileIconButton>
 
   void _handlePressed() {
     if (!widget.enabled) return;
-    _controller.forward(from: 0);
+    if (context.motion.gestures) _controller.forward(from: 0);
     widget.onPressed();
   }
 
@@ -83,7 +97,7 @@ class _TactileIconButtonState extends State<TactileIconButton>
       onPressed: widget.enabled ? _handlePressed : null,
       icon: Icon(
         widget.icon,
-        color: widget.color ?? (widget.enabled ? null : Colors.white24),
+        color: widget.color ?? (widget.enabled ? null : context.inkAlpha(0.24)),
       ),
     );
 

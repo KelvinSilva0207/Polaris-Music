@@ -18,6 +18,7 @@ import '../features/library/presentation/library_providers.dart';
 import '../features/library/presentation/library_screen.dart';
 import '../features/online_music/presentation/online_music_screen.dart';
 import '../features/phone/presentation/phone_mode_shell.dart';
+import '../features/player/domain/player_controller.dart';
 import '../features/player/presentation/mini_player_bar.dart';
 import '../features/player/presentation/now_playing_screen.dart';
 import '../features/player/presentation/player_providers.dart';
@@ -25,6 +26,7 @@ import '../features/player/presentation/tray_mini_player.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/settings/presentation/update_dialog.dart';
 import '../shared/widgets/liquid_nav_bar.dart';
+import '../shared/widgets/motion_scope.dart';
 import '../shared/widgets/window_title_bar.dart';
 import 'app_navigation.dart';
 
@@ -104,6 +106,49 @@ class _AppShellState extends ConsumerState<AppShell>
 
   @override
   Widget build(BuildContext context) {
+    // Avisos del reproductor (archivo no disponible, error de apertura...) como
+    // SnackBar en la ventana principal. En modo isla/mini no hay Scaffold.
+    ref.listen<String?>(
+      playerControllerProvider.select((PlayerUiState s) => s.notice),
+      (String? previous, String? next) {
+        if (next == null || next == previous) return;
+        if (ref.read(windowStateProvider).value.mode != WindowMode.normal) {
+          return;
+        }
+        final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            SnackBar(
+              // Fondo rojo oscuro y texto blanco: el aviso se lee igual con
+              // temas claros, oscuros o dinámicos, sin volcar URLs firmadas.
+              backgroundColor: const Color(0xFF8E1B24),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 4),
+              content: Row(
+                children: <Widget>[
+                  Icon(
+                    Icons.error_outline_rounded,
+                    color: context.ink,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      next,
+                      style: TextStyle(
+                        color: context.ink,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+      },
+    );
+
     final bool showUpdate = ref.watch(
       updatePromptProvider.select((UpdatePromptState s) => s.shouldShow),
     );
@@ -123,31 +168,41 @@ class _AppShellState extends ConsumerState<AppShell>
       valueListenable: notifier,
       builder: (BuildContext context, WindowUiState state, Widget? _) {
         final WindowService window = ref.read(windowServiceProvider);
+        final Widget content;
         switch (state.mode) {
           case WindowMode.mini:
-            return CompactThemeScope(
+            content = CompactThemeScope(
               surface: CompactSurface.mini,
               child: TrayMiniPlayer(
                 onOpen: window.restoreNormal,
                 onHide: window.minimizeToTray,
               ),
             );
+            break;
           case WindowMode.phone:
-            return const CompactThemeScope(
+            content = const CompactThemeScope(
               surface: CompactSurface.phone,
               child: PhoneModeShell(),
             );
+            break;
           case WindowMode.island:
-            return CompactThemeScope(
+            content = CompactThemeScope(
               surface: CompactSurface.island,
               child: IslandWindow(
                 onRestore: window.restoreNormal,
                 onHide: window.hide,
+                onCapsuleGeometryChanged: window.setIslandCapsule,
               ),
             );
+            break;
           case WindowMode.normal:
-            return _buildNormal();
+            content = _buildNormal();
+            break;
         }
+        // En segundo plano se cortan todos los ticks (vinilo, pulse de gestos,
+        // indicadores...). mpv sigue reproduciendo; solo para la animación que
+        // nadie está viendo.
+        return TickerMode(enabled: !state.backgrounded, child: content);
       },
     );
   }
@@ -174,11 +229,12 @@ class _AppShellState extends ConsumerState<AppShell>
         child: Builder(
           builder: (BuildContext context) {
             final bool android = Platform.isAndroid;
-            // La barra inferior se superpone: reservamos su altura más el
-            // área del sistema (gestos/navegación) para que nada quede tapado.
+            // La barra va abajo en todas las plataformas: reservamos su altura
+            // para que el mini-reproductor quede justo encima. En Android se
+            // añade además el área del sistema (gestos/navegación).
             final double navClearance = android
                 ? MediaQuery.viewPaddingOf(context).bottom + 84
-                : 0;
+                : 84;
 
             return Stack(
               fit: StackFit.expand,
@@ -208,12 +264,10 @@ class _AppShellState extends ConsumerState<AppShell>
                                     children: <Widget>[
                                       Expanded(
                                         child: Padding(
-                                          // En escritorio la barra va arriba; en
-                                          // Android el SafeArea ya protege el
-                                          // hueco de la barra de notificaciones.
-                                          padding: EdgeInsets.only(
-                                            top: android ? 0 : 66,
-                                          ),
+                                          // La barra va abajo en todas las
+                                          // plataformas; el hueco se reserva
+                                          // con `navClearance`.
+                                          padding: EdgeInsets.zero,
                                           child: IndexedStack(
                                             index: section.index,
                                             // IndexedStack mantiene montadas las
@@ -221,8 +275,9 @@ class _AppShellState extends ConsumerState<AppShell>
                                             // vinilo de la pestaña oculta sigue
                                             // consumiendo ticks con la música en
                                             // marcha; aquí se cortan al cambiar
-                                            // de sección (y al pasar a segundo
-                                            // plano lo hace `backgrounded`).
+                                            // de sección. El `backgrounded`
+                                            // global lo aplica el TickerMode
+                                            // que envuelve esta vista.
                                             children: <Widget>[
                                               for (
                                                 int i = 0;
@@ -238,8 +293,8 @@ class _AppShellState extends ConsumerState<AppShell>
                                         ),
                                       ),
                                       AnimatedSwitcher(
-                                        duration: const Duration(
-                                          milliseconds: 320,
+                                        duration: context.motion.duration(
+                                          const Duration(milliseconds: 320),
                                         ),
                                         switchInCurve: Curves.easeOutBack,
                                         switchOutCurve: Curves.easeInCubic,
@@ -301,52 +356,46 @@ class _AppShellState extends ConsumerState<AppShell>
 
 /// Barra flotante de las cuatro secciones principales.
 ///
-/// En Android baja al borde inferior con `SafeArea` para no invadir la barra de
-/// notificaciones; en escritorio se mantiene arriba como barra compacta.
+/// Abajo en todas las plataformas, igual que en el teléfono. En Android se
+/// respeta el SafeArea inferior; en escritorio se limita el ancho para que no
+/// se estire en ventanas grandes y siga pareciendo una barra flotante.
 class _FloatingNavBar extends ConsumerWidget {
   const _FloatingNavBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppSection selected = ref.watch(appSectionProvider);
-    final bool android = Platform.isAndroid;
     void changeSection(AppSection section) =>
         ref.read(appSectionProvider.notifier).state = section;
 
-    if (android) {
-      return SafeArea(
-        top: false,
-        bottom: true,
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-            child: LiquidNavBar(selected: selected, onChanged: changeSection),
-          ),
+    return SafeArea(
+      top: false,
+      bottom: Platform.isAndroid,
+      left: false,
+      right: false,
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: LayoutBuilder(
+          builder: (BuildContext context, BoxConstraints constraints) {
+            final double width = Platform.isAndroid
+                ? double.infinity
+                : math.min<double>(
+                    620,
+                    math.max<double>(280, constraints.maxWidth - 40),
+                  );
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+              child: SizedBox(
+                width: width,
+                child: LiquidNavBar(
+                  selected: selected,
+                  onChanged: changeSection,
+                ),
+              ),
+            );
+          },
         ),
-      );
-    }
-
-    return LayoutBuilder(
-      builder: (BuildContext context, BoxConstraints constraints) {
-        final double width = math.min<double>(
-          620,
-          math.max<double>(280, constraints.maxWidth - 40),
-        );
-        return Align(
-          alignment: Alignment.topCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(top: 10),
-            child: LiquidNavBar(
-              layout: LiquidNavLayout.top,
-              width: width,
-              compact: MediaQuery.sizeOf(context).width < 620,
-              selected: selected,
-              onChanged: changeSection,
-            ),
-          ),
-        );
-      },
+      ),
     );
   }
 }
@@ -387,7 +436,9 @@ class _SidePeekTabState extends ConsumerState<_SidePeekTab> {
             child: GestureDetector(
               onTap: () => unawaited(window.toggleSideHidden()),
               child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
+                duration: context.motion.duration(
+                  const Duration(milliseconds: 220),
+                ),
                 curve: Curves.easeOutCubic,
                 width: _hovered ? 20 : 12,
                 height: 72,

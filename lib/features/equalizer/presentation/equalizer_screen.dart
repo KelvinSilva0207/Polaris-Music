@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/equalizer_config.dart';
 import '../../../core/models/equalizer_preset.dart';
+import '../../../core/theme/motion_config.dart';
 import '../../../core/theme/theme_tokens.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../domain/equalizer_controller.dart';
 import 'eq_curve_painter.dart';
 import 'equalizer_providers.dart';
@@ -45,7 +47,7 @@ class EqualizerScreen extends ConsumerWidget {
                   Text(
                     '${state.config.frequencies.length} bandas, paramétrico y '
                     'sub-armónico',
-                    style: const TextStyle(color: Colors.white54),
+                    style: TextStyle(color: context.inkAlpha(0.54)),
                   ),
                 ],
               ),
@@ -125,11 +127,11 @@ class EqualizerScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 18),
-        const Text(
+        Text(
           'Elige 5, 10, 15, 20 o 31 bandas, ajusta cada frecuencia o usa hasta '
           '8 filtros paramétricos. Los perfiles se guardan con su curva, modo '
           'y sub-armónico. Mantén pulsado un perfil propio para eliminarlo.',
-          style: TextStyle(fontSize: 12, color: Colors.white38),
+          style: TextStyle(fontSize: 12, color: context.inkAlpha(0.38)),
         ),
       ],
     );
@@ -271,7 +273,7 @@ class _DspStatus extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Color accent = context.tokens.accent;
-    final Color color = enabled ? accent : Colors.white54;
+    final Color color = enabled ? accent : context.inkAlpha(0.54);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -296,7 +298,7 @@ class _DspStatus extends StatelessWidget {
                         '${subEnabled ? ' + sub-armónico' : ''}.'
                   : 'DSP en espera. Activa el interruptor para escuchar los '
                         'filtros.',
-              style: const TextStyle(fontSize: 12, color: Colors.white70),
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
             ),
           ),
         ],
@@ -319,16 +321,20 @@ class _DspNotice extends StatelessWidget {
           color: const Color(0xFFF59E0B).withValues(alpha: 0.25),
         ),
       ),
-      child: const Row(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(Icons.info_outline_rounded, size: 20, color: Color(0xFFF59E0B)),
-          SizedBox(width: 10),
+          const Icon(
+            Icons.info_outline_rounded,
+            size: 20,
+            color: Color(0xFFF59E0B),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Text(
               'Esta plataforma no permite aplicar filtros de audio. Los ajustes '
               'se guardan como perfil, pero no modifican la reproducción.',
-              style: TextStyle(fontSize: 12, color: Colors.white70),
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
             ),
           ),
         ],
@@ -378,9 +384,9 @@ class _DeviceProfileCard extends StatelessWidget {
                       deviceName == null
                           ? 'No se ha detectado la salida activa'
                           : 'Salida: $deviceName',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Colors.white54,
+                        color: context.inkAlpha(0.54),
                       ),
                     ),
                   ],
@@ -452,9 +458,9 @@ class _PresetSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.presets.isEmpty) {
-      return const Text(
+      return Text(
         'Cargando perfiles…',
-        style: TextStyle(color: Colors.white54),
+        style: TextStyle(color: context.inkAlpha(0.54)),
       );
     }
     return SizedBox(
@@ -474,7 +480,10 @@ class _PresetSelector extends StatelessWidget {
             // easeOutBack en lugar de cambiar de color sin movimiento.
             child: AnimatedScale(
               scale: selected ? 1.06 : 1,
-              duration: const Duration(milliseconds: 280),
+              duration: context.motion.duration(
+                const Duration(milliseconds: 280),
+                category: MotionCategory.gestures,
+              ),
               curve: Curves.easeOutBack,
               child: ChoiceChip(
                 label: Text(preset.name),
@@ -484,7 +493,9 @@ class _PresetSelector extends StatelessWidget {
                 },
                 selectedColor: context.tokens.accent.withValues(alpha: 0.24),
                 labelStyle: TextStyle(
-                  color: selected ? context.tokens.accent : Colors.white70,
+                  color: selected
+                      ? context.tokens.accent
+                      : context.inkAlpha(0.70),
                   fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
                 ),
               ),
@@ -559,16 +570,16 @@ class _BandSlider extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
-                  color: gain == 0 ? Colors.white54 : accent,
+                  color: gain == 0 ? context.inkAlpha(0.54) : accent,
                 ),
               ),
               if (onRemove != null)
                 InkWell(
                   onTap: onRemove,
-                  child: const Icon(
+                  child: Icon(
                     Icons.close_rounded,
                     size: 11,
-                    color: Colors.white30,
+                    color: context.inkAlpha(0.30),
                   ),
                 ),
             ],
@@ -591,7 +602,7 @@ class _BandSlider extends StatelessWidget {
           ),
           Text(
             '$_label Hz',
-            style: const TextStyle(fontSize: 10, color: Colors.white54),
+            style: TextStyle(fontSize: 10, color: context.inkAlpha(0.54)),
           ),
         ],
       ),
@@ -628,7 +639,7 @@ class _PreampControl extends StatelessWidget {
           child: Text(
             '${value >= 0 ? '+' : ''}${value.toStringAsFixed(1)} dB',
             textAlign: TextAlign.end,
-            style: const TextStyle(fontSize: 12, color: Colors.white54),
+            style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
           ),
         ),
         const SizedBox(width: 8),

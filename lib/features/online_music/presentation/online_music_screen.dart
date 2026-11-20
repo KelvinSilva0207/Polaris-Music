@@ -3,13 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/models/track.dart';
+import '../../../core/services/audio_engine_service.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import '../../player/presentation/player_providers.dart';
+import '../data/source_helpers.dart';
 import '../domain/download_task.dart';
 import '../domain/music_source.dart';
+import '../domain/online_catalog_items.dart';
 import '../domain/online_track.dart';
 import 'online_music_providers.dart';
 import 'source_settings_dialog.dart';
@@ -17,10 +20,11 @@ import 'source_status_ui.dart';
 
 /// Exploración de música online y descargas a la biblioteca local.
 ///
-/// Consulta varias fuentes de forma independiente: Audius y SoundCloud pueden
-/// transmitir y descargar audio; Spotify aporta metadatos y Tidal expone su
-/// estado. Las pistas reproducibles se comportan como locales en el
-/// reproductor y las descargas se registran en la biblioteca.
+/// Consulta varias fuentes de forma independiente: Audius, SoundCloud y
+/// YouTube Music pueden transmitir audio; Spotify y Tidal aportan metadatos y
+/// se resuelven mediante un puente hacia fuentes con audio abierto. Las pistas
+/// reproducibles se comportan como locales en el reproductor y las descargas se
+/// registran en la biblioteca.
 class OnlineMusicScreen extends ConsumerStatefulWidget {
   const OnlineMusicScreen({super.key});
 
@@ -31,6 +35,7 @@ class OnlineMusicScreen extends ConsumerStatefulWidget {
 class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
   final TextEditingController _search = TextEditingController();
   String? _resolvingId;
+  bool _bulkPlaying = false;
 
   @override
   void dispose() {
@@ -38,37 +43,35 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
     super.dispose();
   }
 
-  bool _can(
-    OnlineTrack track,
-    bool Function(MusicSourceProvider provider) test,
-  ) {
-    final MusicSourceId? id = MusicSourceIdX.fromExternalId(track.externalId);
-    if (id == null) return false;
-    final MusicSourceProvider? provider = ref
-        .read(musicSourceCatalogProvider)
-        .providerFor(id);
-    return provider != null && test(provider);
+  /// El repositorio decide si una pista se puede reproducir: las fuentes de
+  /// metadatos (Spotify/Tidal) cuentan con el puente hacia un catálogo con
+  /// audio abierto, y ese detalle se comunica al usuario al resolver.
+  bool _canPlay(OnlineTrack track) =>
+      ref.read(onlineCatalogRepositoryProvider).canStreamTrack(track);
+
+  bool _canDownload(OnlineTrack track) =>
+      ref.read(onlineCatalogRepositoryProvider).canDownloadTrack(track);
+
+  Future<bool> _openUrl(String? link) async {
+    if (link == null || link.isEmpty) return false;
+    try {
+      return await launchUrl(
+        Uri.parse(link),
+        mode: LaunchMode.externalApplication,
+      );
+    } on FormatException {
+      return false;
+    }
   }
 
+  Future<bool> _openOriginal(OnlineTrack track) =>
+      _openUrl(track.permalink);
+
   Future<void> _play(OnlineTrack track) async {
-    if (_resolvingId != null) return;
-    if (!_can(track, (MusicSourceProvider provider) => provider.canStream)) {
-      final String? link = track.permalink;
-      if (link != null) {
-        try {
-          if (await launchUrl(
-            Uri.parse(link),
-            mode: LaunchMode.externalApplication,
-          )) {
-            return;
-          }
-        } on FormatException {
-          // Enlace malformado: se informa igual que si no existiera.
-        }
-      }
-      _notice(
-        'Esta fuente solo ofrece metadatos y no se pudo abrir el enlace.',
-      );
+    if (_resolvingId != null || _bulkPlaying) return;
+    if (!_canPlay(track)) {
+      if (await _openOriginal(track)) return;
+      _notice('Esta fuente no ofrece audio reproducible.');
       return;
     }
     setState(() => _resolvingId = track.externalId);
@@ -77,10 +80,24 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
       final Track playable = await ref.read(streamTrackUseCaseProvider)(track);
       if (!mounted) return;
       await ref.read(playerControllerProvider.notifier).playTrack(playable);
+      final String label = playable.sourceLabel ?? '';
+      if (label.contains('→')) {
+        _notice('Audio resuelto desde $label.');
+      }
     } catch (error) {
       if (!mounted) return;
+      if (error is MusicSourceException &&
+          error.issue == MusicSourceIssue.unsupported) {
+        if (await _openOriginal(track)) {
+          _notice('$error Se abrió el enlace original.');
+          return;
+        }
+      }
       messenger.showSnackBar(
-        SnackBar(content: Text('No se pudo reproducir: $error')),
+        _errorSnack(
+          'No se pudo reproducir: '
+          '${AudioEngineService.sanitizePlaybackError(error)}',
+        ),
       );
     } finally {
       if (mounted) setState(() => _resolvingId = null);
@@ -89,8 +106,8 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
 
   /// Resuelve la URL de streaming y la inserta en la cola del reproductor.
   Future<void> _addToQueue(OnlineTrack track, {bool next = false}) async {
-    if (_resolvingId != null) return;
-    if (!_can(track, (MusicSourceProvider provider) => provider.canStream)) {
+    if (_resolvingId != null || _bulkPlaying) return;
+    if (!_canPlay(track)) {
       _notice('Esta fuente no permite añadir pistas a la cola.');
       return;
     }
@@ -121,7 +138,7 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
   }
 
   void _download(OnlineTrack track) {
-    if (!_can(track, (MusicSourceProvider provider) => provider.canDownload)) {
+    if (!_canDownload(track)) {
       _notice('Esta fuente no permite descargas.');
       return;
     }
@@ -129,11 +146,91 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
     _notice('“${track.title}” añadida a la cola de descargas.');
   }
 
+  /// Resuelve y reproduce todas las pistas de la colección abierta en orden.
+  /// Se hace en secuencia para no saturar los endpoints anónimos.
+  Future<void> _playAll() async {
+    if (_bulkPlaying || _resolvingId != null) return;
+    final List<OnlineTrack> candidates = ref
+        .read(onlineSearchProvider)
+        .tracks
+        .where(_canPlay)
+        .toList(growable: false);
+    if (candidates.isEmpty) {
+      _notice('No hay pistas reproducibles en esta colección.');
+      return;
+    }
+    setState(() => _bulkPlaying = true);
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    try {
+      final List<Track> resolved = <Track>[];
+      for (final OnlineTrack item in candidates) {
+        resolved.add(await ref.read(streamTrackUseCaseProvider)(item));
+      }
+      if (!mounted) return;
+      await ref
+          .read(playerControllerProvider.notifier)
+          .playQueue(resolved, startIndex: 0);
+      if (mounted) _notice('${resolved.length} pistas en la cola.');
+    } catch (error) {
+      if (mounted) messenger.showSnackBar(SnackBar(content: Text('$error')));
+    } finally {
+      if (mounted) setState(() => _bulkPlaying = false);
+    }
+  }
+
+  void _downloadAll() {
+    final Set<String> downloaded =
+        ref.read(downloadedIdsProvider).valueOrNull ?? const <String>{};
+    final downloadUseCase = ref.read(downloadTrackUseCaseProvider);
+    final List<OnlineTrack> targets = ref
+        .read(onlineSearchProvider)
+        .tracks
+        .where(
+          (OnlineTrack item) =>
+              _canDownload(item) && !downloaded.contains(item.externalId),
+        )
+        .toList(growable: false);
+    if (targets.isEmpty) {
+      _notice(
+        downloaded.isEmpty
+            ? 'No hay pistas descargables aquí.'
+            : 'Todas las pistas descargables ya están en tu biblioteca.',
+      );
+      return;
+    }
+    for (final OnlineTrack item in targets) {
+      downloadUseCase(item);
+    }
+    _notice('${targets.length} pistas añadidas a la cola de descargas.');
+  }
+
   void _notice(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
     );
   }
+
+  /// Aviso de fallo con alto contraste: nunca muestra la URL del stream.
+  SnackBar _errorSnack(String message) => SnackBar(
+    backgroundColor: const Color(0xFF8E1B24),
+    behavior: SnackBarBehavior.floating,
+    duration: const Duration(seconds: 4),
+    content: Row(
+      children: <Widget>[
+        Icon(Icons.error_outline_rounded, color: context.ink, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            message,
+            style: TextStyle(
+              color: context.ink,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -146,9 +243,10 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
         .where((DownloadTask task) => !task.isCompleted)
         .toList(growable: false);
     final MusicSourceId? filter = state.sourceFilter;
-    final SourceResult? filteredIssue = filter == null
-        ? null
-        : state.resultFor(filter);
+    final OnlineCollectionRef? collection = state.openedCollection;
+    final bool inCollection = collection != null;
+    final bool showCollections =
+        !inCollection && state.resultType != OnlineSearchType.songs;
 
     DownloadTask? taskFor(String externalId) {
       for (final DownloadTask task in downloads) {
@@ -157,121 +255,222 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
       return null;
     }
 
-    return SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 150),
-        children: <Widget>[
-          _OnlineHeader(
-            onRefresh: () {
-              ref.read(onlineSearchProvider.notifier).retryCurrent();
-            },
-            onConfigure: () => showSourcesDialog(context),
-          ),
-          const SizedBox(height: 18),
-          _SearchField(
-            controller: _search,
-            loading: state.loading,
-            onChanged: (String value) {
-              ref.read(onlineSearchProvider.notifier).onQueryChanged(value);
-            },
-            onClear: () {
-              _search.clear();
-              ref.read(onlineSearchProvider.notifier).onQueryChanged('');
-            },
-          ),
-          const SizedBox(height: 14),
-          _SourceFilterBar(
-            providers: ref.watch(musicSourceCatalogProvider).providers,
-            selected: state.sourceFilter,
-            statuses: state.sourceStatuses,
-            onChanged: (MusicSourceId? source) {
-              ref.read(onlineSearchProvider.notifier).setSourceFilter(source);
-            },
-          ),
-          if (filteredIssue != null &&
-              SourceStatusUi.isActionable(filteredIssue.status.issue))
-            Padding(
-              padding: const EdgeInsets.only(top: 10),
-              child: _SourceIssueBanner(
-                status: filteredIssue.status,
-                onConfigure: () => showSourcesDialog(context, initial: filter),
-                onRetry: () {
-                  ref.read(onlineSearchProvider.notifier).retryCurrent();
-                },
-              ),
-            ),
-          if (pending.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 16),
-            _DownloadsPanel(
-              tasks: pending,
-              onCancel: (String id) {
-                ref.read(downloadManagerProvider).cancel(id);
-              },
-              onRetry: (OnlineTrack track) {
-                ref.read(downloadManagerProvider).retry(track);
-              },
-              onClear: () {
-                ref.read(downloadManagerProvider).clearFinished();
-              },
-            ),
-          ],
-          const SizedBox(height: 22),
-          _ResultsHeader(state: state),
-          const SizedBox(height: 10),
-          if (state.error != null)
-            _ErrorState(
-              message: state.error!,
+    final List<SourceResult> issues = filter == null
+        ? state.results
+            .where((SourceResult item) => !item.ok)
+            .take(3)
+            .toList(growable: false)
+        : state.results
+            .where(
+              (SourceResult item) =>
+                  item.source == filter && !item.ok,
+            )
+            .toList(growable: false);
+
+    // La cabecera es pequeña y estable; las pistas se construyen bajo demanda
+    // para no montar (y decodificar) cientos de carátulas de una sola vez.
+    final List<Widget> header = <Widget>[
+      _OnlineHeader(
+        onRefresh: () {
+          ref.read(onlineSearchProvider.notifier).retryCurrent();
+        },
+        onConfigure: () => showSourcesDialog(context),
+      ),
+      const SizedBox(height: 18),
+      _SearchField(
+        controller: _search,
+        loading: state.loading,
+        onChanged: (String value) {
+          ref.read(onlineSearchProvider.notifier).onQueryChanged(value);
+        },
+        onClear: () {
+          _search.clear();
+          ref.read(onlineSearchProvider.notifier).onQueryChanged('');
+        },
+      ),
+      const SizedBox(height: 14),
+      if (inCollection)
+        _CollectionHeader(
+          collection: collection,
+          trackCount: state.tracks.length,
+          loading: state.collectionLoading,
+          bulkPlaying: _bulkPlaying,
+          onBack: () {
+            ref.read(onlineSearchProvider.notifier).closeCollection();
+          },
+          onPlayAll: _playAll,
+          onDownloadAll: _downloadAll,
+          onOpenOriginal: () => _openUrl(collection.permalink),
+        )
+      else ...<Widget>[
+        _ResultTypeBar(
+          selected: state.resultType,
+          onChanged: (OnlineSearchType type) {
+            ref.read(onlineSearchProvider.notifier).setResultType(type);
+          },
+        ),
+        const SizedBox(height: 12),
+        _SourceFilterBar(
+          providers: ref.watch(musicSourceCatalogProvider).providers,
+          selected: state.sourceFilter,
+          statuses: state.sourceStatuses,
+          onChanged: (MusicSourceId? source) {
+            ref.read(onlineSearchProvider.notifier).setSourceFilter(source);
+          },
+        ),
+        for (final SourceResult issue in issues)
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _SourceIssueBanner(
+              label: issue.source.label,
+              status: issue.status,
+              onConfigure: () =>
+                  showSourcesDialog(context, initial: issue.source),
               onRetry: () {
                 ref.read(onlineSearchProvider.notifier).retryCurrent();
               },
-            )
-          else if (state.loading && state.tracks.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 64),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (state.isEmpty)
-            EmptyState(
-              icon: Icons.cloud_off_rounded,
-              title: state.isTrending
-                  ? 'Sin tendencias por ahora'
-                  : 'Sin resultados',
-              message: state.isTrending
-                  ? 'No se pudieron cargar las pistas populares. Prueba a '
-                        'actualizar en unos segundos.'
-                  : 'No encontramos pistas para “${state.query}”. Prueba con '
-                        'otro título o artista.',
-            )
-          else
-            ...state.tracks.map(
-              (OnlineTrack track) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _OnlineTrackTile(
-                  track: track,
-                  downloaded: downloaded.contains(track.externalId),
-                  resolving: _resolvingId == track.externalId,
-                  canPlay: _can(track, (MusicSourceProvider p) => p.canStream),
-                  canDownload: _can(
-                    track,
-                    (MusicSourceProvider p) => p.canDownload,
-                  ),
-                  task: taskFor(track.externalId),
-                  onPlay: () => _play(track),
-                  onAddQueue: () => _addToQueue(track),
-                  onPlayNext: () => _addToQueue(track, next: true),
-                  onDownload: () => _download(track),
-                  onCancelDownload: () {
-                    ref.read(downloadManagerProvider).cancel(track.externalId);
-                  },
-                  onRetryDownload: () {
-                    ref.read(downloadManagerProvider).retry(track);
-                  },
-                ),
-              ),
             ),
-        ],
+          ),
+      ],
+      if (pending.isNotEmpty) ...<Widget>[
+        const SizedBox(height: 16),
+        _DownloadsPanel(
+          tasks: pending,
+          onCancel: (String id) {
+            ref.read(downloadManagerProvider).cancel(id);
+          },
+          onRetry: (OnlineTrack track) {
+            ref.read(downloadManagerProvider).retry(track);
+          },
+          onClear: () {
+            ref.read(downloadManagerProvider).clearFinished();
+          },
+        ),
+      ],
+      const SizedBox(height: 22),
+      _ResultsHeader(state: state),
+      const SizedBox(height: 10),
+      if (showCollections && state.collections.isNotEmpty) ...<Widget>[
+        for (final OnlineCollectionRef item in state.collections)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _CollectionTile(
+              collection: item,
+              onOpen: () {
+                ref.read(onlineSearchProvider.notifier).openCollection(item);
+              },
+              onOpenOriginal: () => _openUrl(item.permalink),
+            ),
+          ),
+        const SizedBox(height: 8),
+      ],
+    ];
+
+    final Widget? statusWidget = state.collectionError != null
+        ? _ErrorState(
+            message: state.collectionError!,
+            onRetry: collection == null
+                ? () => ref.read(onlineSearchProvider.notifier).retryCurrent()
+                : () => ref
+                    .read(onlineSearchProvider.notifier)
+                    .openCollection(collection),
+          )
+        : state.error != null
+        ? _ErrorState(
+            message: state.error!,
+            onRetry: () {
+              ref.read(onlineSearchProvider.notifier).retryCurrent();
+            },
+          )
+        : state.collectionLoading || (state.loading && state.tracks.isEmpty)
+        ? Padding(
+            padding: EdgeInsets.symmetric(vertical: 64),
+            child: Center(child: CircularProgressIndicator()),
+          )
+        : state.isEmpty
+        ? EmptyState(
+            icon: Icons.cloud_off_rounded,
+            title: inCollection
+                ? 'Colección vacía'
+                : state.isTrending
+                ? 'Sin tendencias por ahora'
+                : 'Sin resultados',
+            message: _emptyMessage(state, issues),
+          )
+        : null;
+
+    Widget trackTile(OnlineTrack track) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: _OnlineTrackTile(
+          track: track,
+          downloaded: downloaded.contains(track.externalId),
+          resolving: _resolvingId == track.externalId,
+          canPlay: _canPlay(track),
+          canDownload: _canDownload(track),
+          task: taskFor(track.externalId),
+          onPlay: () => _play(track),
+          onAddQueue: () => _addToQueue(track),
+          onPlayNext: () => _addToQueue(track, next: true),
+          onDownload: () => _download(track),
+          onCancelDownload: () {
+            ref.read(downloadManagerProvider).cancel(track.externalId);
+          },
+          onRetryDownload: () {
+            ref.read(downloadManagerProvider).retry(track);
+          },
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 150),
+        itemCount:
+            header.length +
+            (statusWidget == null ? 0 : 1) +
+            state.tracks.length,
+        itemBuilder: (BuildContext context, int index) {
+          if (index < header.length) return header[index];
+          int offset = index - header.length;
+          if (statusWidget != null) {
+            if (offset == 0) return statusWidget;
+            offset--;
+          }
+          return trackTile(state.tracks[offset]);
+        },
       ),
     );
+  }
+
+  String _emptyMessage(OnlineSearchState state, List<SourceResult> issues) {
+    if (state.openedCollection != null) {
+      return 'Esta colección no tiene pistas disponibles ahora mismo. '
+          'Prueba con otra o vuelve a intentarlo en unos segundos.';
+    }
+    if (state.isTrending) {
+      return 'No se pudieron cargar las pistas populares. Prueba a actualizar '
+          'en unos segundos.';
+    }
+    if (state.query.trim().isEmpty) {
+      return 'Escribe un título, artista o álbum para buscar '
+          '${state.resultType.label.toLowerCase()}.';
+    }
+    final String base = state.resultType == OnlineSearchType.songs
+        ? 'No encontramos pistas para “${state.query}”. Prueba con otro título '
+            'o artista.'
+        : 'No encontramos ${state.resultType.label.toLowerCase()} para '
+            '“${state.query}”. Prueba con otro término.';
+    if (issues.isEmpty) return base;
+    final String details = issues
+        .map(
+          (SourceResult item) =>
+              item.status.detail.isNotEmpty
+                  ? item.status.detail
+                  : SourceStatusUi.explain(item.status.issue),
+        )
+        .join(' ');
+    return '$base $details';
   }
 }
 
@@ -302,7 +501,7 @@ class _OnlineHeader extends StatelessWidget {
               ],
             ),
           ),
-          child: const Icon(Icons.graphic_eq_rounded, color: Colors.white),
+          child: Icon(Icons.graphic_eq_rounded, color: context.ink),
         ),
         const SizedBox(width: 14),
         Expanded(
@@ -313,14 +512,15 @@ class _OnlineHeader extends StatelessWidget {
                 'Música online',
                 style: text.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: context.ink,
                 ),
               ),
               const SizedBox(height: 2),
               Text(
-                'Audius y SoundCloud permiten streaming; Spotify aporta '
-                'metadatos. Configura tus tokens y filtra por fuente.',
-                style: text.bodySmall?.copyWith(color: Colors.white60),
+                'Audius y YouTube Music funcionan sin cuenta. SoundCloud, '
+                'Spotify y Tidal necesitan un token en Ajustes; Spotify y Tidal '
+                'solo aportan metadatos y el audio se busca en fuentes abiertas.',
+                style: text.bodySmall?.copyWith(color: context.inkAlpha(0.60)),
               ),
             ],
           ),
@@ -328,12 +528,12 @@ class _OnlineHeader extends StatelessWidget {
         IconButton(
           tooltip: 'Configurar fuentes',
           onPressed: onConfigure,
-          icon: const Icon(Icons.tune_rounded),
+          icon: Icon(Icons.tune_rounded),
         ),
         IconButton(
           tooltip: 'Actualizar',
           onPressed: onRefresh,
-          icon: const Icon(Icons.refresh_rounded),
+          icon: Icon(Icons.refresh_rounded),
         ),
       ],
     );
@@ -365,7 +565,7 @@ class _SearchField extends StatelessWidget {
         prefixIcon: Icon(Icons.search_rounded, color: tokens.accent),
         suffixIcon: controller.text.isEmpty
             ? (loading
-                  ? const Padding(
+                  ? Padding(
                       padding: EdgeInsets.all(14),
                       child: SizedBox(
                         width: 16,
@@ -377,7 +577,7 @@ class _SearchField extends StatelessWidget {
             : IconButton(
                 tooltip: 'Borrar búsqueda',
                 onPressed: onClear,
-                icon: const Icon(Icons.close_rounded),
+                icon: Icon(Icons.close_rounded),
               ),
         filled: true,
         fillColor: tokens.panelColor,
@@ -392,6 +592,243 @@ class _SearchField extends StatelessWidget {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: tokens.accent.withValues(alpha: 0.8)),
+        ),
+      ),
+    );
+  }
+}
+
+/// Filtros Canciones / Álbumes / Artistas / Playlists.
+class _ResultTypeBar extends StatelessWidget {
+  const _ResultTypeBar({required this.selected, required this.onChanged});
+
+  final OnlineSearchType selected;
+  final ValueChanged<OnlineSearchType> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final PolarisTokens tokens = context.tokens;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: <Widget>[
+          for (final OnlineSearchType type in OnlineSearchType.values) ...<Widget>[
+            ChoiceChip(
+              avatar: Icon(
+                type.icon,
+                size: 14,
+                color: selected == type ? tokens.accent : context.inkAlpha(0.54),
+              ),
+              label: Text(type.label),
+              selected: selected == type,
+              onSelected: (_) => onChanged(type),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Cabecera de una colección abierta con acciones colectivas.
+class _CollectionHeader extends StatelessWidget {
+  const _CollectionHeader({
+    required this.collection,
+    required this.trackCount,
+    required this.loading,
+    required this.bulkPlaying,
+    required this.onBack,
+    required this.onPlayAll,
+    required this.onDownloadAll,
+    required this.onOpenOriginal,
+  });
+
+  final OnlineCollectionRef collection;
+  final int trackCount;
+  final bool loading;
+  final bool bulkPlaying;
+  final VoidCallback onBack;
+  final VoidCallback onPlayAll;
+  final VoidCallback onDownloadAll;
+  final VoidCallback onOpenOriginal;
+
+  @override
+  Widget build(BuildContext context) {
+    final PolarisTokens tokens = context.tokens;
+    final bool busy = loading || bulkPlaying;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(6, 10, 10, 12),
+      decoration: tokens.panelDecoration(radius: 16, elevated: false),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              IconButton(
+                tooltip: 'Volver a los resultados',
+                onPressed: onBack,
+                icon: Icon(Icons.arrow_back_rounded),
+              ),
+              const SizedBox(width: 2),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      collection.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      collection.subtitle.isEmpty
+                          ? '${collection.source.label} · ${collection.kind.label}'
+                          : '${collection.subtitle} · ${collection.source.label}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: context.inkAlpha(0.54),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (loading)
+                Padding(
+                  padding: EdgeInsets.all(10),
+                  child: SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              else if (collection.permalink != null)
+                IconButton(
+                  tooltip: 'Abrir en ${collection.source.label}',
+                  onPressed: onOpenOriginal,
+                  icon: Icon(Icons.open_in_new_rounded, size: 18),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: <Widget>[
+              Flexible(
+                child: FilledButton.icon(
+                  onPressed: busy || trackCount == 0 ? null : onPlayAll,
+                  icon: Icon(Icons.play_arrow_rounded, size: 18),
+                  label: Text('Reproducir todo'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: OutlinedButton.icon(
+                  onPressed: busy || trackCount == 0 ? null : onDownloadAll,
+                  icon: Icon(Icons.cloud_download_outlined, size: 18),
+                  label: Text('Descargar todo'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$trackCount pistas',
+                style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila de álbum, artista o playlist devuelta por la búsqueda tipada.
+class _CollectionTile extends StatelessWidget {
+  const _CollectionTile({
+    required this.collection,
+    required this.onOpen,
+    required this.onOpenOriginal,
+  });
+
+  final OnlineCollectionRef collection;
+  final VoidCallback onOpen;
+  final VoidCallback onOpenOriginal;
+
+  @override
+  Widget build(BuildContext context) {
+    final PolarisTokens tokens = context.tokens;
+    final String count = collection.trackCount > 0
+        ? '${collection.trackCount} pistas'
+        : 'Ver contenido';
+    final String subtitle = collection.subtitle.isEmpty
+        ? count
+        : '${collection.subtitle} · $count';
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onOpen,
+        child: Ink(
+          decoration: tokens.panelDecoration(radius: 14, elevated: false),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            child: Row(
+              children: <Widget>[
+                _OnlineArtwork(url: collection.artworkUrl, size: 52),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        collection.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: Text(
+                              subtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.inkAlpha(0.54),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _SourceBadge(label: collection.source.label),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (collection.permalink != null)
+                  IconButton(
+                    tooltip: 'Abrir en ${collection.source.label}',
+                    onPressed: onOpenOriginal,
+                    icon: Icon(
+                      Icons.open_in_new_rounded,
+                      size: 17,
+                      color: context.inkAlpha(0.38),
+                    ),
+                  ),
+                Icon(Icons.chevron_right_rounded, color: context.inkAlpha(0.38)),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -418,7 +855,7 @@ class _SourceFilterBar extends StatelessWidget {
       child: Row(
         children: <Widget>[
           ChoiceChip(
-            label: const Text('Todas'),
+            label: Text('Todas'),
             selected: selected == null,
             onSelected: (_) => onChanged(null),
           ),
@@ -434,6 +871,7 @@ class _SourceFilterBar extends StatelessWidget {
                     shape: BoxShape.circle,
                     color: SourceStatusUi.color(
                       statuses[provider.id] ?? provider.status,
+                      context,
                     ),
                   ),
                 ),
@@ -453,18 +891,20 @@ class _SourceFilterBar extends StatelessWidget {
 
 class _SourceIssueBanner extends StatelessWidget {
   const _SourceIssueBanner({
+    required this.label,
     required this.status,
     required this.onConfigure,
     required this.onRetry,
   });
 
+  final String label;
   final MusicSourceStatus status;
   final VoidCallback onConfigure;
   final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
-    final Color color = SourceStatusUi.color(status);
+    final Color color = SourceStatusUi.color(status, context);
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
       decoration: BoxDecoration(
@@ -478,17 +918,15 @@ class _SourceIssueBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              status.detail.isNotEmpty
-                  ? status.detail
-                  : SourceStatusUi.explain(status.issue),
-              style: const TextStyle(fontSize: 12, color: Colors.white70),
+              '$label: ${status.detail.isNotEmpty ? status.detail : SourceStatusUi.explain(status.issue)}',
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
             ),
           ),
-          TextButton(onPressed: onConfigure, child: const Text('Ajustes')),
+          TextButton(onPressed: onConfigure, child: Text('Ajustes')),
           IconButton(
             tooltip: 'Reintentar',
             onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded, size: 18),
+            icon: Icon(Icons.refresh_rounded, size: 18),
           ),
         ],
       ),
@@ -504,13 +942,26 @@ class _ResultsHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final PolarisTokens tokens = context.tokens;
-    final String title = state.isTrending
+    final bool inCollection = state.openedCollection != null;
+    final bool showCollections =
+        !inCollection && state.resultType != OnlineSearchType.songs;
+    final String title = inCollection
+        ? 'Colección: ${state.openedCollection!.title}'
+        : state.isTrending
         ? 'Tendencias'
         : 'Resultados para “${state.query}”';
+    final int count = showCollections
+        ? state.collections.length
+        : state.tracks.length;
+    final String unit = showCollections ? 'resultados' : 'pistas';
     return Row(
       children: <Widget>[
         Icon(
-          state.isTrending ? Icons.trending_up_rounded : Icons.search_rounded,
+          inCollection
+              ? state.openedCollection!.kind.icon
+              : state.isTrending
+              ? Icons.trending_up_rounded
+              : Icons.search_rounded,
           size: 18,
           color: tokens.accent,
         ),
@@ -520,12 +971,12 @@ class _ResultsHeader extends StatelessWidget {
             title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
           ),
         ),
         Text(
-          '${state.tracks.length} pistas',
-          style: const TextStyle(fontSize: 11, color: Colors.white54),
+          '$count $unit',
+          style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
         ),
       ],
     );
@@ -593,7 +1044,7 @@ class _OnlineTrackTile extends StatelessWidget {
                         track.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontWeight: FontWeight.w600,
                           fontSize: 14,
                         ),
@@ -606,9 +1057,9 @@ class _OnlineTrackTile extends StatelessWidget {
                               subtitle,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white54,
+                                color: context.inkAlpha(0.54),
                               ),
                             ),
                           ),
@@ -622,11 +1073,11 @@ class _OnlineTrackTile extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   Formatters.duration(track.duration),
-                  style: const TextStyle(fontSize: 11, color: Colors.white38),
+                  style: TextStyle(fontSize: 11, color: context.inkAlpha(0.38)),
                 ),
                 const SizedBox(width: 4),
                 if (resolving)
-                  const Padding(
+                  Padding(
                     padding: EdgeInsets.all(12),
                     child: SizedBox(
                       width: 18,
@@ -646,18 +1097,18 @@ class _OnlineTrackTile extends StatelessWidget {
                             color: tokens.accent,
                             size: 28,
                           )
-                        : const Icon(
+                        : Icon(
                             Icons.open_in_new_rounded,
-                            color: Colors.white38,
+                            color: context.inkAlpha(0.38),
                             size: 24,
                           ),
                   ),
                 if (canPlay)
                   PopupMenuButton<String>(
                     tooltip: 'Añadir a la cola',
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.more_vert_rounded,
-                      color: Colors.white38,
+                      color: context.inkAlpha(0.38),
                       size: 20,
                     ),
                     onSelected: (String value) {
@@ -732,9 +1183,13 @@ class _DownloadAction extends StatelessWidget {
 
     if (busy) {
       final double progress = task?.progress ?? 0;
+      final bool indeterminate =
+          task?.indeterminate ?? true;
       return IconButton(
         tooltip: task?.status == DownloadStatus.queued
             ? 'En cola · toca para cancelar'
+            : indeterminate
+            ? 'Descargando… toca para cancelar'
             : 'Descargando ${(progress * 100).round()} % · toca para cancelar',
         onPressed: onCancel,
         icon: SizedBox(
@@ -744,15 +1199,17 @@ class _DownloadAction extends StatelessWidget {
             alignment: Alignment.center,
             children: <Widget>[
               CircularProgressIndicator(
-                value: task?.status == DownloadStatus.queued ? null : progress,
+                value: task?.status == DownloadStatus.queued || indeterminate
+                    ? null
+                    : progress,
                 strokeWidth: 2.4,
                 color: tokens.accent,
-                backgroundColor: Colors.white12,
+                backgroundColor: context.inkAlpha(0.12),
               ),
               Icon(
                 Icons.close_rounded,
                 size: 12,
-                color: Colors.white.withValues(alpha: 0.8),
+                color: context.inkAlpha(0.8),
               ),
             ],
           ),
@@ -761,10 +1218,13 @@ class _DownloadAction extends StatelessWidget {
     }
 
     if (task?.status == DownloadStatus.failed) {
+      final String detail = task?.error?.trim() ?? '';
       return IconButton(
-        tooltip: 'Error al descargar · reintentar',
+        tooltip: detail.isEmpty
+            ? 'Error al descargar · reintentar'
+            : 'Error al descargar: $detail · reintentar',
         onPressed: onRetry,
-        icon: const Icon(Icons.error_outline_rounded, color: Colors.redAccent),
+        icon: Icon(Icons.error_outline_rounded, color: Colors.redAccent),
       );
     }
 
@@ -772,14 +1232,14 @@ class _DownloadAction extends StatelessWidget {
       return IconButton(
         tooltip: 'Descarga cancelada · reintentar',
         onPressed: onRetry,
-        icon: const Icon(Icons.refresh_rounded),
+        icon: Icon(Icons.refresh_rounded),
       );
     }
 
     return IconButton(
       tooltip: 'Descargar a mi biblioteca',
       onPressed: onDownload,
-      icon: const Icon(Icons.cloud_download_outlined),
+      icon: Icon(Icons.cloud_download_outlined),
     );
   }
 }
@@ -810,13 +1270,16 @@ class _OnlineArtwork extends StatelessWidget {
       child: Icon(
         Icons.music_note_rounded,
         size: size * 0.4,
-        color: Colors.white.withValues(alpha: 0.85),
+        color: context.inkAlpha(0.85),
       ),
     );
 
     final String? source = url;
     if (source == null || source.isEmpty) return fallback;
 
+    final int decodeSize = (size * MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(24, 160);
     return ClipRRect(
       borderRadius: BorderRadius.circular(11),
       child: Image.network(
@@ -824,6 +1287,8 @@ class _OnlineArtwork extends StatelessWidget {
         width: size,
         height: size,
         fit: BoxFit.cover,
+        cacheWidth: decodeSize,
+        cacheHeight: decodeSize,
         filterQuality: FilterQuality.medium,
         errorBuilder: (
           BuildContext context,
@@ -911,7 +1376,7 @@ class _DownloadsPanel extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),
-              TextButton(onPressed: onClear, child: const Text('Limpiar')),
+              TextButton(onPressed: onClear, child: Text('Limpiar')),
             ],
           ),
           const SizedBox(height: 4),
@@ -945,13 +1410,17 @@ class _DownloadRow extends StatelessWidget {
     final bool failed = task.status == DownloadStatus.failed;
     final bool canceled = task.status == DownloadStatus.canceled;
     final bool retryable = failed || canceled;
+    final bool indeterminate = task.indeterminate;
     final String status = switch (task.status) {
       DownloadStatus.queued => 'En cola',
-      DownloadStatus.downloading => '${(task.progress * 100).round()} %',
+      DownloadStatus.downloading => indeterminate
+          ? 'Descargando…'
+          : '${(task.progress * 100).round()} %',
       DownloadStatus.completed => 'Completada',
       DownloadStatus.failed => 'Error',
       DownloadStatus.canceled => 'Cancelada',
     };
+    final String? error = failed ? task.error?.trim() : null;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
@@ -971,20 +1440,34 @@ class _DownloadRow extends StatelessWidget {
                   '${task.track.artist} · ${task.track.title}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
+                  style: TextStyle(fontSize: 12),
                 ),
                 const SizedBox(height: 4),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: retryable || task.status == DownloadStatus.queued
+                    value: retryable ||
+                            task.status == DownloadStatus.queued ||
+                            indeterminate
                         ? null
                         : task.progress,
                     minHeight: 3,
-                    backgroundColor: Colors.white12,
+                    backgroundColor: context.inkAlpha(0.12),
                     color: failed ? Colors.redAccent : tokens.accent,
                   ),
                 ),
+                if (error != null && error.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    error,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.redAccent,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -993,7 +1476,7 @@ class _DownloadRow extends StatelessWidget {
             status,
             style: TextStyle(
               fontSize: 10,
-              color: failed ? Colors.redAccent : Colors.white54,
+              color: failed ? Colors.redAccent : context.inkAlpha(0.54),
             ),
           ),
           IconButton(
@@ -1025,8 +1508,8 @@ class _ErrorState extends StatelessWidget {
       message: message,
       action: FilledButton.icon(
         onPressed: onRetry,
-        icon: const Icon(Icons.refresh_rounded),
-        label: const Text('Reintentar'),
+        icon: Icon(Icons.refresh_rounded),
+        label: Text('Reintentar'),
       ),
     );
   }

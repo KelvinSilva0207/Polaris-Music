@@ -11,10 +11,13 @@ import 'package:window_manager/legacy.dart';
 
 import '../../../core/models/track.dart';
 import '../../../core/providers/compact_style_provider.dart';
+import '../../../core/services/window_service.dart';
 import '../../../core/theme/compact_style_config.dart';
+import '../../../core/theme/motion_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/compact_surface.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/track_artwork.dart';
 import '../domain/dynamic_island_controller.dart';
@@ -33,10 +36,16 @@ class IslandWindow extends ConsumerStatefulWidget {
     super.key,
     required this.onRestore,
     required this.onHide,
+    this.onCapsuleGeometryChanged,
   });
 
   final VoidCallback onRestore;
   final VoidCallback onHide;
+
+  /// Notifica el tamaño y radio reales de la píldora para que la ventana
+  /// recorte su región al contorno visible y deje pasar los clics de alrededor.
+  final void Function(Size capsuleSize, double radius)?
+  onCapsuleGeometryChanged;
 
   @override
   ConsumerState<IslandWindow> createState() => _IslandWindowState();
@@ -47,6 +56,8 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
   bool _dismissing = false;
   Timer? _hideTimer;
   Timer? _dismissTimer;
+  Size? _capsuleSize;
+  double? _capsuleRadius;
 
   @override
   void initState() {
@@ -68,7 +79,15 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     _hideTimer?.cancel();
     setState(() => _dismissing = true);
     _dismissTimer?.cancel();
-    _dismissTimer = Timer(const Duration(milliseconds: 220), () {
+    final Duration delay = context.motion.duration(
+      const Duration(milliseconds: 220),
+      category: MotionCategory.island,
+    );
+    if (delay == Duration.zero) {
+      widget.onHide();
+      return;
+    }
+    _dismissTimer = Timer(delay, () {
       if (mounted) widget.onHide();
     });
   }
@@ -104,6 +123,15 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     } else if (!_persistentlyExpanded) {
       _scheduleAutoHide();
     }
+  }
+
+  /// Solo avisa cuando cambia la geometría: el tamaño de la región nativa no
+  /// debe recalcularse en cada frame de progreso de la canción.
+  void _syncCapsuleGeometry(Size size, double radius) {
+    if (_capsuleSize == size && _capsuleRadius == radius) return;
+    _capsuleSize = size;
+    _capsuleRadius = radius;
+    widget.onCapsuleGeometryChanged?.call(size, radius);
   }
 
   @override
@@ -161,13 +189,29 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     final String? message = island.message;
     final PolarisTokens tokens = context.tokens;
     final ResolvedCompactStyle resolved = style.resolve(tokens);
+    final Duration introDuration = context.motion.duration(
+      const Duration(milliseconds: 380),
+      category: MotionCategory.island,
+    );
+    final Duration dismissDuration = context.motion.duration(
+      const Duration(milliseconds: 220),
+      category: MotionCategory.island,
+    );
+
+    final Size capsuleSize = expanded
+        ? WindowService.islandExpandedCapsule
+        : WindowService.islandCompactCapsule;
+    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted) return;
+      _syncCapsuleGeometry(capsuleSize, resolved.radius);
+    });
 
     return Material(
       color: Colors.transparent,
       child: Center(
         child: TweenAnimationBuilder<double>(
           tween: Tween<double>(begin: 0.82, end: 1),
-          duration: const Duration(milliseconds: 380),
+          duration: introDuration,
           curve: Curves.easeOutCubic,
           builder: (BuildContext context, double scale, Widget? child) {
             return Opacity(
@@ -177,11 +221,11 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
           },
           child: AnimatedScale(
             scale: _dismissing ? 0.68 : 1,
-            duration: const Duration(milliseconds: 220),
+            duration: dismissDuration,
             curve: Curves.easeInCubic,
             child: AnimatedOpacity(
               opacity: _dismissing ? 0 : 1,
-              duration: const Duration(milliseconds: 220),
+              duration: dismissDuration,
               curve: Curves.easeInCubic,
               child: MouseRegion(
                 onEnter: (_) => _setHovering(true),
@@ -241,14 +285,26 @@ class _Capsule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double artworkSize = hovering ? 68 : 44;
+    final Duration capsuleDuration = context.motion.duration(
+      const Duration(milliseconds: 320),
+      category: MotionCategory.island,
+    );
+    final Duration switchDuration = context.motion.duration(
+      const Duration(milliseconds: 240),
+      category: MotionCategory.island,
+    );
     return CompactPanel(
       style: style,
       padding: EdgeInsets.zero,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 320),
+        duration: capsuleDuration,
         curve: Curves.easeOutCubic,
-        width: hovering ? 376 : 196,
-        height: hovering ? 104 : 64,
+        width: hovering
+            ? WindowService.islandExpandedCapsule.width
+            : WindowService.islandCompactCapsule.width,
+        height: hovering
+            ? WindowService.islandExpandedCapsule.height
+            : WindowService.islandCompactCapsule.height,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(style.radius),
           child: Stack(
@@ -284,7 +340,7 @@ class _Capsule extends StatelessWidget {
                   children: <Widget>[
                     AnimatedContainer(
                       key: ValueKey<String>('island-artwork-${track?.id ?? 0}'),
-                      duration: const Duration(milliseconds: 320),
+                      duration: capsuleDuration,
                       curve: Curves.easeOutCubic,
                       width: artworkSize,
                       height: artworkSize,
@@ -300,7 +356,7 @@ class _Capsule extends StatelessWidget {
                     Expanded(
                       child: _draggable(
                         AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 240),
+                          duration: switchDuration,
                           child: hovering
                               ? _ExpandedInfo(
                                   key: ValueKey<String>(
@@ -322,7 +378,7 @@ class _Capsule extends StatelessWidget {
                       ),
                     ),
                     AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 240),
+                      duration: switchDuration,
                       transitionBuilder: (
                         Widget child,
                         Animation<double> animation,
@@ -341,7 +397,7 @@ class _Capsule extends StatelessWidget {
                               key: const ValueKey<String>('hide'),
                               tooltip: 'Ocultar isla',
                               icon: Icons.visibility_off_rounded,
-                              color: Colors.white54,
+                              color: context.inkAlpha(0.54),
                               onTap: onHide,
                             ),
                     ),
@@ -374,21 +430,21 @@ class _CompactInfo extends StatelessWidget {
           track?.title ?? 'Polaris Music',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 3),
         Text(
           track?.artist ?? 'Nada en reproducción',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 10, color: Colors.white60),
+          style: TextStyle(fontSize: 10, color: context.inkAlpha(0.60)),
         ),
         if (track == null)
           Text(
             'Pasa el ratón para ver controles',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 8.5, color: Colors.white38),
+            style: TextStyle(fontSize: 8.5, color: context.inkAlpha(0.38)),
           ),
       ],
     );
@@ -425,14 +481,14 @@ class _ExpandedInfo extends StatelessWidget {
           title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 3),
         Text(
           subtitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 11, color: Colors.white60),
+          style: TextStyle(fontSize: 11, color: context.inkAlpha(0.60)),
         ),
         if (message == null) ...<Widget>[
           const SizedBox(height: 5),
@@ -441,7 +497,7 @@ class _ExpandedInfo extends StatelessWidget {
             '${playing ? '  ·  En reproducción' : ''}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 9, color: Colors.white38),
+            style: TextStyle(fontSize: 9, color: context.inkAlpha(0.38)),
           ),
         ],
       ],
@@ -475,38 +531,66 @@ class _Controls extends StatelessWidget {
         _Action(
           tooltip: 'Anterior',
           icon: Icons.skip_previous_rounded,
-          color: Colors.white70,
+          color: context.inkAlpha(0.70),
           onTap: controller.previous,
         ),
-        _Action(
-          tooltip: playing ? 'Pausar' : 'Reproducir',
-          icon: buffering
-              ? Icons.hourglass_top_rounded
-              : playing
-              ? Icons.pause_rounded
-              : Icons.play_arrow_rounded,
-          color: accent,
-          onTap: controller.togglePlay,
-        ),
+        if (buffering)
+          _LoadingAction(color: accent, onTap: controller.togglePlay)
+        else
+          _Action(
+            tooltip: playing ? 'Pausar' : 'Reproducir',
+            icon: playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+            color: accent,
+            onTap: controller.togglePlay,
+          ),
         _Action(
           tooltip: 'Siguiente',
           icon: Icons.skip_next_rounded,
-          color: Colors.white70,
+          color: context.inkAlpha(0.70),
           onTap: controller.next,
         ),
         _Action(
           tooltip: 'Abrir ventana principal',
           icon: Icons.open_in_full_rounded,
-          color: Colors.white54,
+          color: context.inkAlpha(0.54),
           onTap: onRestore,
         ),
         _Action(
           tooltip: 'Ocultar isla',
           icon: Icons.visibility_off_rounded,
-          color: Colors.white54,
+          color: context.inkAlpha(0.54),
           onTap: onHide,
         ),
       ],
+    );
+  }
+}
+
+/// Igual que [_Action] pero con spinner, para el estado de carga. Mantiene el
+/// mismo tamaño y área táctil que el resto de acciones.
+class _LoadingAction extends StatelessWidget {
+  const _LoadingAction({required this.color, required this.onTap});
+
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Cargando…',
+      waitDuration: const Duration(milliseconds: 400),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Padding(
+          padding: const EdgeInsets.all(7),
+          child: SizedBox(
+            width: 14,
+            height: 14,
+            child: CircularProgressIndicator(strokeWidth: 2, color: color),
+          ),
+        ),
+      ),
     );
   }
 }

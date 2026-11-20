@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import '../../core/models/track.dart';
 import '../../core/theme/theme_tokens.dart';
 import '../../core/utils/formatters.dart';
+import '../../core/utils/metadata_text.dart';
 
 /// Diálogo "Propiedades" de una pista.
 ///
@@ -29,7 +30,7 @@ class TrackPropertiesModal {
   }) {
     return showDialog<void>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.62),
+      barrierColor: context.tokens.shadowColor.withValues(alpha: 0.62),
       builder: (BuildContext dialogContext) =>
           _TrackPropertiesDialog(track: track, accent: accent),
     );
@@ -201,7 +202,11 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
                                   _PropertyRow(
                                     label: 'Título',
                                     value: _firstNonEmpty(<String?>[
-                                      metadata?.title,
+                                      metadata == null
+                                          ? null
+                                          : MetadataText.repair(
+                                              metadata.title ?? '',
+                                            ),
                                       widget.track.title,
                                     ]),
                                     icon: Icons.title_rounded,
@@ -209,7 +214,11 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
                                   _PropertyRow(
                                     label: 'Artista',
                                     value: _firstNonEmpty(<String?>[
-                                      metadata?.artist,
+                                      metadata == null
+                                          ? null
+                                          : MetadataText.repair(
+                                              metadata.artist ?? '',
+                                            ),
                                       widget.track.artist,
                                     ]),
                                     icon: Icons.person_rounded,
@@ -217,7 +226,11 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
                                   _PropertyRow(
                                     label: 'Álbum',
                                     value: _firstNonEmpty(<String?>[
-                                      metadata?.album,
+                                      metadata == null
+                                          ? null
+                                          : MetadataText.repair(
+                                              metadata.album ?? '',
+                                            ),
                                       widget.track.album,
                                     ]),
                                     icon: Icons.album_rounded,
@@ -351,7 +364,10 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
   String _genreLabel(AudioMetadata? metadata) {
     final String genres = metadata == null
         ? ''
-        : metadata.genres.where((String g) => g.trim().isNotEmpty).join(', ');
+        : metadata.genres
+              .map((String g) => MetadataText.repair(g))
+              .where((String g) => g.trim().isNotEmpty)
+              .join(', ');
     return _firstNonEmpty(<String?>[genres, widget.track.genre]);
   }
 
@@ -379,9 +395,12 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
     final bool hasLocal = localPath != null && File(localPath).existsSync();
     if (picture == null && !hasLocal) return;
 
+    final int decodeSize = (496 * MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(48, 600);
     showDialog<void>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.8),
+      barrierColor: context.tokens.shadowColor.withValues(alpha: 0.8),
       builder: (BuildContext context) => Dialog(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -390,7 +409,7 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
           child: DecoratedBox(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: Colors.black.withValues(alpha: 0.4),
+              color: context.tokens.panelOverlay.withValues(alpha: 0.92),
               border: Border.all(color: widget.accent.withValues(alpha: 0.35)),
             ),
             child: Stack(
@@ -403,10 +422,17 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(14),
                       child: picture != null
-                          ? Image.memory(picture.bytes, fit: BoxFit.contain)
+                          ? Image.memory(
+                              picture.bytes,
+                              fit: BoxFit.contain,
+                              cacheWidth: decodeSize,
+                              cacheHeight: decodeSize,
+                            )
                           : Image.file(
                               File(localPath!),
                               fit: BoxFit.contain,
+                              cacheWidth: decodeSize,
+                              cacheHeight: decodeSize,
                               errorBuilder:
                                   (
                                     BuildContext context,
@@ -470,7 +496,7 @@ BoxDecoration _panelDecoration(PolarisTokens tokens, Color accent) {
           spreadRadius: 2,
         ),
         BoxShadow(
-          color: Colors.black.withValues(alpha: 0.5),
+          color: tokens.shadowColor.withValues(alpha: 0.5),
           blurRadius: 40,
           offset: const Offset(0, 18),
         ),
@@ -502,7 +528,7 @@ BoxDecoration _panelDecoration(PolarisTokens tokens, Color accent) {
     border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
     boxShadow: <BoxShadow>[
       BoxShadow(
-        color: Colors.black.withValues(alpha: 0.45),
+        color: tokens.shadowColor.withValues(alpha: 0.45),
         blurRadius: 30,
         offset: const Offset(0, 14),
       ),
@@ -531,6 +557,9 @@ class _Header extends StatelessWidget {
     final String? artworkPath = track.artworkPath;
     final bool hasFileArtwork =
         artworkPath != null && File(artworkPath).existsSync();
+    final int thumbSize = (62 * MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(24, 160);
 
     final Widget artwork = ClipRRect(
       borderRadius: BorderRadius.circular(14),
@@ -538,18 +567,25 @@ class _Header extends StatelessWidget {
         width: 62,
         height: 62,
         child: picture != null
-            ? Image.memory(picture.bytes, fit: BoxFit.cover)
+            ? Image.memory(
+                picture.bytes,
+                fit: BoxFit.cover,
+                cacheWidth: thumbSize,
+                cacheHeight: thumbSize,
+              )
             : hasFileArtwork
             ? Image.file(
                 File(artworkPath),
                 fit: BoxFit.cover,
+                cacheWidth: thumbSize,
+                cacheHeight: thumbSize,
                 errorBuilder: (
                   BuildContext context,
                   Object error,
                   StackTrace? stackTrace,
-                ) => _artworkFallback(),
+                ) => _artworkFallback(context),
               )
-            : _artworkFallback(),
+            : _artworkFallback(context),
       ),
     );
 
@@ -588,10 +624,10 @@ class _Header extends StatelessWidget {
                 track.title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: context.ink,
                 ),
               ),
               const SizedBox(height: 2),
@@ -599,7 +635,7 @@ class _Header extends StatelessWidget {
                 '${track.artist} · ${track.album}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12, color: Colors.white60),
+                style: TextStyle(fontSize: 12, color: context.inkAlpha(0.60)),
               ),
             ],
           ),
@@ -613,7 +649,7 @@ class _Header extends StatelessWidget {
     );
   }
 
-  Widget _artworkFallback() {
+  Widget _artworkFallback(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -625,9 +661,9 @@ class _Header extends StatelessWidget {
           ],
         ),
       ),
-      child: const Icon(
+      child: Icon(
         Icons.music_note_rounded,
-        color: Colors.white,
+        color: context.ink,
         size: 28,
       ),
     );
@@ -664,7 +700,7 @@ class _Section extends StatelessWidget {
                   fontSize: 10.5,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 1.0,
-                  color: Colors.white.withValues(alpha: 0.55),
+                  color: context.inkAlpha(0.55),
                 ),
               ),
               const SizedBox(width: 10),
@@ -706,7 +742,7 @@ class _PropertyRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, size: 14, color: Colors.white.withValues(alpha: 0.32)),
+          Icon(icon, size: 14, color: context.inkAlpha(0.32)),
           const SizedBox(width: 8),
           SizedBox(
             width: 104,
@@ -715,18 +751,18 @@ class _PropertyRow extends StatelessWidget {
               style: TextStyle(
                 fontSize: 11.5,
                 height: 1.4,
-                color: Colors.white.withValues(alpha: 0.52),
+                color: context.inkAlpha(0.52),
               ),
             ),
           ),
           Expanded(
             child: SelectableText(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12.5,
                 height: 1.4,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                color: context.ink,
               ),
             ),
           ),
@@ -788,7 +824,7 @@ class _ArtworkRow extends StatelessWidget {
           Icon(
             Icons.image_rounded,
             size: 14,
-            color: Colors.white.withValues(alpha: 0.32),
+            color: context.inkAlpha(0.32),
           ),
           const SizedBox(width: 8),
           SizedBox(
@@ -797,17 +833,17 @@ class _ArtworkRow extends StatelessWidget {
               'Carátula',
               style: TextStyle(
                 fontSize: 11.5,
-                color: Colors.white.withValues(alpha: 0.52),
+                color: context.inkAlpha(0.52),
               ),
             ),
           ),
           Expanded(
             child: Text(
               detail,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                color: context.ink,
               ),
             ),
           ),

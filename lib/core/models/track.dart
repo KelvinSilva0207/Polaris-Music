@@ -1,7 +1,10 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 
 import '../database/app_database.dart';
+import '../utils/artwork_paths.dart';
+import '../utils/metadata_text.dart';
 
 /// Procedencia de una pista.
 ///
@@ -9,6 +12,28 @@ import '../database/app_database.dart';
 /// - [downloaded]: archivo traído por el módulo online y registrado en Drift.
 /// - [online]: transmisión en red; no se persiste y su `id` es efímero.
 enum TrackOrigin { local, downloaded, online }
+
+/// URL alternativa de audio para la misma pista.
+///
+/// YouTube Music entrega varios formatos ligados a un cliente InnerTube
+/// concreto (`IOS`, `ANDROID_MUSIC`, `WEB_REMIX`). Cada URL debe abrirse con el
+/// `User-Agent` de ese cliente; mezclarlos produce el temido error 403 de
+/// `googlevideo.com`. Guardamos las alternativas junto a la pista para que el
+/// motor pueda probarlas sin volver a consultar la red.
+@immutable
+class StreamAlternative {
+  const StreamAlternative({
+    required this.url,
+    required this.httpHeaders,
+    this.label = '',
+  });
+
+  final String url;
+  final Map<String, String> httpHeaders;
+
+  /// Etiqueta legible del cliente/usuario que generó esta URL (solo logs).
+  final String label;
+}
 
 /// Entidad de canción usada por reproductor, letras y estadísticas.
 ///
@@ -44,6 +69,8 @@ class Track {
     this.origin = TrackOrigin.local,
     this.externalId,
     this.sourceLabel,
+    this.httpHeaders = const <String, String>{},
+    this.streamAlternatives = const <StreamAlternative>[],
   });
 
   /// Pista efímera de streaming: no existe en la biblioteca.
@@ -60,6 +87,8 @@ class Track {
     String? artworkPath,
     String? artworkUrl,
     String? sourceLabel,
+    Map<String, String> httpHeaders = const <String, String>{},
+    List<StreamAlternative> streamAlternatives = const <StreamAlternative>[],
   }) => Track(
     id: ephemeralId(externalId),
     path: streamUrl,
@@ -73,6 +102,8 @@ class Track {
     origin: TrackOrigin.online,
     externalId: externalId,
     sourceLabel: sourceLabel,
+    httpHeaders: httpHeaders,
+    streamAlternatives: streamAlternatives,
   );
 
   /// Id negativo y estable para pistas que no viven en Drift.
@@ -119,6 +150,12 @@ class Track {
   /// Nombre de la fuente online (p. ej. `Audius`).
   final String? sourceLabel;
 
+  /// Cabeceras HTTP necesarias para abrir la URL de una pista online.
+  final Map<String, String> httpHeaders;
+
+  /// URLs de respaldo con sus propias cabeceras, en orden de preferencia.
+  final List<StreamAlternative> streamAlternatives;
+
   bool get isOnline => origin == TrackOrigin.online;
   bool get isDownloaded => origin == TrackOrigin.downloaded;
   bool get isLocal => origin == TrackOrigin.local;
@@ -135,11 +172,11 @@ class Track {
   factory Track.fromRow(TrackRow row) => Track(
     id: row.id,
     path: row.path,
-    title: row.title,
-    artist: row.artist,
-    album: row.album,
-    albumArtist: row.albumArtist ?? '',
-    genre: row.genre ?? '',
+    title: MetadataText.clean(row.title, p.basenameWithoutExtension(row.path)),
+    artist: MetadataText.clean(row.artist, 'Desconocido'),
+    album: MetadataText.clean(row.album, 'Desconocido'),
+    albumArtist: MetadataText.clean(row.albumArtist, ''),
+    genre: MetadataText.clean(row.genre, ''),
     year: row.year,
     trackNumber: row.trackNumber,
     discNumber: row.discNumber,
@@ -148,7 +185,7 @@ class Track {
     format: row.format ?? '',
     fileSize: row.fileSize,
     durationMs: row.durationMs,
-    artworkPath: row.artworkPath,
+    artworkPath: resolveArtworkPath(row.artworkPath, row.path),
     replayGainTrackDb: row.replayGainTrackDb,
     replayGainAlbumDb: row.replayGainAlbumDb,
     isFavorite: row.isFavorite,
@@ -163,6 +200,7 @@ class Track {
   );
 
   Track copyWith({
+    String? path,
     String? title,
     String? artist,
     String? album,
@@ -179,9 +217,11 @@ class Track {
     DateTime? updatedAt,
     double? replayGainTrackDb,
     double? replayGainAlbumDb,
+    Map<String, String>? httpHeaders,
+    List<StreamAlternative>? streamAlternatives,
   }) => Track(
     id: id,
-    path: path,
+    path: path ?? this.path,
     title: title ?? this.title,
     artist: artist ?? this.artist,
     album: album ?? this.album,
@@ -207,6 +247,8 @@ class Track {
     origin: origin,
     externalId: externalId,
     sourceLabel: sourceLabel,
+    httpHeaders: httpHeaders ?? this.httpHeaders,
+    streamAlternatives: streamAlternatives ?? this.streamAlternatives,
   );
 
   /// Valores listos para actualizar solo la fila de estadísticas.

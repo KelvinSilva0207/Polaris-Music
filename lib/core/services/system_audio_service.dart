@@ -67,6 +67,7 @@ class SystemAudioService {
   StreamSubscription<void>? _noisySub;
   StreamSubscription<AudioDevicesChangedEvent>? _devicesSub;
   Timer? _pollTimer;
+  bool _initialized = false;
 
   IMMDeviceEnumerator? _enumerator;
   bool _comInitialized = false;
@@ -100,8 +101,13 @@ class SystemAudioService {
   }();
 
   Future<void> initialize() async {
-    if (kIsWeb) return;
+    if (kIsWeb || _initialized) return;
+    _initialized = true;
 
+    // Cancelar antes de reasignar evita timers y suscripciones huérfanos si
+    // bootstrap se ejecuta más de una vez en la misma sesión.
+    await _engineSub?.cancel();
+    _pollTimer?.cancel();
     _engineSub = engine.states.listen(_onEngineState);
 
     if (Platform.isAndroid) {

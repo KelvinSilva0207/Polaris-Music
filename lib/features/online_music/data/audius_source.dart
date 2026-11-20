@@ -1,6 +1,7 @@
 import '../domain/music_source.dart';
-import '../domain/online_music_repository.dart';
+import '../domain/online_catalog_items.dart';
 import '../domain/online_track.dart';
+import 'online_music_service.dart';
 import 'source_helpers.dart';
 
 /// Adaptador del catálogo abierto de Audius al contrato de proveedores.
@@ -10,7 +11,7 @@ import 'source_helpers.dart';
 class AudiusSource implements MusicSourceProvider {
   AudiusSource(this._repository);
 
-  final OnlineMusicRepository _repository;
+  final OnlineMusicService _repository;
 
   MusicSourceStatus _status = const MusicSourceStatus();
 
@@ -73,6 +74,35 @@ class AudiusSource implements MusicSourceProvider {
         source: id,
         status: MusicSourceErrorMapper.map(error, id),
       );
+    }
+  }
+
+  @override
+  Future<List<OnlineCollectionRef>> searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+  }) async {
+    try {
+      return await _repository.searchCollections(
+        query,
+        type: type,
+        limit: limit,
+      );
+    } on Object {
+      return const <OnlineCollectionRef>[];
+    }
+  }
+
+  @override
+  Future<List<OnlineTrack>> collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+  }) async {
+    try {
+      return await _repository.collectionTracks(collection, limit: limit);
+    } on Object {
+      return const <OnlineTrack>[];
     }
   }
 

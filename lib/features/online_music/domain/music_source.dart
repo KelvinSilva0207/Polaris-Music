@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'online_catalog_items.dart';
 import 'online_track.dart';
 
 /// Identificador estable de un proveedor de catálogo online.
@@ -100,22 +101,42 @@ class SourceResult {
     required this.source,
     this.items = const <OnlineTrack>[],
     this.status = const MusicSourceStatus(),
+    this.albums = const <OnlineCollectionRef>[],
+    this.artists = const <OnlineCollectionRef>[],
+    this.playlists = const <OnlineCollectionRef>[],
   });
 
   final MusicSourceId source;
   final List<OnlineTrack> items;
   final MusicSourceStatus status;
+  final List<OnlineCollectionRef> albums;
+  final List<OnlineCollectionRef> artists;
+  final List<OnlineCollectionRef> playlists;
 
   bool get ok => status.available;
   bool get hasItems => items.isNotEmpty;
 
+  List<OnlineCollectionRef> collections(OnlineSearchType type) =>
+      switch (type) {
+        OnlineSearchType.albums => albums,
+        OnlineSearchType.artists => artists,
+        OnlineSearchType.playlists => playlists,
+        OnlineSearchType.songs => const <OnlineCollectionRef>[],
+      };
+
   SourceResult copyWith({
     List<OnlineTrack>? items,
     MusicSourceStatus? status,
+    List<OnlineCollectionRef>? albums,
+    List<OnlineCollectionRef>? artists,
+    List<OnlineCollectionRef>? playlists,
   }) => SourceResult(
     source: source,
     items: items ?? this.items,
     status: status ?? this.status,
+    albums: albums ?? this.albums,
+    artists: artists ?? this.artists,
+    playlists: playlists ?? this.playlists,
   );
 }
 
@@ -144,6 +165,23 @@ abstract interface class MusicSourceProvider {
   Future<SourceResult> search(String query, {int limit = 25});
 
   Future<SourceResult> trending({int limit = 25});
+
+  /// Busca colecciones públicas (álbumes, artistas o playlists).
+  ///
+  /// El agregador invoca este método con tipo estático [MusicSourceProvider],
+  /// por lo que debe formar parte del contrato: una extensión no despacharía a
+  /// la implementación concreta de cada fuente.
+  Future<List<OnlineCollectionRef>> searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+  });
+
+  /// Devuelve las pistas de una colección pública de este proveedor.
+  Future<List<OnlineTrack>> collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+  });
 
   /// Resuelve una URL reproducible. Solo lo implementan fuentes con [canStream].
   Future<ResolvedStream> resolveStream(OnlineTrack track);

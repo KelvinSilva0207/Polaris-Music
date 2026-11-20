@@ -109,6 +109,15 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
         .get();
   }
 
+  /// Todas las filas, para validar las rutas de carátula contra el disco.
+  Future<List<TrackRow>> allRows() => select(tracks).get();
+
+  /// Asocia una carátula que ya existe en el caché de disco.
+  Future<void> setArtworkPath(int id, String path) =>
+      (update(tracks)..where((t) => t.id.equals(id))).write(
+        TracksCompanion(artworkPath: Value(path)),
+      );
+
   /// Inserta o actualiza una pista escaneada sin perder estadísticas.
   ///
   /// Devuelve el id de la fila.

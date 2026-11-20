@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../app/app_navigation.dart';
+import '../../core/theme/motion_config.dart';
 import '../../core/theme/theme_tokens.dart';
+import 'motion_scope.dart';
 
 /// Variante visual del mismo indicador líquido.
 enum LiquidNavLayout { bottom, top }
@@ -47,6 +49,7 @@ class _LiquidNavBarState extends State<LiquidNavBar>
 
   late final AnimationController _controller;
   late final CurvedAnimation _position;
+  MotionConfig? _motion;
   int _from = 0;
   int _to = 0;
 
@@ -63,12 +66,30 @@ class _LiquidNavBarState extends State<LiquidNavBar>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _motion = context.motion;
+    final Duration duration = _motion!.duration(
+      const Duration(milliseconds: 520),
+      category: MotionCategory.gestures,
+    );
+    _controller.duration = duration == Duration.zero
+        ? const Duration(microseconds: 1)
+        : duration;
+  }
+
+  @override
   void didUpdateWidget(covariant LiquidNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selected == widget.selected) return;
     _from = _visualIndex;
     _to = widget.selected.index;
-    _controller.forward(from: 0);
+    if (_motion?.gestures ?? true) {
+      _controller.forward(from: 0);
+    } else {
+      _from = _to;
+      _controller.value = 1;
+    }
   }
 
   /// Índice que se está mostrando ahora mismo, incluso a mitad de viaje.
@@ -183,21 +204,27 @@ class _LiquidNavItem extends StatelessWidget {
     final bool showLabel = !top || !compact;
 
     final Widget iconWidget = TweenAnimationBuilder<Color?>(
-      duration: const Duration(milliseconds: 280),
+      duration: context.motion.duration(
+        const Duration(milliseconds: 280),
+        category: MotionCategory.gestures,
+      ),
       tween: ColorTween(
-        begin: selected ? Colors.white60 : accent,
-        end: selected ? accent : Colors.white60,
+        begin: selected ? context.inkAlpha(0.60) : accent,
+        end: selected ? accent : context.inkAlpha(0.60),
       ),
       builder: (BuildContext context, Color? color, Widget? _) =>
           Icon(icon, size: top ? 18 : 22, color: color),
     );
     final Widget label = AnimatedDefaultTextStyle(
-      duration: const Duration(milliseconds: 280),
+      duration: context.motion.duration(
+        const Duration(milliseconds: 280),
+        category: MotionCategory.gestures,
+      ),
       curve: Curves.easeOutCubic,
       style: TextStyle(
         fontSize: top ? 12.5 : 10.5,
         fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
-        color: selected ? Colors.white : Colors.white70,
+        color: selected ? context.ink : context.inkAlpha(0.70),
       ),
       child: Text(section.label, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
@@ -227,7 +254,10 @@ class _LiquidNavItem extends StatelessWidget {
           onTap: onTap,
           child: AnimatedScale(
             scale: selected ? 1.08 : 1,
-            duration: const Duration(milliseconds: 460),
+            duration: context.motion.duration(
+              const Duration(milliseconds: 460),
+              category: MotionCategory.gestures,
+            ),
             curve: Curves.easeOutBack,
             child: Center(
               child: Padding(

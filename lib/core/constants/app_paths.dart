@@ -22,7 +22,17 @@ class AppPaths {
     return dir;
   }
 
-  static Future<Directory> artwork() => _sub('artwork');
+  static Directory? _artworkDir;
+
+  static Future<Directory> artwork() async {
+    final Directory dir = await _sub('artwork');
+    _artworkDir = dir;
+    return dir;
+  }
+
+  /// Ruta del caché ya resuelta tras el bootstrap; permite recuperar carátulas
+  /// sin volver a pedir `path_provider` desde el modelo de pista.
+  static String? get artworkPathSync => _artworkDir?.path;
 
   static Future<Directory> backups() => _sub('backups');
 

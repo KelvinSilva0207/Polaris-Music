@@ -4,6 +4,7 @@ import 'package:polaris_music/features/online_music/data/online_catalog_reposito
 import 'package:polaris_music/features/online_music/data/source_helpers.dart';
 import 'package:polaris_music/features/online_music/domain/music_source.dart';
 import 'package:polaris_music/features/online_music/domain/music_source_catalog.dart';
+import 'package:polaris_music/features/online_music/domain/online_catalog_items.dart';
 import 'package:polaris_music/features/online_music/domain/online_track.dart';
 
 OnlineTrack track(String externalId) => OnlineTrack(
@@ -60,6 +61,19 @@ class FakeSource implements MusicSourceProvider {
   }
 
   @override
+  Future<List<OnlineCollectionRef>> searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+  }) async => const <OnlineCollectionRef>[];
+
+  @override
+  Future<List<OnlineTrack>> collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+  }) async => const <OnlineTrack>[];
+
+  @override
   Future<ResolvedStream> resolveStream(OnlineTrack track) async {
     resolveCalls++;
     return ResolvedStream(url: 'https://audio.example/${id.prefix}.mp3');
@@ -85,9 +99,10 @@ void main() {
       expect(MusicSourceIdX.fromExternalId('sin-prefijo'), isNull);
     });
 
-    test('solo Audius y SoundCloud declaran audio reproducible', () {
+    test('Audius, SoundCloud y YouTube declaran audio reproducible', () {
       expect(MusicSourceId.audius.canStreamAudio, isTrue);
       expect(MusicSourceId.soundcloud.canStreamAudio, isTrue);
+      expect(MusicSourceId.youtube.canStreamAudio, isTrue);
       expect(MusicSourceId.spotify.canStreamAudio, isFalse);
       expect(MusicSourceId.tidal.canStreamAudio, isFalse);
     });

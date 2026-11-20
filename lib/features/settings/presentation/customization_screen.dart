@@ -9,11 +9,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/providers/motion_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme_config.dart';
 import '../../../core/theme/color_math.dart';
+import '../../../core/theme/motion_config.dart';
 import '../../../core/theme/theme_tokens.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import 'color_picker_dialog.dart';
 import 'typography_screen.dart';
@@ -46,6 +49,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
   Widget build(BuildContext context) {
     final ThemeState theme = ref.watch(themeControllerProvider);
     final AppThemeConfig config = theme.config;
+    final MotionConfig motion = ref.watch(motionConfigProvider);
     final PlayerUiState ui = ref.watch(playerControllerProvider);
 
     final Color accent = config.usesDynamicPalette
@@ -57,7 +61,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Personalización'),
+        title: Text('Personalización'),
         actions: <Widget>[
           IconButton(
             tooltip: 'Restablecer tema Polaris',
@@ -65,22 +69,22 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
               ref.read(themeControllerProvider.notifier).resetToDefaults();
               _toast('Tema restablecido a Polaris Violet Glass');
             },
-            icon: const Icon(Icons.restart_alt_rounded),
+            icon: Icon(Icons.restart_alt_rounded),
           ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 140),
         children: <Widget>[
-          const Text(
+          Text(
             'Diseña tu reproductor',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             'Los cambios se aplican en vivo y se guardan automáticamente en tu '
             'equipo.',
-            style: TextStyle(fontSize: 13, color: Colors.white54),
+            style: TextStyle(fontSize: 13, color: context.inkAlpha(0.54)),
           ),
           const SizedBox(height: 18),
           _SectionCard(
@@ -101,12 +105,126 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                 builder: (BuildContext context) => const TypographyScreen(),
               ),
             ),
-            icon: const Icon(Icons.text_fields_rounded, size: 18),
-            label: const Text('Tipografía, tamaño y fuentes propias'),
+            icon: Icon(Icons.text_fields_rounded, size: 18),
+            label: Text('Tipografía, tamaño y fuentes propias'),
+          ),
+          const SizedBox(height: 22),
+          Text(
+            'Temas y acabados visuales',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Elige una paleta y combínala con cualquier material de superficie.',
+            style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
+          ),
+          const SizedBox(height: 12),
+          _SectionCard(
+            title: 'Galería de temas',
+            icon: Icons.grid_view_rounded,
+            child: _ThemeGallery(
+              config: config,
+              onSelect: (AppThemePreset preset) => ref
+                  .read(themeControllerProvider.notifier)
+                  .applyCatalogTheme(preset),
+            ),
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            title: 'Estilo de contenedores',
+            title: 'Acabado de superficie',
+            icon: Icons.blur_circular_rounded,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _OptionGrid(
+                  children: SurfaceFinish.values
+                      .map(
+                        (SurfaceFinish finish) => _OptionTile(
+                          label: finish.label,
+                          description: finish.description,
+                          selected: config.finish == finish,
+                          onTap: () => ref
+                              .read(themeControllerProvider.notifier)
+                              .setFinish(finish),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Mate desactiva el desenfoque y el brillo continuo: es el '
+                  'acabado más ligero para Windows y Android.',
+                  style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.38)),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'RGB Dinámico',
+            icon: Icons.auto_awesome_rounded,
+            child: _RgbControls(
+              config: config,
+              onHue: (double value) => ref
+                  .read(themeControllerProvider.notifier)
+                  .setRgb(hue: value),
+              onSaturation: (double value) => ref
+                  .read(themeControllerProvider.notifier)
+                  .setRgb(saturation: value),
+              onBrightness: (double value) => ref
+                  .read(themeControllerProvider.notifier)
+                  .setRgb(brightness: value),
+              onFlow: (bool value) => ref
+                  .read(themeControllerProvider.notifier)
+                  .setRgb(flow: value),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Editor libre',
+            icon: Icons.tune_rounded,
+            child: _FreeFinishEditor(
+              config: config,
+              onPick: (ThemeColorTarget target, Color current) async {
+                final Color? picked = await ColorPickerDialog.show(
+                  context,
+                  title: target.label,
+                  initial: current,
+                );
+                if (picked == null || !mounted) return;
+                await ref
+                    .read(themeControllerProvider.notifier)
+                    .setColor(target, picked);
+              },
+              onOpacity: (double value) => ref
+                  .read(themeControllerProvider.notifier)
+                  .setSurfaceOpacity(value),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Animaciones y movimiento',
+            icon: Icons.animation_rounded,
+            child: _MotionControls(
+              motion: motion,
+              onProfile: (MotionProfile profile) => ref
+                  .read(motionControllerProvider.notifier)
+                  .applyProfile(profile),
+              onSpeed: (double value) => ref
+                  .read(motionControllerProvider.notifier)
+                  .setSpeed(value),
+              onCategory: (MotionCategory category, bool value) => ref
+                  .read(motionControllerProvider.notifier)
+                  .setCategory(category, value),
+              onReset: () =>
+                  ref.read(motionControllerProvider.notifier).reset(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Estilo de contenedores (avanzado)',
             icon: Icons.layers_outlined,
             child: _OptionGrid(
               children: CardStyle.values
@@ -196,7 +314,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                 const SizedBox(height: 8),
                 Text(
                   config.paletteMode.description,
-                  style: const TextStyle(fontSize: 12, color: Colors.white54),
+                  style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
                 ),
               ],
             ),
@@ -245,10 +363,10 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                       .read(themeControllerProvider.notifier)
                       .setGlassOpacity(value),
                 ),
-                const Text(
+                Text(
                   'Un desenfoque alto y mucha transparencia aumentan el coste '
                   'de CPU/GPU en Windows. El rango está limitado a 32 px.',
-                  style: TextStyle(fontSize: 10.5, color: Colors.white38),
+                  style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.38)),
                 ),
               ],
             ),
@@ -276,10 +394,11 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
+                Text(
                   'Comparte tu diseño como archivo .json o cárgalo en otro '
-                  'equipo. La importación aplica el tema y añade sus perfiles.',
-                  style: TextStyle(fontSize: 12, color: Colors.white54),
+                  'equipo. La importación aplica el tema, sus animaciones y '
+                  'añade sus perfiles.',
+                  style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -288,13 +407,13 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                   children: <Widget>[
                     FilledButton.icon(
                       onPressed: _exportTheme,
-                      icon: const Icon(Icons.ios_share_rounded, size: 18),
-                      label: const Text('Exportar .json'),
+                      icon: Icon(Icons.ios_share_rounded, size: 18),
+                      label: Text('Exportar .json'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _importTheme,
-                      icon: const Icon(Icons.file_open_outlined, size: 18),
-                      label: const Text('Importar .json'),
+                      icon: Icon(Icons.file_open_outlined, size: 18),
+                      label: Text('Importar .json'),
                     ),
                   ],
                 ),
@@ -349,11 +468,12 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
       final int count = await ref
           .read(themeControllerProvider.notifier)
           .importJson(raw);
+      await ref.read(motionControllerProvider.notifier).reload();
       if (!mounted) return;
       _toast(
         count == 0
-            ? 'Tema importado correctamente'
-            : 'Tema y $count perfil(es) importados',
+            ? 'Tema y animaciones importados correctamente'
+            : 'Tema, animaciones y $count perfil(es) importados',
       );
     } catch (error) {
       if (mounted) _toast('Archivo no válido: $error');
@@ -364,6 +484,377 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Temas y acabados visuales
+// ---------------------------------------------------------------------------
+
+/// Galería visual de la segunda capa del sistema de temas.
+class _ThemeGallery extends StatelessWidget {
+  const _ThemeGallery({required this.config, required this.onSelect});
+
+  final AppThemeConfig config;
+  final ValueChanged<AppThemePreset> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final int columns = constraints.maxWidth >= 1000
+            ? 3
+            : (constraints.maxWidth >= 620 ? 2 : 1);
+        const double spacing = 10;
+        final double width =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: AppThemeConfig.catalog
+              .map(
+                (AppThemeConfig entry) => SizedBox(
+                  width: width < 0 ? 0 : width,
+                  child: _ThemeCard(
+                    config: entry,
+                    selected:
+                        config.preset == entry.preset ||
+                        (config.preset == AppThemePreset.custom &&
+                            config.finish == entry.finish &&
+                            config.accent == entry.accent &&
+                            config.background == entry.background),
+                    onTap: () => onSelect(entry.preset),
+                  ),
+                ),
+              )
+              .toList(growable: false),
+        );
+      },
+    );
+  }
+}
+
+class _ThemeCard extends StatelessWidget {
+  const _ThemeCard({
+    required this.config,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final AppThemeConfig config;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color ink = ColorMath.onColor(config.surface);
+    final IconData finishIcon = switch (config.finish) {
+      SurfaceFinish.glass => Icons.blur_on_rounded,
+      SurfaceFinish.liquid => Icons.waves_rounded,
+      SurfaceFinish.matte => Icons.crop_square_rounded,
+    };
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: context.motion.duration(const Duration(milliseconds: 220)),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: config.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected
+                ? config.accent
+                : ink.withValues(alpha: 0.14),
+            width: selected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: Container(
+                height: 66,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: <Color>[...config.backdrop, config.background],
+                  ),
+                ),
+                child: Stack(
+                  children: <Widget>[
+                    Positioned(
+                      left: 10,
+                      bottom: 10,
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              color: config.accent,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: ink.withValues(alpha: 0.35),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 5),
+                          Container(
+                            width: 15,
+                            height: 15,
+                            decoration: BoxDecoration(
+                              color: config.secondary,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Icon(
+                        finishIcon,
+                        size: 18,
+                        color: ink.withValues(alpha: 0.85),
+                      ),
+                    ),
+                    if (selected)
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        child: Icon(
+                          Icons.check_circle_rounded,
+                          size: 18,
+                          color: config.accent,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 9),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    config.preset.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: ink,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  config.finish.label,
+                  style: TextStyle(
+                    color: ink.withValues(alpha: 0.65),
+                    fontSize: 9.5,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              config.preset.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: ink.withValues(alpha: 0.62),
+                fontSize: 9.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Controles HSV del tema RGB Dinámico.
+class _RgbControls extends StatelessWidget {
+  const _RgbControls({
+    required this.config,
+    required this.onHue,
+    required this.onSaturation,
+    required this.onBrightness,
+    required this.onFlow,
+  });
+
+  final AppThemeConfig config;
+  final ValueChanged<double> onHue;
+  final ValueChanged<double> onSaturation;
+  final ValueChanged<double> onBrightness;
+  final ValueChanged<bool> onFlow;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: config.rgbColor,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: config.secondary),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Tono, saturación y brillo se aplican al acento, '
+                'secundario y degradado.',
+                style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        _ThemeSlider(
+          label: 'Tono',
+          value: config.rgbHue,
+          max: 360,
+          suffix: '°',
+          onChanged: onHue,
+        ),
+        _ThemeSlider(
+          label: 'Saturación',
+          value: config.rgbSaturation,
+          max: 1,
+          suffix: '%',
+          onChanged: onSaturation,
+        ),
+        _ThemeSlider(
+          label: 'Brillo',
+          value: config.rgbBrightness,
+          max: 1,
+          suffix: '%',
+          onChanged: onBrightness,
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: Text('Flujo cromático suave'),
+          subtitle: Text(
+            'Cruce lento entre tonos, sin pulsos ni shaders continuos.',
+            style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.54)),
+          ),
+          value: config.rgbFlow,
+          onChanged: onFlow,
+        ),
+      ],
+    );
+  }
+}
+
+/// Editor libre de color primario, secundario, fondo y opacidad.
+class _FreeFinishEditor extends StatelessWidget {
+  const _FreeFinishEditor({
+    required this.config,
+    required this.onPick,
+    required this.onOpacity,
+  });
+
+  final AppThemeConfig config;
+  final Future<void> Function(ThemeColorTarget target, Color current) onPick;
+  final ValueChanged<double> onOpacity;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _ColorEditorList(
+          config: config,
+          onPick: onPick,
+        ),
+        const SizedBox(height: 10),
+        _ThemeSlider(
+          label: 'Opacidad de superficie',
+          value: config.surfaceOpacity,
+          max: 1,
+          suffix: '%',
+          onChanged: onOpacity,
+        ),
+      ],
+    );
+  }
+}
+
+/// Perfiles, velocidad e interruptores de Animaciones y Movimiento.
+class _MotionControls extends StatelessWidget {
+  const _MotionControls({
+    required this.motion,
+    required this.onProfile,
+    required this.onSpeed,
+    required this.onCategory,
+    required this.onReset,
+  });
+
+  final MotionConfig motion;
+  final ValueChanged<MotionProfile> onProfile;
+  final ValueChanged<double> onSpeed;
+  final void Function(MotionCategory category, bool value) onCategory;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        _OptionGrid(
+          children: MotionConfig.presets
+              .map(
+                (MotionConfig preset) => _OptionTile(
+                  label: preset.profile.label,
+                  description: preset.profile.description,
+                  selected: motion.profile == preset.profile,
+                  onTap: () => onProfile(preset.profile),
+                ),
+              )
+              .toList(growable: false),
+        ),
+        const SizedBox(height: 10),
+        _ThemeSlider(
+          label: 'Velocidad',
+          value: motion.speed,
+          min: 0.4,
+          max: 1.6,
+          suffix: '×',
+          decimals: 1,
+          onChanged: onSpeed,
+        ),
+        for (final MotionCategory category in MotionCategory.values)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            dense: true,
+            title: Text(category.label),
+            subtitle: Text(
+              category.description,
+              style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.54)),
+            ),
+            value: motion.enabled(category),
+            onChanged: (bool value) => onCategory(category, value),
+          ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: onReset,
+            icon: const Icon(Icons.restart_alt_rounded, size: 16),
+            label: const Text('Restablecer'),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -429,17 +920,17 @@ class _OptionTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
+        duration: context.motion.duration(const Duration(milliseconds: 220)),
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: selected
               ? tokens.accent.withValues(alpha: 0.18)
-              : Colors.white.withValues(alpha: 0.03),
+              : context.inkAlpha(0.03),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: selected
                 ? tokens.accent.withValues(alpha: 0.85)
-                : Colors.white.withValues(alpha: 0.07),
+                : context.inkAlpha(0.07),
             width: selected ? 1.6 : 1,
           ),
         ),
@@ -451,7 +942,7 @@ class _OptionTile extends StatelessWidget {
                 Icon(
                   selected ? Icons.check_circle_rounded : Icons.circle_outlined,
                   size: 16,
-                  color: selected ? tokens.accent : Colors.white38,
+                  color: selected ? tokens.accent : context.inkAlpha(0.38),
                 ),
                 const SizedBox(width: 6),
                 Flexible(
@@ -471,7 +962,7 @@ class _OptionTile extends StatelessWidget {
               description,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 10.5, color: Colors.white54),
+              style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.54)),
             ),
           ],
         ),
@@ -548,7 +1039,7 @@ class _ColorEditorList extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.03),
+                        color: context.inkAlpha(0.03),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: color.withValues(alpha: 0.55),
@@ -562,7 +1053,7 @@ class _ColorEditorList extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: color,
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.white24),
+                              border: Border.all(color: context.inkAlpha(0.24)),
                             ),
                           ),
                           const SizedBox(width: 9),
@@ -574,16 +1065,16 @@ class _ColorEditorList extends StatelessWidget {
                                   target.label,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
                                 Text(
                                   ColorMath.toHex(color),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 9,
-                                    color: Colors.white54,
+                                    color: context.inkAlpha(0.54),
                                   ),
                                 ),
                               ],
@@ -609,12 +1100,16 @@ class _ThemeSlider extends StatelessWidget {
     required this.max,
     required this.suffix,
     required this.onChanged,
+    this.min = 0,
+    this.decimals = 0,
   });
 
   final String label;
   final double value;
+  final double min;
   final double max;
   final String suffix;
+  final int decimals;
   final ValueChanged<double> onChanged;
 
   @override
@@ -625,19 +1120,21 @@ class _ThemeSlider extends StatelessWidget {
       children: <Widget>[
         Row(
           children: <Widget>[
-            Text(label, style: const TextStyle(fontSize: 11)),
+            Text(label, style: TextStyle(fontSize: 11)),
             const Spacer(),
             Text(
               suffix == '%'
                   ? '${(value * 100).round()} %'
-                  : '${value.round()} $suffix',
-              style: const TextStyle(fontSize: 10, color: Colors.white54),
+                  : decimals == 0
+                  ? '${value.round()} $suffix'
+                  : '${value.toStringAsFixed(decimals)} $suffix',
+              style: TextStyle(fontSize: 10, color: context.inkAlpha(0.54)),
             ),
           ],
         ),
         Slider(
-          value: value,
-          min: 0,
+          value: value.clamp(min, max).toDouble(),
+          min: min,
           max: max,
           activeColor: accent,
           onChanged: onChanged,
@@ -678,15 +1175,15 @@ class _ProfilesEditor extends ConsumerWidget {
             const SizedBox(width: 10),
             FilledButton.icon(
               onPressed: onSave,
-              icon: const Icon(Icons.save_outlined, size: 18),
-              label: const Text('Guardar'),
+              icon: Icon(Icons.save_outlined, size: 18),
+              label: Text('Guardar'),
             ),
           ],
         ),
         const SizedBox(height: 6),
-        const Text(
+        Text(
           'Guarda la combinación actual y recupérala cuando quieras.',
-          style: TextStyle(fontSize: 11, color: Colors.white38),
+          style: TextStyle(fontSize: 11, color: context.inkAlpha(0.38)),
         ),
         if (profiles.isNotEmpty) ...<Widget>[
           const SizedBox(height: 10),
@@ -694,17 +1191,17 @@ class _ProfilesEditor extends ConsumerWidget {
             (CustomThemeProfile profile) => ListTile(
               contentPadding: EdgeInsets.zero,
               dense: true,
-              leading: const Icon(Icons.bookmark_rounded, size: 20),
+              leading: Icon(Icons.bookmark_rounded, size: 20),
               title: Text(profile.name),
               subtitle: Text(
                 '${profile.config.cardStyle.label} · '
                 '${profile.config.artworkShape.label} · '
                 '${profile.config.progressBarType.label}',
-                style: const TextStyle(fontSize: 11),
+                style: TextStyle(fontSize: 11),
               ),
               trailing: IconButton(
                 tooltip: 'Eliminar perfil',
-                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                icon: Icon(Icons.delete_outline_rounded, size: 18),
                 onPressed: () => ref
                     .read(themeControllerProvider.notifier)
                     .deleteProfile(profile.id),
@@ -759,7 +1256,7 @@ class _ThemePreview extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 600),
+        duration: context.motion.duration(const Duration(milliseconds: 600)),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -812,7 +1309,7 @@ class _ThemePreview extends StatelessWidget {
                               title,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -822,9 +1319,9 @@ class _ThemePreview extends StatelessWidget {
                               artist,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white60,
+                                color: context.inkAlpha(0.60),
                               ),
                             ),
                             const SizedBox(height: 6),
@@ -844,9 +1341,7 @@ class _ThemePreview extends StatelessWidget {
                                 child: LinearProgressIndicator(
                                   value: progress,
                                   minHeight: 4,
-                                  backgroundColor: Colors.white.withValues(
-                                    alpha: 0.10,
-                                  ),
+                                  backgroundColor: context.inkAlpha(0.10,),
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     progressColor,
                                   ),
@@ -869,10 +1364,10 @@ class _ThemePreview extends StatelessWidget {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: <Widget>[
-                                const Icon(
+                                Icon(
                                   Icons.skip_previous_rounded,
                                   size: 24,
-                                  color: Colors.white70,
+                                  color: context.inkAlpha(0.70),
                                 ),
                                 const SizedBox(width: 18),
                                 Container(
@@ -886,15 +1381,15 @@ class _ThemePreview extends StatelessWidget {
                                     playing
                                         ? Icons.pause_rounded
                                         : Icons.play_arrow_rounded,
-                                    color: Colors.black,
+                                    color: ColorMath.onColor(accent),
                                     size: 26,
                                   ),
                                 ),
                                 const SizedBox(width: 18),
-                                const Icon(
+                                Icon(
                                   Icons.skip_next_rounded,
                                   size: 24,
-                                  color: Colors.white70,
+                                  color: context.inkAlpha(0.70),
                                 ),
                               ],
                             ),
@@ -994,8 +1489,8 @@ class _PreviewArtwork extends StatelessWidget {
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
-            color: Colors.white.withValues(alpha: 0.06),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+            color: context.inkAlpha(0.06),
+            border: Border.all(color: context.inkAlpha(0.12)),
             boxShadow: <BoxShadow>[
               BoxShadow(
                 color: accent.withValues(alpha: 0.30),
@@ -1003,7 +1498,7 @@ class _PreviewArtwork extends StatelessWidget {
                 spreadRadius: 2,
               ),
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
+                color: context.tokens.shadowColor.withValues(alpha: 0.5),
                 blurRadius: 24,
                 offset: const Offset(10, 14),
               ),
@@ -1053,11 +1548,16 @@ class _PreviewImage extends StatelessWidget {
     if (artwork == null || artwork.isEmpty) {
       return _fallback();
     }
+    final int decodeSize = (size * MediaQuery.devicePixelRatioOf(context))
+        .round()
+        .clamp(24, 160);
     return Image.file(
       File(artwork),
       width: size,
       height: size,
       fit: BoxFit.cover,
+      cacheWidth: decodeSize,
+      cacheHeight: decodeSize,
       errorBuilder: (
         BuildContext context,
         Object error,
@@ -1083,7 +1583,7 @@ class _PreviewImage extends StatelessWidget {
       child: Icon(
         Icons.music_note_rounded,
         size: size * 0.38,
-        color: Colors.white.withValues(alpha: 0.85),
+        color: const Color(0xD9FFFFFF),
       ),
     );
   }
@@ -1110,14 +1610,25 @@ class _PreviewVinyl extends StatefulWidget {
 
 class _PreviewVinylState extends State<_PreviewVinyl>
     with SingleTickerProviderStateMixin {
+  static const Duration _period = Duration(seconds: 14);
+
   late final AnimationController _spin = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 14),
+    duration: _period,
   );
+  MotionConfig? _motion;
 
   @override
-  void initState() {
-    super.initState();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _motion = context.motion;
+    final Duration duration = _motion!.duration(
+      _period,
+      category: MotionCategory.ambient,
+    );
+    _spin.duration = duration == Duration.zero
+        ? const Duration(microseconds: 1)
+        : duration;
     _sync();
   }
 
@@ -1131,7 +1642,7 @@ class _PreviewVinylState extends State<_PreviewVinyl>
   }
 
   void _sync() {
-    if (widget.playing && !widget.paused) {
+    if (widget.playing && (_motion?.ambient ?? false) && !widget.paused) {
       if (!_spin.isAnimating) _spin.repeat();
     } else if (_spin.isAnimating) {
       _spin.stop();
@@ -1196,7 +1707,7 @@ class _PreviewVinylState extends State<_PreviewVinyl>
                     Container(
                       width: label * 0.12,
                       height: label * 0.12,
-                      decoration: const BoxDecoration(
+                      decoration: BoxDecoration(
                         color: Color(0xFF0A0A0A),
                         shape: BoxShape.circle,
                       ),

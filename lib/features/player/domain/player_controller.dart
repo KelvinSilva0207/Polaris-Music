@@ -19,6 +19,7 @@ import '../../../core/utils/logger.dart';
 class PlayerUiState {
   const PlayerUiState({
     this.playback = const PlaybackSnapshot(),
+    this.notice,
     this.sleepRemaining,
     this.sleepEndsAtTrack = false,
     this.crossfadeEnabled = false,
@@ -34,6 +35,10 @@ class PlayerUiState {
   });
 
   final PlaybackSnapshot playback;
+
+  /// Aviso efímero para la UI (archivo no disponible, error de apertura...).
+  final String? notice;
+
   final Duration? sleepRemaining;
   final bool sleepEndsAtTrack;
   final bool crossfadeEnabled;
@@ -61,6 +66,7 @@ class PlayerUiState {
 
   PlayerUiState copyWith({
     PlaybackSnapshot? playback,
+    Object? notice = _unset,
     Object? sleepRemaining = _unset,
     bool? sleepEndsAtTrack,
     bool? crossfadeEnabled,
@@ -75,6 +81,7 @@ class PlayerUiState {
     Object? loopB = _unset,
   }) => PlayerUiState(
     playback: playback ?? this.playback,
+    notice: identical(notice, _unset) ? this.notice : notice as String?,
     sleepRemaining: identical(sleepRemaining, _unset)
         ? this.sleepRemaining
         : sleepRemaining as Duration?,
@@ -180,12 +187,15 @@ class PlayerController extends StateNotifier<PlayerUiState> {
   int? _sleepTrackId;
   bool _finishingSleep = false;
   Timer? _volumeSaveTimer;
+  Timer? _noticeTimer;
   double? _pendingVolume;
 
   void _onEngineState(PlaybackSnapshot snapshot) {
     if (snapshot.completed && state.sleepEndsAtTrack) {
+      // El snapshot debe seguir hacia la UI: si se descarta aquí, el contador
+      // y el icono play/pause se quedan en el último valor aunque la pista
+      // ya haya terminado.
       unawaited(_finishSleep());
-      return;
     }
 
     // El bucle A-B pertenece a una pista concreta: al cambiar de canción se
@@ -208,6 +218,19 @@ class PlayerController extends StateNotifier<PlayerUiState> {
 
     final PlaybackSnapshot previous = state.playback;
     state = state.copyWith(playback: snapshot);
+    // El `error` del motor se limpia al cambiar de pista; el aviso se mantiene
+    // unos segundos para que el usuario llegue a leerlo.
+    if (snapshot.error != null && snapshot.error != previous.error) {
+      _noticeTimer?.cancel();
+      // Doble barrera: aunque otra capa emitiera un error con la URL cruda,
+      // el aviso visible siempre es un mensaje corto y legible.
+      state = state.copyWith(
+        notice: AudioEngineService.sanitizePlaybackError(snapshot.error!),
+      );
+      _noticeTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) state = state.copyWith(notice: null);
+      });
+    }
     if (state.sleepRemaining != null || state.sleepEndsAtTrack) {
       _tickSleep();
     }
@@ -406,7 +429,18 @@ class PlayerController extends StateNotifier<PlayerUiState> {
     final List<Track> tracks = await _resolveTracks(session.paths);
     if (tracks.isEmpty || !mounted) return;
 
-    final int start = session.index.clamp(0, tracks.length - 1);
+    // La sesión guarda el índice canónico; si alguna ruta intermedia ya no se
+    // resolvió, remapeamos por ruta para no reanudar otra canción.
+    final String? targetPath =
+        session.index >= 0 && session.index < session.paths.length
+        ? session.paths[session.index]
+        : null;
+    final int byPath = targetPath == null
+        ? -1
+        : tracks.indexWhere((Track track) => track.path == targetPath);
+    final int start = byPath >= 0
+        ? byPath
+        : session.index.clamp(0, tracks.length - 1);
     await _engine.setQueue(
       tracks,
       startIndex: start,
@@ -627,6 +661,7 @@ class PlayerController extends StateNotifier<PlayerUiState> {
     _sessionTimer?.cancel();
     _sleepTicker?.cancel();
     _sleepTimeout?.cancel();
+    _noticeTimer?.cancel();
     unawaited(_engine.setFadeFactor(1));
     _volumeSaveTimer?.cancel();
     final double? pending = _pendingVolume;

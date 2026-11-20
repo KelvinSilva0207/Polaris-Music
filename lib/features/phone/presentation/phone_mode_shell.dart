@@ -7,11 +7,15 @@ import '../../../core/models/playback_state.dart';
 import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/compact_style_provider.dart';
+import '../../../core/providers/motion_provider.dart';
 import '../../../core/services/window_service.dart';
+import '../../../core/theme/color_math.dart';
 import '../../../core/theme/compact_style_config.dart';
+import '../../../core/theme/motion_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/compact_surface.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/track_artwork.dart';
 import '../../player/domain/player_controller.dart';
@@ -31,9 +35,11 @@ class PhoneModeShell extends ConsumerStatefulWidget {
 
 class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
     with SingleTickerProviderStateMixin {
+  static const Duration _spinPeriod = Duration(seconds: 18);
+
   late final AnimationController _spin = AnimationController(
     vsync: this,
-    duration: const Duration(seconds: 18),
+    duration: _spinPeriod,
   );
   bool? _spinActive;
 
@@ -52,6 +58,18 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
         _spin.stop();
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final Duration duration = context.motion.duration(
+      _spinPeriod,
+      category: MotionCategory.ambient,
+    );
+    _spin.duration = duration == Duration.zero
+        ? const Duration(microseconds: 1)
+        : duration;
   }
 
   @override
@@ -79,6 +97,7 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
     final CompactStyleConfig style = ref.watch(
       compactStyleProvider(CompactSurface.phone),
     );
+    final bool ambient = ref.watch(motionConfigProvider).ambient;
     final PolarisTokens tokens = context.tokens;
     final ResolvedCompactStyle resolved = style.resolve(tokens);
     final Color accent = resolved.accent;
@@ -92,7 +111,7 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
     return ValueListenableBuilder<WindowUiState>(
       valueListenable: ref.watch(windowStateProvider),
       builder: (BuildContext context, WindowUiState state, Widget? child) {
-        final bool active = playing && !state.backgrounded;
+        final bool active = playing && ambient && !state.backgrounded;
         _syncSpin(active);
         return child ?? const SizedBox.shrink();
       },
@@ -137,7 +156,7 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 19,
                           fontWeight: FontWeight.w800,
                           height: 1.15,
@@ -150,9 +169,9 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.white60,
+                          color: context.inkAlpha(0.60),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -174,7 +193,7 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                                   ? Icons.volume_off_rounded
                                   : Icons.volume_up_rounded,
                               size: 18,
-                              color: Colors.white60,
+                              color: context.inkAlpha(0.60),
                             ),
                             Expanded(
                               child: SliderTheme(
@@ -195,9 +214,9 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
                             ),
                             Text(
                               '${volume.round()}%',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.white38,
+                                color: context.inkAlpha(0.38),
                               ),
                             ),
                           ],
@@ -244,7 +263,7 @@ class _PhoneTopBar extends ConsumerWidget {
             IconButton(
               tooltip: 'Minimizar a la bandeja',
               onPressed: window.minimizeToTray,
-              icon: const Icon(Icons.expand_more_rounded, size: 20),
+              icon: Icon(Icons.expand_more_rounded, size: 20),
             ),
             IconButton(
               tooltip: 'Abrir ventana principal',
@@ -301,7 +320,7 @@ class _PhoneArtwork extends StatelessWidget {
             child: Icon(
               Icons.music_note_rounded,
               size: size * 0.34,
-              color: Colors.white.withValues(alpha: 0.88),
+              color: context.inkAlpha(0.88),
             ),
           )
         : TrackArtwork(path: track!.artworkPath, size: size, radius: radius);
@@ -394,11 +413,11 @@ class _PhoneProgress extends ConsumerWidget {
             children: <Widget>[
               Text(
                 Formatters.duration(position),
-                style: const TextStyle(fontSize: 10, color: Colors.white38),
+                style: TextStyle(fontSize: 10, color: context.inkAlpha(0.38)),
               ),
               Text(
                 Formatters.duration(duration),
-                style: const TextStyle(fontSize: 10, color: Colors.white38),
+                style: TextStyle(fontSize: 10, color: context.inkAlpha(0.38)),
               ),
             ],
           ),
@@ -456,16 +475,16 @@ class _PhoneControls extends ConsumerWidget {
               shape: const CircleBorder(),
               padding: EdgeInsets.zero,
               backgroundColor: accent,
-              foregroundColor: Colors.black,
+              foregroundColor: ColorMath.onColor(accent),
               elevation: 0,
             ),
             child: buffering
-                ? const SizedBox(
+                ? SizedBox(
                     width: 22,
                     height: 22,
                     child: CircularProgressIndicator(
                       strokeWidth: 2.2,
-                      color: Colors.black,
+                      color: ColorMath.onColor(accent),
                     ),
                   )
                 : Icon(
@@ -516,24 +535,24 @@ class _RoundAction extends StatelessWidget {
       onTap: onTap,
       customBorder: const CircleBorder(),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
+        duration: context.motion.duration(const Duration(milliseconds: 220)),
         width: size,
         height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: active
               ? accent.withValues(alpha: 0.22)
-              : Colors.white.withValues(alpha: 0.06),
+              : context.inkAlpha(0.06),
           border: Border.all(
             color: active
                 ? accent.withValues(alpha: 0.7)
-                : Colors.white.withValues(alpha: 0.08),
+                : context.inkAlpha(0.08),
           ),
         ),
         child: Icon(
           icon,
           size: size * 0.46,
-          color: active ? accent : Colors.white70,
+          color: active ? accent : context.inkAlpha(0.70),
         ),
       ),
     );
@@ -600,8 +619,8 @@ class _QuickCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          color: Colors.white.withValues(alpha: 0.07),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+          color: context.inkAlpha(0.07),
+          border: Border.all(color: context.inkAlpha(0.08)),
         ),
         child: Column(
           children: <Widget>[
@@ -609,7 +628,7 @@ class _QuickCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               label,
-              style: const TextStyle(fontSize: 10.5, color: Colors.white60),
+              style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.60)),
             ),
           ],
         ),

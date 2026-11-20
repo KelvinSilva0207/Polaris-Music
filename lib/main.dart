@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io' show exit;
 import 'dart:ui';
 
@@ -11,10 +12,19 @@ import 'core/di/service_locator.dart';
 import 'core/services/app_mutex.dart';
 import 'core/services/tray_service.dart';
 import 'core/services/window_service.dart';
+import 'core/theme/theme_tokens.dart';
 import 'core/utils/logger.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // La caché de imágenes por defecto (1000 imágenes / 100 MiB) es excesiva para
+  // una biblioteca con carátulas: cada pista visible decodifica una imagen y
+  // el excedente se acumula hasta cerca de 100 MiB. Con 700 entradas y 64 MiB
+  // seguimos teniendo margen para la cola, la carátula principal y las vistas
+  // compactas sin disparar el consumo de RAM de Windows.
+  PaintingBinding.instance.imageCache.maximumSize = 700;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 64 * 1024 * 1024;
 
   await AppLog.initialize();
 
@@ -54,8 +64,12 @@ Future<void> _start() async {
   if (sl.isRegistered<TrayService>() && sl.isRegistered<WindowService>()) {
     final TrayService tray = sl<TrayService>();
     final WindowService window = sl<WindowService>();
-    tray.quitRequests.listen((void _) async {
+    // Se conserva la suscripción para poder cancelarla: el closure captura
+    // `window` y, sin referencia, no se puede liberar al reiniciar en debug.
+    late final StreamSubscription<void> quitSubscription;
+    quitSubscription = tray.quitRequests.listen((void _) async {
       AppLog.i('App', 'Salida solicitada desde la bandeja');
+      await quitSubscription.cancel();
       await ServiceLocator.shutdown();
       await window.quit();
     });
@@ -134,10 +148,10 @@ class _StartupFailureApp extends StatelessWidget {
                     const SizedBox(height: 4),
                     SelectableText(
                       logPath!,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Consolas',
                         fontSize: 12,
-                        color: Colors.white70,
+                        color: context.inkAlpha(0.70),
                       ),
                     ),
                   ],

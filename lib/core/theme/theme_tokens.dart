@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'app_theme_config.dart';
+import 'color_math.dart';
 import 'typography_config.dart';
 
 /// Tokens visuales de Polaris.
@@ -21,6 +22,10 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     this.karaokeColor = const Color(0xFF8B5CF6),
     this.islandRadius = 28,
     this.glassEnabled = false,
+    this.finish = SurfaceFinish.glass,
+    this.secondary = const Color(0xFF22D3EE),
+    this.surfaceOpacity = 0.94,
+    this.brightness = Brightness.dark,
     this.cardStyle = CardStyle.glassmorphic,
     this.artworkShape = ArtworkShape.circleVinyl,
     this.progressBarType = ProgressBarType.linearClassic,
@@ -57,6 +62,19 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
 
   final double islandRadius;
   final bool glassEnabled;
+
+  /// Acabado de superficie (segunda capa del sistema de temas).
+  final SurfaceFinish finish;
+
+  /// Acento secundario para brillos y degradados orgánicos.
+  final Color secondary;
+
+  /// Opacidad de las superficies sólidas.
+  final double surfaceOpacity;
+
+  /// Brillo del tema; define tinta clara u oscura.
+  final Brightness brightness;
+
   final CardStyle cardStyle;
   final ArtworkShape artworkShape;
   final ProgressBarType progressBarType;
@@ -82,6 +100,24 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   bool get isGlass => cardStyle == CardStyle.glassmorphic;
   bool get isNeumorphic => cardStyle == CardStyle.neumorphic;
   bool get isFlat => cardStyle == CardStyle.flatMinimal;
+  bool get isLight => brightness == Brightness.light;
+
+  /// Tinta principal legible sobre el panel activo.
+  Color get foreground => ColorMath.onColor(panelOverlay);
+
+  /// Tinta con opacidad para textos secundarios en cualquier tema.
+  Color ink([double alpha = 1]) => foreground.withValues(alpha: alpha);
+
+  /// Velo glassmorphic: superficie oscura teñida con el acento activo.
+  ///
+  /// `glassOpacity` mide la densidad del velo, NO su luminosidad. Usarlo como
+  /// alfa de `Colors.white` produce paneles casi blancos en las superficies
+  /// compactas (opacity 0.92-0.94) donde el texto claro deja de leerse.
+  Color get glassPanelColor {
+    final Color base = Color.lerp(surface, accent, 0.06) ?? surface;
+    final double alpha = (0.12 + glassOpacity * 0.30).clamp(0.12, 0.46);
+    return base.withValues(alpha: alpha);
+  }
 
   /// Color base de un panel según el [cardStyle] activo.
   ///
@@ -89,16 +125,17 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   /// porque necesitan animar su decoración) consumen estos getters para que el
   /// preset de tema también las afecte.
   Color get panelColor => switch (cardStyle) {
-    CardStyle.glassmorphic => Colors.white.withValues(alpha: glassOpacity),
+    CardStyle.glassmorphic => glassPanelColor,
     CardStyle.neumorphic => surface,
-    CardStyle.flatMinimal => surface.withValues(alpha: 0.94),
+    CardStyle.flatMinimal => surface.withValues(alpha: surfaceOpacity),
   };
 
   /// Color opaco para paneles flotantes que no pueden desenfocar el fondo
   /// (por ejemplo, la isla dinámica animada). Mantiene la legibilidad.
   Color get panelOverlay => switch (cardStyle) {
-    CardStyle.glassmorphic =>
-      Color.lerp(surface, Colors.white, 0.10) ?? surface,
+    CardStyle.glassmorphic => finish == SurfaceFinish.liquid
+        ? (Color.lerp(surface, secondary, 0.10) ?? surface)
+        : (Color.lerp(surface, Colors.white, 0.10) ?? surface),
     CardStyle.neumorphic => surface,
     CardStyle.flatMinimal => surface,
   };
@@ -167,9 +204,20 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     Gradient? gradient,
     bool elevated = true,
   }) {
+    final Gradient? effective = gradient ??
+        (finish == SurfaceFinish.liquid
+            ? LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: <Color>[
+                  Color.lerp(panelColor, accent, 0.16) ?? panelColor,
+                  Color.lerp(panelColor, secondary, 0.20) ?? panelColor,
+                ],
+              )
+            : null);
     return BoxDecoration(
-      color: gradient == null ? (color ?? panelColor) : null,
-      gradient: gradient,
+      color: effective == null ? (color ?? panelColor) : null,
+      gradient: effective,
       borderRadius: BorderRadius.circular(radius ?? panelRadius),
       border: Border.all(color: borderColor ?? panelBorder),
       boxShadow: elevated ? panelShadows(glow: glow) : null,
@@ -192,6 +240,10 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     Color? karaokeColor,
     double? islandRadius,
     bool? glassEnabled,
+    SurfaceFinish? finish,
+    Color? secondary,
+    double? surfaceOpacity,
+    Brightness? brightness,
     CardStyle? cardStyle,
     ArtworkShape? artworkShape,
     ProgressBarType? progressBarType,
@@ -216,6 +268,10 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     karaokeColor: karaokeColor ?? this.karaokeColor,
     islandRadius: islandRadius ?? this.islandRadius,
     glassEnabled: glassEnabled ?? this.glassEnabled,
+    finish: finish ?? this.finish,
+    secondary: secondary ?? this.secondary,
+    surfaceOpacity: surfaceOpacity ?? this.surfaceOpacity,
+    brightness: brightness ?? this.brightness,
     cardStyle: cardStyle ?? this.cardStyle,
     artworkShape: artworkShape ?? this.artworkShape,
     progressBarType: progressBarType ?? this.progressBarType,
@@ -247,6 +303,10 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
           Color.lerp(karaokeColor, other.karaokeColor, t) ?? karaokeColor,
       islandRadius: lerpDouble(islandRadius, other.islandRadius, t),
       glassEnabled: t < 0.5 ? glassEnabled : other.glassEnabled,
+      finish: t < 0.5 ? finish : other.finish,
+      secondary: Color.lerp(secondary, other.secondary, t) ?? secondary,
+      surfaceOpacity: lerpDouble(surfaceOpacity, other.surfaceOpacity, t),
+      brightness: t < 0.5 ? brightness : other.brightness,
       cardStyle: t < 0.5 ? cardStyle : other.cardStyle,
       artworkShape: t < 0.5 ? artworkShape : other.artworkShape,
       progressBarType: t < 0.5 ? progressBarType : other.progressBarType,
@@ -274,4 +334,19 @@ extension PolarisThemeX on BuildContext {
       Theme.of(this).extension<PolarisTokens>() ?? PolarisTokens.fallback;
 
   Color get accent => tokens.accent;
+
+  /// Color de texto heredado del tema (`onSurface`). `null = heredar` sigue
+  /// siendo el patrón por defecto; esto solo permite aplicar opacidades sin
+  /// escribir literales `Colors.whiteXX`.
+  Color get onSurface => Theme.of(this).colorScheme.onSurface;
+
+  /// Color legible calculado sobre el panel activo (glass/neumo/flat).
+  /// Usa `panelOverlay` (opaco), nunca `panelColor` (blanco con alfa).
+  Color get onPanel => ColorMath.onColor(tokens.panelOverlay);
+
+  /// Tinta principal del tema: blanca en temas oscuros, oscura en claros.
+  Color get ink => tokens.foreground;
+
+  /// Tinta secundaria con opacidad, legible en cualquier tema.
+  Color inkAlpha(double alpha) => tokens.ink(alpha);
 }

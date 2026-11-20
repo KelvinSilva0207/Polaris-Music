@@ -109,9 +109,9 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       'Publicada el ${info.publishedAt!.toLocal().toString().split(' ').first}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Colors.white54,
+                        color: context.inkAlpha(0.54),
                       ),
                     ),
                   ),
@@ -131,10 +131,10 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
                     child: SingleChildScrollView(
                       child: Text(
                         info.changelog.trim(),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
                           height: 1.5,
-                          color: Colors.white70,
+                          color: context.inkAlpha(0.70),
                         ),
                       ),
                     ),
@@ -145,7 +145,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
                   if (_progress != null)
                     LinearProgressIndicator(
                       value: _progress,
-                      backgroundColor: Colors.white12,
+                      backgroundColor: context.inkAlpha(0.12),
                       color: tokens.accent,
                       minHeight: 6,
                     ),
@@ -154,9 +154,9 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
                         _status!,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.white70,
+                          color: context.inkAlpha(0.70),
                         ),
                       ),
                     ),
@@ -285,10 +285,14 @@ class _VersionChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: highlight ? accent.withValues(alpha: 0.16) : Colors.white10,
+        color: highlight
+            ? accent.withValues(alpha: 0.16)
+            : context.inkAlpha(0.10),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: highlight ? accent.withValues(alpha: 0.5) : Colors.white12,
+          color: highlight
+              ? accent.withValues(alpha: 0.5)
+              : context.inkAlpha(0.12),
         ),
       ),
       child: Text(
@@ -296,7 +300,7 @@ class _VersionChip extends StatelessWidget {
         style: TextStyle(
           fontSize: 12,
           fontWeight: highlight ? FontWeight.w700 : FontWeight.w500,
-          color: highlight ? accent : Colors.white70,
+          color: highlight ? accent : context.inkAlpha(0.70),
         ),
       ),
     );

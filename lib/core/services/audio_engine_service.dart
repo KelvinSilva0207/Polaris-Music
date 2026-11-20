@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:media_kit/media_kit.dart' hide Track;
 
+import '../debug/memory_probe.dart';
 import '../models/playback_state.dart';
 import '../models/track.dart';
 import '../utils/logger.dart';
@@ -23,8 +25,150 @@ import '../utils/replay_gain.dart';
 /// - Recorte de silencios: offsets `start`/`end` de `Media` (mpv), sin tocar la
 ///   cadena `af` del ecualizador.
 class AudioEngineService {
+  /// Evita que el cache demuxer crezca más de lo necesario: con 16 MB
+  /// (demuxer-max-bytes / demuxer-max-back-bytes) se reduce RAM sin notar
+  /// cortes en redes normales ni en archivos locales.
+  static const int _demuxerBufferSize = 16 * 1024 * 1024;
+
+  static Player _createPlayer() {
+    return Player(
+      configuration: const PlayerConfiguration(bufferSize: _demuxerBufferSize),
+    );
+  }
+
+  /// Un archivo local debe existir; las pistas online usan URLs y no se tocan.
+  static bool _isPlayable(Track track) =>
+      track.isOnline ||
+      (track.path.isNotEmpty && File(track.path).existsSync());
+
+  /// Convierte un error de libmpv en un mensaje breve y sin URLs.
+  ///
+  /// mpv incluye la URL completa de googlevideo en `Failed to open ...`; eso no
+  /// aporta nada al usuario y delata parámetros firmados con validez corta. El
+  /// detalle crudo sigue escribiéndose en el log.
+  static String sanitizePlaybackError(
+    Object message, {
+    String? sourceLabel,
+    bool exhausted = false,
+  }) {
+    final String raw = message.toString().trim();
+    final String source = sourceLabel ?? 'este servicio';
+    if (_isOpenFailure(raw)) {
+      return exhausted
+          ? 'No se pudo abrir el audio de $source. No hay más fuentes '
+              'disponibles.'
+          : 'No se pudo abrir el audio de $source. Reintentando…';
+    }
+    // Si el mensaje trae una URL entremezclada, la quitamos antes de truncar.
+    final String cleaned = raw
+        .replaceAll(RegExp(r'https?://[^\s)\]]+'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    if (cleaned.isEmpty) {
+      return 'No se pudo reproducir esta pista. Inténtalo de nuevo.';
+    }
+    const int max = 140;
+    return cleaned.length <= max ? cleaned : '${cleaned.substring(0, max - 1)}…';
+  }
+
+  /// Errores que implican que mpv no pudo abrir la URL (no avisos de decodificación).
+  static bool _isOpenFailure(String raw) {
+    final String lower = raw.toLowerCase();
+    return lower.contains('failed to open') ||
+        lower.contains('googlevideo') ||
+        lower.contains('http') ||
+        lower.contains('403') ||
+        lower.contains('404') ||
+        lower.contains('410') ||
+        lower.contains('permission denied') ||
+        lower.contains('cannot open');
+  }
+
+  static String _streamKey(Track track) =>
+      track.externalId ?? 'track:${track.id}';
+
+  /// Prueba la siguiente URL alternativa de una pista online tras un fallo.
+  ///
+  /// Cada alternativa lleva sus propias cabeceras (User-Agent incluido), así
+  /// que se sustituye la pista en los espejos de la cola y se reabre la playlist
+  /// en la misma posición. Devuelve `true` cuando ha lanzado un reintento; el
+  /// mensaje "Reintentando…" se limpia en cuanto mpv abre el nuevo media.
+  Future<bool> _tryNextStreamAlternative(Track failed) async {
+    if (_disposed || failed.streamAlternatives.isEmpty) return false;
+    final String key = _streamKey(failed);
+    // Un mismo error pueden emitirlo varios listeners de mpv; solo actuamos
+    // una vez por ronda para no quemar todas las alternativas de golpe.
+    if (!_retryingStreams.add(key)) return false;
+    try {
+      final int attempt = _streamAttempts[key] ?? 0;
+      if (attempt >= failed.streamAlternatives.length) return false;
+      final StreamAlternative alternative = failed.streamAlternatives[attempt];
+      final Track replacement = failed.copyWith(
+        path: alternative.url,
+        httpHeaders: alternative.httpHeaders,
+      );
+      _streamAttempts[key] = attempt + 1;
+
+      List<Track> replaceIn(List<Track> source) {
+        final int at = source.indexWhere((Track item) => item.id == failed.id);
+        if (at < 0) return source;
+        return List<Track>.unmodifiable(<Track>[
+          ...source.sublist(0, at),
+          replacement,
+          ...source.sublist(at + 1),
+        ]);
+      }
+
+      final String retryMessage = sanitizePlaybackError(
+        'Failed to open ${alternative.url}',
+        sourceLabel: failed.sourceLabel,
+      );
+      _state = _state.copyWith(
+        queue: replaceIn(_state.queue),
+        shuffledQueue: replaceIn(_state.shuffledQueue),
+        currentTrack: replacement,
+        buffering: true,
+        playing: true,
+        error: retryMessage,
+      );
+      _emit(_state);
+      AppLog.w(
+        _tag,
+        'Reintentando “${failed.title}” con '
+        '${alternative.label.isEmpty ? 'alternativa ${attempt + 1}' : alternative.label}',
+      );
+      await _open(autoPlay: true);
+      if (!_disposed && identical(_state.error, retryMessage)) {
+        _emit(_state.copyWith(error: null, buffering: false));
+      }
+      return true;
+    } finally {
+      _retryingStreams.remove(key);
+    }
+  }
+
+  /// Busca el índice reproducible más cercano a [from] en la dirección pedida.
+  ///
+  /// Con [wrap] recorre la cola completa (repetir todo, abrir una sesión); sin
+  /// él se detiene en los extremos, igual que la playlist nativa de mpv.
+  static int _nextPlayableIndex(
+    List<Track> order,
+    int from, {
+    bool forward = true,
+    bool wrap = true,
+  }) {
+    final int length = order.length;
+    if (length == 0) return -1;
+    final int limit = wrap ? length : (forward ? length - from : from + 1);
+    for (int i = 0; i < limit; i++) {
+      final int raw = forward ? from + i : from - i;
+      if (_isPlayable(order[raw % length])) return raw % length;
+    }
+    return -1;
+  }
+
   AudioEngineService({Player? player, this.isBackgrounded})
-    : _player = player ?? Player();
+    : _player = player ?? _createPlayer();
 
   static const String _tag = 'AudioEngine';
 
@@ -36,12 +180,14 @@ class AudioEngineService {
   /// con el deck entrante; el handler `_onPlaylistChanged` no se modifica.
   Player _player;
 
-  /// Segundo deck (mpv) usado únicamente para la pista entrante durante un
-  /// crossfade. Se crea de forma perezosa y se reutiliza en el siguiente.
+  /// Segundo deck (mpv), solo durante un crossfade. Se dispone al terminar:
+  /// conservarlo caliente deja vivo un contexto mpv con su caché de demuxer
+  /// y una copia de la playlist, lo que disparaba la RAM cientos de MB.
   Player? _fadePlayer;
   Timer? _crossfadeTimer;
   StreamSubscription<Duration>? _crossfadePositionSub;
   bool _crossfading = false;
+  bool _disposed = false;
   bool _awaitingShuffleEvent = false;
   int _crossfadeMs = 0;
   double _crossfadeGain = 1;
@@ -66,12 +212,26 @@ class AudioEngineService {
   bool _replayGainEnabled = true;
   int _openEpoch = 0;
   bool _initialized = false;
+
+  /// Intentos ya probados con las URLs alternativas de cada pista online.
+  /// La clave es el `externalId` (o el id efímero) para no confundir dos
+  /// pistas con el mismo título.
+  final Map<String, int> _streamAttempts = <String, int>{};
+  final Set<String> _retryingStreams = <String>{};
   String _lastAudioFilter = '';
   DateTime _lastPositionEmit = DateTime.fromMillisecondsSinceEpoch(0);
+  Duration? _pendingPosition;
+  Timer? _positionTrailingTimer;
+
+  /// Posición sin filtrar, reenlazada al deck activo en cada `_bindPlayer()`.
+  /// Así los consumidores (controlador, A-B, letras) nunca quedan suscritos
+  /// al reproductor que se descartó durante un crossfade.
+  final StreamController<Duration> _positionEvents =
+      StreamController<Duration>.broadcast();
 
   PlaybackSnapshot get state => _state;
   Stream<PlaybackSnapshot> get states => _states.stream;
-  Stream<Duration> get positionStream => _player.stream.position;
+  Stream<Duration> get positionStream => _positionEvents.stream;
   Stream<bool> get playingStream => _player.stream.playing;
   Stream<String> get errorStream => _player.stream.error;
 
@@ -145,7 +305,7 @@ class AudioEngineService {
   }
 
   Future<void> initialize() async {
-    if (_initialized) return;
+    if (_initialized || _disposed) return;
     _initialized = true;
 
     await _player.setVolume(50);
@@ -167,9 +327,6 @@ class AudioEngineService {
         (bool value) => _emit(_state.copyWith(playing: value)),
       ),
       _player.stream.position.listen(_onPositionChanged),
-      _crossfadePositionSub = _player.stream.position.listen(
-        _onCrossfadePosition,
-      ),
       _player.stream.duration.listen(
         (Duration value) => _emit(_state.copyWith(duration: value)),
       ),
@@ -181,26 +338,79 @@ class AudioEngineService {
           _emit(_state.copyWith(playing: false, completed: true));
         }
       }),
-      _player.stream.error.listen((String message) {
+      _player.stream.error.listen((String message) async {
+        // El log conserva el detalle técnico (incluida la URL); la UI no.
         AppLog.e(_tag, message);
-        _emit(_state.copyWith(error: message));
+        final Track? failed = _state.currentTrack;
+        if (failed != null &&
+            failed.isOnline &&
+            failed.streamAlternatives.isNotEmpty &&
+            _isOpenFailure(message)) {
+          final bool retried = await _tryNextStreamAlternative(failed);
+          if (retried) return;
+          _emit(
+            _state.copyWith(
+              buffering: false,
+              error: sanitizePlaybackError(
+                message,
+                sourceLabel: failed.sourceLabel,
+                exhausted: true,
+              ),
+            ),
+          );
+          return;
+        }
+        // Un error puede llegar sin el `buffering=false` de mpv: lo limpiamos
+        // aquí para que el spinner y la sesión de medios no queden colgados.
+        // No forzamos `playing: false`: mpv también reporta avisos no fatales.
+        _emit(
+          _state.copyWith(
+            buffering: false,
+            error: sanitizePlaybackError(
+              message,
+              sourceLabel: failed?.sourceLabel,
+            ),
+          ),
+        );
       }),
     ]);
+    // Se guarda aparte para cancelarla sola al cambiar la configuración de
+    // crossfade; no se añade a `_subscriptions` para no cancelarla dos veces.
+    _crossfadePositionSub = _player.stream.position.listen(
+      _onCrossfadePosition,
+    );
   }
 
   /// La UI solo necesita ~5 posiciones por segundo para animar con suavidad
-  /// (1 por segundo cuando está en segundo plano).
+  /// (2 por segundo en segundo plano; 1 Hz hacía que el contador pareciera
+  /// congelado cuando la ventana pierde el foco).
   ///
-  /// libmpv puede entregar decenas por segundo; filtrarlas aquí evita que toda
-  /// la app (isla, estadísticas, barra mini) se reconstruya de más. El audio lo
-  /// decide libmpv, así que este filtro nunca interrumpe la reproducción.
+  /// libmpv puede entregar decenas por segundo; filtrar las instantáneas evita
+  /// reconstruir toda la app de más. El flujo sin filtrar se rebroadcast para
+  /// A-B/letras, y un único timer de cola garantiza que la última posición
+  /// recibida siempre llegue a la UI aunque caiga dentro del intervalo.
   void _onPositionChanged(Duration value) {
+    if (!_positionEvents.isClosed) _positionEvents.add(value);
+
     final DateTime now = DateTime.now();
     final Duration interval = (isBackgrounded?.call() ?? false)
-        ? const Duration(milliseconds: 1000)
+        ? const Duration(milliseconds: 500)
         : const Duration(milliseconds: 200);
-    if (now.difference(_lastPositionEmit) < interval) return;
-    _lastPositionEmit = now;
+    if (now.difference(_lastPositionEmit) < interval) {
+      _pendingPosition = value;
+      _positionTrailingTimer ??= Timer(interval, () {
+        _positionTrailingTimer = null;
+        final Duration? pending = _pendingPosition;
+        _pendingPosition = null;
+        if (pending != null) _emitPosition(pending);
+      });
+      return;
+    }
+    _emitPosition(value);
+  }
+
+  void _emitPosition(Duration value) {
+    _lastPositionEmit = DateTime.now();
     // Con recorte activo la UI trabaja en coordenadas "útiles" (0 = justo tras
     // el silencio inicial), mientras mpv informa del tiempo absoluto del archivo.
     final Duration effective = _toEffectivePosition(value);
@@ -210,6 +420,15 @@ class AudioEngineService {
       return;
     }
     _emit(_state.copyWith(position: effective));
+  }
+
+  /// Descarta posiciones pendientes del track anterior para que el primer tick
+  /// de la nueva pista no se pierda en el filtro.
+  void _resetPositionFeed() {
+    _lastPositionEmit = DateTime.fromMillisecondsSinceEpoch(0);
+    _pendingPosition = null;
+    _positionTrailingTimer?.cancel();
+    _positionTrailingTimer = null;
   }
 
   /// Refleja el estado de favorito en la cola y en la pista actual.
@@ -312,6 +531,7 @@ class AudioEngineService {
 
     final bool trackChanged =
         track != null && track.id != _state.currentTrack?.id;
+    if (trackChanged) _resetPositionFeed();
 
     _emit(
       _state.copyWith(
@@ -322,6 +542,7 @@ class AudioEngineService {
         duration: trackChanged ? track.duration : _state.duration,
         position: trackChanged ? Duration.zero : _state.position,
         completed: trackChanged ? false : _state.completed,
+        buffering: trackChanged ? false : _state.buffering,
         error: trackChanged ? null : _state.error,
       ),
     );
@@ -346,6 +567,10 @@ class AudioEngineService {
     }
 
     await _cancelCrossfade();
+    _resetPositionFeed();
+    // Cola nueva: los reintentos de la cola anterior ya no proceden.
+    _streamAttempts.clear();
+    _retryingStreams.clear();
     final int index = startIndex.clamp(0, tracks.length - 1);
     _state = _state.copyWith(
       queue: List<Track>.unmodifiable(tracks),
@@ -357,6 +582,8 @@ class AudioEngineService {
       position: Duration.zero,
       duration: tracks[index].duration,
       completed: false,
+      buffering: false,
+      playing: autoPlay,
       error: null,
     );
     _emit(_state);
@@ -370,14 +597,20 @@ class AudioEngineService {
   /// `media_kit` traduce `start`/`end` a las propiedades `start`/`end` de mpv,
   /// por lo que no se añade ningún filtro a la cadena `af` del ecualizador.
   Media _mediaFor(Track track) {
+    // Las pistas de InnerTube necesitan las cabeceras devueltas por `player`;
+    // para el resto la ausencia de cabeceras es equivalente a `null`.
+    final Map<String, String>? headers = track.httpHeaders.isEmpty
+        ? null
+        : track.httpHeaders;
     if (_trimStart <= Duration.zero && _trimEnd <= Duration.zero) {
-      return Media(track.path);
+      return Media(track.path, httpHeaders: headers);
     }
     final Duration end = track.duration - _trimEnd;
     return Media(
       track.path,
       start: _trimStart > Duration.zero ? _trimStart : null,
       end: end > _trimStart ? end : null,
+      httpHeaders: headers,
     );
   }
 
@@ -408,19 +641,44 @@ class AudioEngineService {
   }
 
   Future<void> _open({required bool autoPlay}) async {
+    if (_disposed) return;
     final int epoch = ++_openEpoch;
     // La playlist nativa se abre SIEMPRE en el orden activo. Así `playlist.index`
     // y `activeQueue[index]` significan lo mismo incluso con aleatorio activo.
     final List<Track> order = _state.activeQueue;
+    if (order.isEmpty) return;
+    MemoryProbe.mark('queue:open:${order.length}');
+
+    final int wanted = _state.index.clamp(0, order.length - 1);
+    // Si el archivo desapareció, arrancamos en la siguiente pista disponible sin
+    // tocar `queue`/`shuffledQueue`, para no desalinear el orden de mpv.
+    final int start = _nextPlayableIndex(order, wanted);
+    if (start < 0) {
+      _emit(
+        _state.copyWith(
+          buffering: false,
+          playing: false,
+          error: 'No hay pistas disponibles en la cola',
+        ),
+      );
+      return;
+    }
+    if (start != wanted) {
+      _state = _state.copyWith(
+        index: start,
+        currentTrack: order[start],
+        position: Duration.zero,
+        duration: order[start].duration,
+        buffering: false,
+        error: 'Archivo no disponible: ${order[wanted].title}',
+      );
+      _emit(_state);
+    }
+
     final List<Media> medias = order.map(_mediaFor).toList(growable: false);
 
-    if (medias.isEmpty) return;
-
     try {
-      await _player.open(
-        Playlist(medias, index: _state.index.clamp(0, medias.length - 1)),
-        play: autoPlay,
-      );
+      await _player.open(Playlist(medias, index: start), play: autoPlay);
       if (epoch != _openEpoch) return;
       await _applyPlaylistMode();
       await _player.setShuffle(_state.shuffle);
@@ -432,7 +690,18 @@ class AudioEngineService {
       }
     } catch (error, stack) {
       AppLog.e(_tag, 'No se pudo abrir la cola', error, stack);
-      _emit(_state.copyWith(error: 'No se pudo abrir la pista: $error'));
+      _emit(
+        _state.copyWith(
+          buffering: false,
+          playing: false,
+          error: sanitizePlaybackError(
+            error,
+            sourceLabel: _state.currentTrack?.sourceLabel,
+            exhausted:
+                _state.currentTrack?.streamAlternatives.isEmpty ?? true,
+          ),
+        ),
+      );
     }
   }
 
@@ -619,26 +888,80 @@ class AudioEngineService {
   Future<void> playIndex(int index) async {
     final List<Track> active = _state.activeQueue;
     if (index < 0 || index >= active.length) return;
+    final Track target = active[index];
+    if (!_isPlayable(target)) {
+      final int fallback = _nextPlayableIndex(
+        active,
+        index + 1,
+        wrap: _state.repeat == RepeatMode.all,
+      );
+      if (fallback < 0) {
+        _emit(
+          _state.copyWith(
+            buffering: false,
+            playing: false,
+            error: 'No hay pistas disponibles en la cola',
+          ),
+        );
+        return;
+      }
+      _emit(_state.copyWith(error: 'Archivo no disponible: ${target.title}'));
+      await playIndex(fallback);
+      return;
+    }
     await _cancelCrossfade();
-    _state = _state.copyWith(index: index, currentTrack: active[index]);
+    _resetPositionFeed();
+    // Elegir explícitamente una pista vuelve a intentar su URL principal.
+    _streamAttempts.remove(_streamKey(target));
+    _state = _state.copyWith(
+      index: index,
+      currentTrack: target,
+      position: Duration.zero,
+      duration: target.duration,
+      buffering: false,
+      completed: false,
+      playing: true,
+    );
     _emit(_state);
+    // Si la cola nativa no se abrió (sesión restaurada, open fallido o stop),
+    // `jump` no hace nada y la pista nunca arrancaría: reabrimos la cola.
+    if (_player.state.playlist.medias.isEmpty) {
+      await _open(autoPlay: true);
+      return;
+    }
     // mpv ya tiene su playlist en el orden activo, así que el índice coincide.
     await _player.jump(index);
     await _player.play();
   }
 
-  Future<void> play() => _player.play();
+  Future<void> play() async {
+    _emit(_state.copyWith(playing: true, buffering: false));
+    await _player.play();
+  }
 
-  Future<void> pause() => _player.pause();
+  Future<void> pause() async {
+    _emit(_state.copyWith(playing: false));
+    await _player.pause();
+  }
 
-  Future<void> playOrPause() => _player.playOrPause();
+  Future<void> playOrPause() => _state.playing ? pause() : play();
 
-  Future<void> stop() => _player.stop();
+  Future<void> stop() async {
+    _resetPositionFeed();
+    _emit(_state.copyWith(playing: false, position: Duration.zero));
+    await _player.stop();
+  }
 
   Future<void> next() async {
     if (!_state.hasQueue) return;
     await _cancelCrossfade();
-    await _player.next();
+    final int target = _nextPlayableIndex(
+      _state.activeQueue,
+      _state.index + 1,
+      wrap: _state.repeat == RepeatMode.all,
+    );
+    if (target < 0) return;
+    await playIndex(target);
   }
 
   Future<void> previous() async {
@@ -649,7 +972,14 @@ class AudioEngineService {
       await seek(Duration.zero);
       return;
     }
-    await _player.previous();
+    final int target = _nextPlayableIndex(
+      _state.activeQueue,
+      _state.index - 1,
+      forward: false,
+      wrap: _state.repeat == RepeatMode.all,
+    );
+    if (target < 0) return;
+    await playIndex(target);
   }
 
   /// [position] es la posición útil (0 = tras el silencio recortado).
@@ -691,6 +1021,8 @@ class AudioEngineService {
     _crossfadeMs = duration;
     if (duration <= 0) {
       await _cancelCrossfade();
+      // Con el crossfade apagado no debe quedar ningún mpv secundario vivo.
+      await _releaseFadeDeck();
     }
     AppLog.i(_tag, 'Crossfade: ${duration > 0 ? '$duration ms' : 'off'}');
   }
@@ -742,9 +1074,13 @@ class AudioEngineService {
     if (_crossfading || nextIndex < 0 || nextIndex >= active.length) {
       return;
     }
+    // Si la siguiente pista no está disponible, se deja avanzar la playlist
+    // normal: el handler de error/`next()` hará el salto seguro.
+    if (!_isPlayable(active[nextIndex])) return;
     _crossfading = true;
+    MemoryProbe.mark('crossfade:start');
     try {
-      final Player incoming = _fadePlayer ??= Player();
+      final Player incoming = _fadePlayer ??= _createPlayer();
       await incoming.stop();
       // El deck entrante usa el MISMO orden activo, así que su `playlist.index`
       // vuelve a significar lo mismo que `activeQueue[index]`.
@@ -794,6 +1130,10 @@ class AudioEngineService {
     _crossfadeGain = 1;
 
     final Player outgoing = _player;
+    // Esta suscripción pertenece al deck saliente: cancelarla antes de
+    // reenlazar evita dejar un listener vivo sobre un mpv a punto de liberarse.
+    await _crossfadePositionSub?.cancel();
+    _crossfadePositionSub = null;
     for (final StreamSubscription<dynamic> sub in _subscriptions) {
       await sub.cancel();
     }
@@ -827,8 +1167,12 @@ class AudioEngineService {
     );
     _bindPlayer();
     await outgoing.pause();
+    // El deck saliente ya no volverá a usarse: liberar su contexto mpv evita
+    // retener para siempre una segunda caché de demuxer y otra playlist.
+    await _releaseFadeDeck();
     await _applyVolume();
     _crossfading = false;
+    MemoryProbe.mark('crossfade:finish');
     AppLog.i(_tag, 'Crossfade completado');
   }
 
@@ -839,15 +1183,25 @@ class AudioEngineService {
     _crossfadeGain = 1;
     if (!_crossfading) return;
     _crossfading = false;
-    final Player? incoming = _fadePlayer;
-    if (incoming != null) {
-      try {
-        await incoming.stop();
-      } catch (_) {
-        // El deck se reutilizará en el siguiente fundido.
-      }
-    }
+    await _releaseFadeDeck();
     await _applyVolume();
+  }
+
+  /// Libera el deck secundario y sus recursos nativos (idempotente).
+  Future<void> _releaseFadeDeck() async {
+    final Player? deck = _fadePlayer;
+    _fadePlayer = null;
+    if (deck == null || identical(deck, _player)) return;
+    try {
+      await deck.stop();
+    } catch (_) {
+      // Un deck ya detenido no impide liberarlo.
+    }
+    try {
+      await deck.dispose();
+    } catch (_) {
+      // No debe interrumpir la reproducción del deck principal.
+    }
   }
 
   Future<void> setReplayGainEnabled(bool enabled) async {
@@ -926,18 +1280,21 @@ class AudioEngineService {
   }
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     _crossfadeTimer?.cancel();
     _crossfadeTimer = null;
+    _positionTrailingTimer?.cancel();
+    _positionTrailingTimer = null;
     await _crossfadePositionSub?.cancel();
+    _crossfadePositionSub = null;
     for (final StreamSubscription<dynamic> sub in _subscriptions) {
       await sub.cancel();
     }
     _subscriptions.clear();
     await _states.close();
-    final Player? fade = _fadePlayer;
-    if (fade != null && !identical(fade, _player)) {
-      await fade.dispose();
-    }
+    await _positionEvents.close();
+    await _releaseFadeDeck();
     await _player.dispose();
   }
 }

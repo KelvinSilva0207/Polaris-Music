@@ -318,6 +318,10 @@ extension CompactStyleResolver on CompactStyleConfig {
       scale: fontScale ?? global.scale,
     );
     final String? family = resolveFontFamily(familyId);
+    final SurfaceFinish finish = tokens.finish;
+    final CardStyle effectiveCardStyle = finish == SurfaceFinish.matte
+        ? CardStyle.flatMinimal
+        : cardStyle;
     final PolarisTokens local = tokens.copyWith(
       accent: accent,
       background: background,
@@ -325,7 +329,11 @@ extension CompactStyleResolver on CompactStyleConfig {
       panelRadius: cornerRadius,
       glassOpacity: opacity,
       glassBlur: blur,
-      cardStyle: cardStyle,
+      cardStyle: effectiveCardStyle,
+      finish: finish,
+      secondary: tokens.secondary,
+      surfaceOpacity: tokens.surfaceOpacity,
+      brightness: tokens.brightness,
       borderColor: accent.withValues(alpha: 0.26),
       typography: effective,
       artworkShape: artworkShape,
