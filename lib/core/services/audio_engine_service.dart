@@ -56,7 +56,7 @@ class AudioEngineService {
     if (_isOpenFailure(raw)) {
       return exhausted
           ? 'No se pudo abrir el audio de $source. No hay más fuentes '
-              'disponibles.'
+                'disponibles.'
           : 'No se pudo abrir el audio de $source. Reintentando…';
     }
     // Si el mensaje trae una URL entremezclada, la quitamos antes de truncar.
@@ -68,7 +68,9 @@ class AudioEngineService {
       return 'No se pudo reproducir esta pista. Inténtalo de nuevo.';
     }
     const int max = 140;
-    return cleaned.length <= max ? cleaned : '${cleaned.substring(0, max - 1)}…';
+    return cleaned.length <= max
+        ? cleaned
+        : '${cleaned.substring(0, max - 1)}…';
   }
 
   /// Errores que implican que mpv no pudo abrir la URL (no avisos de decodificación).
@@ -697,8 +699,7 @@ class AudioEngineService {
           error: sanitizePlaybackError(
             error,
             sourceLabel: _state.currentTrack?.sourceLabel,
-            exhausted:
-                _state.currentTrack?.streamAlternatives.isEmpty ?? true,
+            exhausted: _state.currentTrack?.streamAlternatives.isEmpty ?? true,
           ),
         ),
       );

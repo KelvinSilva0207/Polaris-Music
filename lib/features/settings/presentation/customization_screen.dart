@@ -111,9 +111,8 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           const SizedBox(height: 22),
           Text(
             'Temas y acabados visuales',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
           Text(
@@ -156,7 +155,10 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                 Text(
                   'Mate desactiva el desenfoque y el brillo continuo: es el '
                   'acabado más ligero para Windows y Android.',
-                  style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.38)),
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: context.inkAlpha(0.38),
+                  ),
                 ),
               ],
             ),
@@ -167,9 +169,8 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
             icon: Icons.auto_awesome_rounded,
             child: _RgbControls(
               config: config,
-              onHue: (double value) => ref
-                  .read(themeControllerProvider.notifier)
-                  .setRgb(hue: value),
+              onHue: (double value) =>
+                  ref.read(themeControllerProvider.notifier).setRgb(hue: value),
               onSaturation: (double value) => ref
                   .read(themeControllerProvider.notifier)
                   .setRgb(saturation: value),
@@ -212,9 +213,8 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
               onProfile: (MotionProfile profile) => ref
                   .read(motionControllerProvider.notifier)
                   .applyProfile(profile),
-              onSpeed: (double value) => ref
-                  .read(motionControllerProvider.notifier)
-                  .setSpeed(value),
+              onSpeed: (double value) =>
+                  ref.read(motionControllerProvider.notifier).setSpeed(value),
               onCategory: (MotionCategory category, bool value) => ref
                   .read(motionControllerProvider.notifier)
                   .setCategory(category, value),
@@ -366,7 +366,10 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                 Text(
                   'Un desenfoque alto y mucha transparencia aumentan el coste '
                   'de CPU/GPU en Windows. El rango está limitado a 32 px.',
-                  style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.38)),
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: context.inkAlpha(0.38),
+                  ),
                 ),
               ],
             ),
@@ -564,9 +567,7 @@ class _ThemeCard extends StatelessWidget {
           color: config.surface,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: selected
-                ? config.accent
-                : ink.withValues(alpha: 0.14),
+            color: selected ? config.accent : ink.withValues(alpha: 0.14),
             width: selected ? 2 : 1,
           ),
         ),
@@ -773,10 +774,7 @@ class _FreeFinishEditor extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        _ColorEditorList(
-          config: config,
-          onPick: onPick,
-        ),
+        _ColorEditorList(config: config, onPick: onPick),
         const SizedBox(height: 10),
         _ThemeSlider(
           label: 'Opacidad de superficie',
@@ -1341,7 +1339,7 @@ class _ThemePreview extends StatelessWidget {
                                 child: LinearProgressIndicator(
                                   value: progress,
                                   minHeight: 4,
-                                  backgroundColor: context.inkAlpha(0.10,),
+                                  backgroundColor: context.inkAlpha(0.10),
                                   valueColor: AlwaysStoppedAnimation<Color>(
                                     progressColor,
                                   ),

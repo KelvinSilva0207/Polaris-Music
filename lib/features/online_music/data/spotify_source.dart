@@ -187,11 +187,7 @@ class SpotifySource implements MusicSourceProvider {
       );
       final Map<String, dynamic>? payload = SourceJson.map(response.data);
       final Map<String, dynamic>? page = SourceJson.map(payload?[section]);
-      return _parseCollections(
-        SourceJson.list(page?['items']),
-        type,
-        limit,
-      );
+      return _parseCollections(SourceJson.list(page?['items']), type, limit);
     } on Object {
       return const <OnlineCollectionRef>[];
     }
@@ -220,10 +216,8 @@ class SpotifySource implements MusicSourceProvider {
           : SourceJson.list(payload?['items']);
       final List<Object?> tracks = collection.kind == OnlineSearchType.playlists
           ? items
-              .map(
-                (Object? entry) => SourceJson.map(entry)?['track'],
-              )
-              .toList(growable: false)
+                .map((Object? entry) => SourceJson.map(entry)?['track'])
+                .toList(growable: false)
           : items;
       return _parseTracks(tracks, limit);
     } on Object {

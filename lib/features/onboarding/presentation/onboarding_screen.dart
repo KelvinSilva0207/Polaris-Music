@@ -490,10 +490,7 @@ class _LibraryPage extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   'Puedes añadir más desde Ajustes → Biblioteca.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: context.inkAlpha(0.54),
-                  ),
+                  style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 18),

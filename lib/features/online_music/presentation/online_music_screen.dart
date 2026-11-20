@@ -64,8 +64,7 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
     }
   }
 
-  Future<bool> _openOriginal(OnlineTrack track) =>
-      _openUrl(track.permalink);
+  Future<bool> _openOriginal(OnlineTrack track) => _openUrl(track.permalink);
 
   Future<void> _play(OnlineTrack track) async {
     if (_resolvingId != null || _bulkPlaying) return;
@@ -222,10 +221,7 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
         Expanded(
           child: Text(
             message,
-            style: TextStyle(
-              color: context.ink,
-              fontWeight: FontWeight.w600,
-            ),
+            style: TextStyle(color: context.ink, fontWeight: FontWeight.w600),
           ),
         ),
       ],
@@ -257,15 +253,12 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
 
     final List<SourceResult> issues = filter == null
         ? state.results
-            .where((SourceResult item) => !item.ok)
-            .take(3)
-            .toList(growable: false)
+              .where((SourceResult item) => !item.ok)
+              .take(3)
+              .toList(growable: false)
         : state.results
-            .where(
-              (SourceResult item) =>
-                  item.source == filter && !item.ok,
-            )
-            .toList(growable: false);
+              .where((SourceResult item) => item.source == filter && !item.ok)
+              .toList(growable: false);
 
     // La cabecera es pequeña y estable; las pistas se construyen bajo demanda
     // para no montar (y decodificar) cientos de carátulas de una sola vez.
@@ -372,8 +365,8 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
             onRetry: collection == null
                 ? () => ref.read(onlineSearchProvider.notifier).retryCurrent()
                 : () => ref
-                    .read(onlineSearchProvider.notifier)
-                    .openCollection(collection),
+                      .read(onlineSearchProvider.notifier)
+                      .openCollection(collection),
           )
         : state.error != null
         ? _ErrorState(
@@ -458,16 +451,15 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
     }
     final String base = state.resultType == OnlineSearchType.songs
         ? 'No encontramos pistas para “${state.query}”. Prueba con otro título '
-            'o artista.'
+              'o artista.'
         : 'No encontramos ${state.resultType.label.toLowerCase()} para '
-            '“${state.query}”. Prueba con otro término.';
+              '“${state.query}”. Prueba con otro término.';
     if (issues.isEmpty) return base;
     final String details = issues
         .map(
-          (SourceResult item) =>
-              item.status.detail.isNotEmpty
-                  ? item.status.detail
-                  : SourceStatusUi.explain(item.status.issue),
+          (SourceResult item) => item.status.detail.isNotEmpty
+              ? item.status.detail
+              : SourceStatusUi.explain(item.status.issue),
         )
         .join(' ');
     return '$base $details';
@@ -612,12 +604,15 @@ class _ResultTypeBar extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: <Widget>[
-          for (final OnlineSearchType type in OnlineSearchType.values) ...<Widget>[
+          for (final OnlineSearchType type
+              in OnlineSearchType.values) ...<Widget>[
             ChoiceChip(
               avatar: Icon(
                 type.icon,
                 size: 14,
-                color: selected == type ? tokens.accent : context.inkAlpha(0.54),
+                color: selected == type
+                    ? tokens.accent
+                    : context.inkAlpha(0.54),
               ),
               label: Text(type.label),
               selected: selected == type,
@@ -825,7 +820,10 @@ class _CollectionTile extends StatelessWidget {
                       color: context.inkAlpha(0.38),
                     ),
                   ),
-                Icon(Icons.chevron_right_rounded, color: context.inkAlpha(0.38)),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: context.inkAlpha(0.38),
+                ),
               ],
             ),
           ),
@@ -1183,8 +1181,7 @@ class _DownloadAction extends StatelessWidget {
 
     if (busy) {
       final double progress = task?.progress ?? 0;
-      final bool indeterminate =
-          task?.indeterminate ?? true;
+      final bool indeterminate = task?.indeterminate ?? true;
       return IconButton(
         tooltip: task?.status == DownloadStatus.queued
             ? 'En cola · toca para cancelar'
@@ -1206,11 +1203,7 @@ class _DownloadAction extends StatelessWidget {
                 color: tokens.accent,
                 backgroundColor: context.inkAlpha(0.12),
               ),
-              Icon(
-                Icons.close_rounded,
-                size: 12,
-                color: context.inkAlpha(0.8),
-              ),
+              Icon(Icons.close_rounded, size: 12, color: context.inkAlpha(0.8)),
             ],
           ),
         ),
@@ -1413,9 +1406,8 @@ class _DownloadRow extends StatelessWidget {
     final bool indeterminate = task.indeterminate;
     final String status = switch (task.status) {
       DownloadStatus.queued => 'En cola',
-      DownloadStatus.downloading => indeterminate
-          ? 'Descargando…'
-          : '${(task.progress * 100).round()} %',
+      DownloadStatus.downloading =>
+        indeterminate ? 'Descargando…' : '${(task.progress * 100).round()} %',
       DownloadStatus.completed => 'Completada',
       DownloadStatus.failed => 'Error',
       DownloadStatus.canceled => 'Cancelada',
@@ -1446,7 +1438,8 @@ class _DownloadRow extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: retryable ||
+                    value:
+                        retryable ||
                             task.status == DownloadStatus.queued ||
                             indeterminate
                         ? null
@@ -1462,10 +1455,7 @@ class _DownloadRow extends StatelessWidget {
                     error,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.redAccent,
-                    ),
+                    style: TextStyle(fontSize: 10, color: Colors.redAccent),
                   ),
                 ],
               ],

@@ -14,10 +14,7 @@ enum MotionProfile {
     'Mínimo',
     'Sin transiciones ni giros decorativos: máxima claridad y ahorro de GPU.',
   ),
-  custom(
-    'Personalizado',
-    'Velocidad y categorías ajustadas una a una.',
-  );
+  custom('Personalizado', 'Velocidad y categorías ajustadas una a una.');
 
   const MotionProfile(this.label, this.description);
 
@@ -121,7 +118,8 @@ class MotionConfig {
     bool? gestures,
     bool? island,
   }) {
-    final bool edited = speed != null ||
+    final bool edited =
+        speed != null ||
         transitions != null ||
         ambient != null ||
         gestures != null ||
@@ -148,7 +146,7 @@ class MotionConfig {
   factory MotionConfig.fromJson(Map<Object?, Object?> json) {
     final MotionProfile stored =
         _enumByName(MotionProfile.values, json['profile']) ??
-            MotionProfile.custom;
+        MotionProfile.custom;
     final MotionConfig base = stored == MotionProfile.custom
         ? defaults
         : MotionConfig.fromProfile(stored);
@@ -188,18 +186,13 @@ class MotionConfig {
       other.island == island;
 
   @override
-  int get hashCode => Object.hash(
-    profile,
-    speed,
-    transitions,
-    ambient,
-    gestures,
-    island,
-  );
+  int get hashCode =>
+      Object.hash(profile, speed, transitions, ambient, gestures, island);
 }
 
 /// Acceso cómodo desde cualquier widget del árbol de la aplicación.
 extension MotionConfigX on MotionConfig {
   /// Igual a [duration] pero con la categoría [MotionCategory.transitions].
-  Duration get transitionDuration => duration(const Duration(milliseconds: 300));
+  Duration get transitionDuration =>
+      duration(const Duration(milliseconds: 300));
 }

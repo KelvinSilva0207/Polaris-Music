@@ -135,14 +135,8 @@ enum AppThemePreset {
     'Bronze Vinyl',
     'Bronce cálido, vinilo giratorio y progreso circular envolvente.',
   ),
-  cyberNeon(
-    'Cyber Neon',
-    'Azul noche con neón cian y magenta sobre cristal.',
-  ),
-  nordicFrost(
-    'Nordic Frost',
-    'Blanco nórdico, azul frío y vidrio muy ligero.',
-  ),
+  cyberNeon('Cyber Neon', 'Azul noche con neón cian y magenta sobre cristal.'),
+  nordicFrost('Nordic Frost', 'Blanco nórdico, azul frío y vidrio muy ligero.'),
   emeraldStudio(
     'Emerald Studio',
     'Verde esmeralda sobre carbón, acabado sólido y limpio.',
@@ -571,11 +565,8 @@ class AppThemeConfig {
   bool get isLight => brightness == Brightness.light;
 
   /// Color construido a partir de los parámetros HSV del modo RGB Dinámico.
-  Color get rgbColor => HsvColor(
-    h: rgbHue,
-    s: rgbSaturation,
-    v: rgbBrightness,
-  ).toColor();
+  Color get rgbColor =>
+      HsvColor(h: rgbHue, s: rgbSaturation, v: rgbBrightness).toColor();
 
   /// Devuelve la configuración con el flujo cromático aplicado.
   ///
@@ -706,18 +697,20 @@ class AppThemeConfig {
     Color? neumorphicDark,
   }) {
     final SurfaceFinish nextFinish = finish ?? this.finish;
-    final CardStyle nextCardStyle = cardStyle ??
-        (finish == null ? this.cardStyle : nextFinish.cardStyle);
-    final double nextBlur = glassBlur ??
+    final CardStyle nextCardStyle =
+        cardStyle ?? (finish == null ? this.cardStyle : nextFinish.cardStyle);
+    final double nextBlur =
+        glassBlur ??
         (nextFinish == SurfaceFinish.matte
             ? 0
             : (finish != null && this.glassBlur == 0 ? 18 : this.glassBlur));
-    final double nextGlassOpacity = glassOpacity ??
+    final double nextGlassOpacity =
+        glassOpacity ??
         (nextFinish == SurfaceFinish.matte
             ? 0
             : (finish != null && this.glassOpacity == 0
-                ? 0.12
-                : this.glassOpacity));
+                  ? 0.12
+                  : this.glassOpacity));
     return AppThemeConfig(
       preset: preset ?? this.preset,
       cardStyle: nextCardStyle,
@@ -820,9 +813,7 @@ class AppThemeConfig {
         _double(json['surfaceOpacity'], base.surfaceOpacity),
         base.surfaceOpacity,
       ),
-      rgbHue: _double(json['rgbHue'], base.rgbHue)
-          .clamp(0.0, 360.0)
-          .toDouble(),
+      rgbHue: _double(json['rgbHue'], base.rgbHue).clamp(0.0, 360.0).toDouble(),
       rgbSaturation: _clamp01(
         _double(json['rgbSaturation'], base.rgbSaturation),
         base.rgbSaturation,
@@ -830,10 +821,10 @@ class AppThemeConfig {
       rgbBrightness: _double(
         json['rgbBrightness'],
         base.rgbBrightness,
-      )
-          .clamp(0.05, 1.0)
-          .toDouble(),
-      rgbFlow: json['rgbFlow'] is bool ? json['rgbFlow']! as bool : base.rgbFlow,
+      ).clamp(0.05, 1.0).toDouble(),
+      rgbFlow: json['rgbFlow'] is bool
+          ? json['rgbFlow']! as bool
+          : base.rgbFlow,
       brightness:
           _enumByName(Brightness.values, json['brightness']) ?? base.brightness,
       panelRadius: _double(json['panelRadius'], base.panelRadius),

@@ -328,10 +328,10 @@ class OnlineMusicService implements OnlineMusicRepository {
     final String path = collection.kind == OnlineSearchType.artists
         ? '/v1/users/${Uri.encodeComponent(collection.id)}/tracks'
         : '/v1/playlists/${Uri.encodeComponent(collection.id)}/tracks';
-    final List<OnlineTrack> tracks = await _fetchTracks(
-      path,
-      <String, dynamic>{'limit': limit, 'app_name': _appName},
-    );
+    final List<OnlineTrack> tracks = await _fetchTracks(path, <String, dynamic>{
+      'limit': limit,
+      'app_name': _appName,
+    });
     return tracks.take(limit).toList(growable: false);
   }
 

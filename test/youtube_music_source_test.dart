@@ -77,7 +77,8 @@ class _ClientAwareAdapter implements HttpClientAdapter {
       );
     }
     final Map<String, dynamic> context =
-        (options.data as Map<String, dynamic>)['context'] as Map<String, dynamic>;
+        (options.data as Map<String, dynamic>)['context']
+            as Map<String, dynamic>;
     final String client =
         (context['client'] as Map<String, dynamic>)['clientName'] as String;
     return ResponseBody.fromString(
@@ -315,33 +316,35 @@ void main() {
       expect(_clientOf(request)['clientName'], 'WEB_REMIX');
     });
 
-    test('searchCollections usa params tipado y parsea playlists públicas',
-        () async {
-      final _Harness harness = _Harness(
-        responses: <String, Map<String, dynamic>>{
-          'search': _collectionPayload(),
-        },
-      );
+    test(
+      'searchCollections usa params tipado y parsea playlists públicas',
+      () async {
+        final _Harness harness = _Harness(
+          responses: <String, Map<String, dynamic>>{
+            'search': _collectionPayload(),
+          },
+        );
 
-      final List<OnlineCollectionRef> items = await harness.source
-          .searchCollections('demo', type: OnlineSearchType.playlists);
+        final List<OnlineCollectionRef> items = await harness.source
+            .searchCollections('demo', type: OnlineSearchType.playlists);
 
-      expect(items, hasLength(1));
-      final OnlineCollectionRef item = items.single;
-      expect(item.id, 'VL123456');
-      expect(item.externalId, 'youtube:VL123456');
-      expect(item.title, 'Playlist demo');
-      expect(item.subtitle, 'Artista demo');
-      expect(item.kind, OnlineSearchType.playlists);
-      expect(item.source, MusicSourceId.youtube);
-      expect(harness.source.canDownload, isTrue);
+        expect(items, hasLength(1));
+        final OnlineCollectionRef item = items.single;
+        expect(item.id, 'VL123456');
+        expect(item.externalId, 'youtube:VL123456');
+        expect(item.title, 'Playlist demo');
+        expect(item.subtitle, 'Artista demo');
+        expect(item.kind, OnlineSearchType.playlists);
+        expect(item.source, MusicSourceId.youtube);
+        expect(harness.source.canDownload, isTrue);
 
-      final RequestOptions request = harness.postFor('search');
-      expect(
-        (request.data! as Map<String, dynamic>)['params'],
-        contains('Eg-KAQwI'),
-      );
-    });
+        final RequestOptions request = harness.postFor('search');
+        expect(
+          (request.data! as Map<String, dynamic>)['params'],
+          contains('Eg-KAQwI'),
+        );
+      },
+    );
 
     test('resolveStream usa IOS y devuelve audio con cabeceras', () async {
       final _Harness harness = _Harness(
@@ -369,84 +372,80 @@ void main() {
       expect(request.headers['X-YouTube-Client-Name'], '5');
     });
 
-    test(
-      'resolveStream descarta firmas sin descifrar y guarda alternativas por cliente',
-      () async {
-        final _ClientAwareAdapter adapter = _ClientAwareAdapter(
-          <String, Map<String, dynamic>>{
-            'IOS': <String, dynamic>{
-              'playabilityStatus': <String, dynamic>{'status': 'OK'},
-              'streamingData': <String, dynamic>{
-                'adaptiveFormats': <Object?>[
-                  <String, dynamic>{
-                    'mimeType': 'audio/mp4; codecs="mp4a.40.2"',
-                    'url': 'https://googlevideo.example/ios.m4a?c=IOS',
-                    'httpHeaders': <String, dynamic>{
-                      // Un User-Agent ajeno no debe filtrarse a mpv.
-                      'User-Agent': 'ios-agent-falso',
-                      'Referer': 'https://music.youtube.com/',
-                    },
+    test('resolveStream descarta firmas sin descifrar y guarda alternativas por cliente', () async {
+      final _ClientAwareAdapter adapter = _ClientAwareAdapter(
+        <String, Map<String, dynamic>>{
+          'IOS': <String, dynamic>{
+            'playabilityStatus': <String, dynamic>{'status': 'OK'},
+            'streamingData': <String, dynamic>{
+              'adaptiveFormats': <Object?>[
+                <String, dynamic>{
+                  'mimeType': 'audio/mp4; codecs="mp4a.40.2"',
+                  'url': 'https://googlevideo.example/ios.m4a?c=IOS',
+                  'httpHeaders': <String, dynamic>{
+                    // Un User-Agent ajeno no debe filtrarse a mpv.
+                    'User-Agent': 'ios-agent-falso',
+                    'Referer': 'https://music.youtube.com/',
                   },
-                  <String, dynamic>{
-                    'mimeType': 'audio/mp4',
-                    'signatureCipher': 's=sin_descifrar&url=xxx',
-                  },
-                ],
-              },
-            },
-            'ANDROID_MUSIC': <String, dynamic>{
-              'playabilityStatus': <String, dynamic>{'status': 'OK'},
-              'streamingData': <String, dynamic>{
-                'adaptiveFormats': <Object?>[
-                  <String, dynamic>{
-                    'mimeType': 'audio/mp4',
-                    'url':
-                        'https://googlevideo.example/android.m4a?c=ANDROID',
-                  },
-                ],
-              },
+                },
+                <String, dynamic>{
+                  'mimeType': 'audio/mp4',
+                  'signatureCipher': 's=sin_descifrar&url=xxx',
+                },
+              ],
             },
           },
-        );
-        final Dio dio = Dio()..httpClientAdapter = adapter;
-        final YouTubeMusicSource source = YouTubeMusicSource(
-          dio: dio,
-          artworkCache: ArtworkCache(dio: dio),
-        );
-        const OnlineTrack track = OnlineTrack(
-          externalId: 'youtube:abc12345678',
-          sourceId: 'abc12345678',
-          title: 'Canción demo',
-          artist: 'Artista demo',
-          durationMs: 207000,
-        );
+          'ANDROID_MUSIC': <String, dynamic>{
+            'playabilityStatus': <String, dynamic>{'status': 'OK'},
+            'streamingData': <String, dynamic>{
+              'adaptiveFormats': <Object?>[
+                <String, dynamic>{
+                  'mimeType': 'audio/mp4',
+                  'url': 'https://googlevideo.example/android.m4a?c=ANDROID',
+                },
+              ],
+            },
+          },
+        },
+      );
+      final Dio dio = Dio()..httpClientAdapter = adapter;
+      final YouTubeMusicSource source = YouTubeMusicSource(
+        dio: dio,
+        artworkCache: ArtworkCache(dio: dio),
+      );
+      const OnlineTrack track = OnlineTrack(
+        externalId: 'youtube:abc12345678',
+        sourceId: 'abc12345678',
+        title: 'Canción demo',
+        artist: 'Artista demo',
+        durationMs: 207000,
+      );
 
-        final ResolvedStream stream = await source.resolveStream(track);
+      final ResolvedStream stream = await source.resolveStream(track);
 
-        expect(stream.url, endsWith('ios.m4a?c=IOS'));
-        expect(stream.clientLabel, 'IOS');
-        expect(
-          stream.httpHeaders['User-Agent'],
-          startsWith('com.google.ios.youtube/'),
-        );
-        expect(stream.httpHeaders['User-Agent'], isNot('ios-agent-falso'));
-        expect(stream.httpHeaders['X-YouTube-Client-Name'], '5');
-        expect(stream.httpHeaders['X-YouTube-Client-Version'], isNotEmpty);
-        expect(stream.alternatives, hasLength(1));
-        expect(stream.alternatives.single.url, endsWith('android.m4a?c=ANDROID'));
-        expect(
-          stream.alternatives.single.httpHeaders['User-Agent'],
-          contains('com.google.android.apps.youtube.music/'),
-        );
-        // Solo IOS y ANDROID_MUSIC: WEB_REMIX no se consulta si ya hay respaldo.
-        final List<RequestOptions> posts = adapter.requests
-            .where((RequestOptions r) => r.method == 'POST')
-            .toList();
-        expect(posts, hasLength(2));
-        expect(_clientOf(posts[0])['clientName'], 'IOS');
-        expect(_clientOf(posts[1])['clientName'], 'ANDROID_MUSIC');
-      },
-    );
+      expect(stream.url, endsWith('ios.m4a?c=IOS'));
+      expect(stream.clientLabel, 'IOS');
+      expect(
+        stream.httpHeaders['User-Agent'],
+        startsWith('com.google.ios.youtube/'),
+      );
+      expect(stream.httpHeaders['User-Agent'], isNot('ios-agent-falso'));
+      expect(stream.httpHeaders['X-YouTube-Client-Name'], '5');
+      expect(stream.httpHeaders['X-YouTube-Client-Version'], isNotEmpty);
+      expect(stream.alternatives, hasLength(1));
+      expect(stream.alternatives.single.url, endsWith('android.m4a?c=ANDROID'));
+      expect(
+        stream.alternatives.single.httpHeaders['User-Agent'],
+        contains('com.google.android.apps.youtube.music/'),
+      );
+      // Solo IOS y ANDROID_MUSIC: WEB_REMIX no se consulta si ya hay respaldo.
+      final List<RequestOptions> posts = adapter.requests
+          .where((RequestOptions r) => r.method == 'POST')
+          .toList();
+      expect(posts, hasLength(2));
+      expect(_clientOf(posts[0])['clientName'], 'IOS');
+      expect(_clientOf(posts[1])['clientName'], 'ANDROID_MUSIC');
+    });
 
     test(
       'los errores de apertura se muestran sin la URL de googlevideo',

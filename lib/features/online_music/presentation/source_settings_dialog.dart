@@ -88,10 +88,7 @@ class _SourceSettingsDialogState extends ConsumerState<SourceSettingsDialog> {
         _spotifyToken.text,
         market: _spotifyMarket.text,
       );
-      await controller.configureSource(
-        MusicSourceId.tidal,
-        _tidalToken.text,
-      );
+      await controller.configureSource(MusicSourceId.tidal, _tidalToken.text);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

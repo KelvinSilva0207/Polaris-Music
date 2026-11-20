@@ -347,10 +347,7 @@ void main() {
       expect(flowed.secondary, isNot(base.secondary));
       expect(flowed.backdrop.first, isNot(base.backdrop.first));
       expect(base.rgbHue, 267);
-      expect(
-        base.copyWith(rgbFlow: false).withRgbFlow(90).accent,
-        base.accent,
-      );
+      expect(base.copyWith(rgbFlow: false).withRgbFlow(90).accent, base.accent);
     });
 
     test('el acabado y el flujo sobreviven al viaje JSON', () {

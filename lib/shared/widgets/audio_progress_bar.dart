@@ -148,9 +148,7 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(railHeight),
                             color: context.inkAlpha(0.10),
-                            border: Border.all(
-                              color: context.inkAlpha(0.06),
-                            ),
+                            border: Border.all(color: context.inkAlpha(0.06)),
                           ),
                         ),
                       ),
@@ -166,8 +164,7 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                             gradient: LinearGradient(
                               colors: <Color>[
                                 accent.withValues(alpha: 0.85),
-                                Color.lerp(accent, context.ink, 0.28) ??
-                                    accent,
+                                Color.lerp(accent, context.ink, 0.28) ?? accent,
                               ],
                             ),
                             boxShadow: <BoxShadow>[
@@ -462,7 +459,9 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
                                     borderRadius: BorderRadius.circular(3),
                                     color: lit
                                         ? accent.withValues(alpha: 0.85)
-                                        : context.inkAlpha(_hovering ? 0.22 : 0.12,),
+                                        : context.inkAlpha(
+                                            _hovering ? 0.22 : 0.12,
+                                          ),
                                     boxShadow: lit
                                         ? <BoxShadow>[
                                             BoxShadow(

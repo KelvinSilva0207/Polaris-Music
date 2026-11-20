@@ -114,8 +114,8 @@ class OnlineSearchState {
       !collectionLoading &&
       (openedCollection == null
           ? (resultType == OnlineSearchType.songs
-              ? tracks.isEmpty
-              : collections.isEmpty)
+                ? tracks.isEmpty
+                : collections.isEmpty)
           : tracks.isEmpty);
 
   List<SourceResult> get issues => results
@@ -263,11 +263,7 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
           ? await _catalog.trending(only: _onlySelected)
           : type == OnlineSearchType.songs
           ? await _catalog.search(term, only: _onlySelected)
-          : await _catalog.searchType(
-            term,
-            type: type,
-            only: _onlySelected,
-          );
+          : await _catalog.searchType(term, type: type, only: _onlySelected);
       if (!mounted || generation != _generation) return;
       state = state.copyWith(
         loading: false,
@@ -321,14 +317,8 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
     if (source == state.sourceFilter) return;
     _debounce?.cancel();
     state = source == null
-        ? state.copyWith(
-          clearSourceFilter: true,
-          clearOpenedCollection: true,
-        )
-        : state.copyWith(
-          sourceFilter: source,
-          clearOpenedCollection: true,
-        );
+        ? state.copyWith(clearSourceFilter: true, clearOpenedCollection: true)
+        : state.copyWith(sourceFilter: source, clearOpenedCollection: true);
     if (state.isTrending) {
       await loadTrending();
     } else {

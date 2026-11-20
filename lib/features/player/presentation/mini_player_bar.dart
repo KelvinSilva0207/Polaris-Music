@@ -77,7 +77,10 @@ class MiniPlayerBar extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     'Sin reproducción activa',
-                    style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.inkAlpha(0.70),
+                    ),
                   ),
                 ),
                 TextButton(onPressed: onOpen, child: Text('Abrir')),

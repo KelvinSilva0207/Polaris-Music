@@ -93,10 +93,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   if (Platform.isAndroid)
                     OutlinedButton.icon(
                       onPressed: scan.running ? null : _importMetrolist,
-                      icon: Icon(
-                        Icons.download_for_offline_outlined,
-                        size: 18,
-                      ),
+                      icon: Icon(Icons.download_for_offline_outlined, size: 18),
                       label: Text('Metrolist'),
                     ),
                   if (Platform.isAndroid) const SizedBox(width: 8),
@@ -165,10 +162,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ],
               if (scan.error != null) ...<Widget>[
                 const SizedBox(height: 10),
-                Text(
-                  scan.error!,
-                  style: TextStyle(color: Colors.redAccent),
-                ),
+                Text(scan.error!, style: TextStyle(color: Colors.redAccent)),
               ],
             ],
           ),

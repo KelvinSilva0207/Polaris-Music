@@ -27,7 +27,11 @@ class MotionController extends StateNotifier<MotionConfig> {
         return MotionConfig.fromJson(decoded);
       }
     } catch (error) {
-      AppLog.w(_tag, 'Configuración de movimiento inválida; se usan valores base', error);
+      AppLog.w(
+        _tag,
+        'Configuración de movimiento inválida; se usan valores base',
+        error,
+      );
     }
     return MotionConfig.defaults;
   }
@@ -48,14 +52,12 @@ class MotionController extends StateNotifier<MotionConfig> {
   );
 
   Future<void> setCategory(MotionCategory category, bool enabled) {
-    return _persist(
-      switch (category) {
-        MotionCategory.transitions => state.copyWith(transitions: enabled),
-        MotionCategory.ambient => state.copyWith(ambient: enabled),
-        MotionCategory.gestures => state.copyWith(gestures: enabled),
-        MotionCategory.island => state.copyWith(island: enabled),
-      },
-    );
+    return _persist(switch (category) {
+      MotionCategory.transitions => state.copyWith(transitions: enabled),
+      MotionCategory.ambient => state.copyWith(ambient: enabled),
+      MotionCategory.gestures => state.copyWith(gestures: enabled),
+      MotionCategory.island => state.copyWith(island: enabled),
+    });
   }
 
   Future<void> reset() => _persist(MotionConfig.defaults);
@@ -72,8 +74,8 @@ class MotionController extends StateNotifier<MotionConfig> {
 final StateNotifierProvider<MotionController, MotionConfig>
 motionControllerProvider =
     StateNotifierProvider<MotionController, MotionConfig>((Ref ref) {
-  return MotionController(sl<SettingsService>());
-});
+      return MotionController(sl<SettingsService>());
+    });
 
 /// Configuración observada por la UI. `MotionScope` puede sustituirla cuando
 /// el sistema solicita reducir el movimiento.

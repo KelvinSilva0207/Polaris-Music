@@ -41,31 +41,37 @@ void main() {
   });
 
   group('Persistencia de MotionConfig', () {
-    test('readConfig lee la preferencia y cae en defaults si no hay nada', () async {
-      final FakeSettingsService settings = FakeSettingsService();
-      expect(MotionController.readConfig(settings), MotionConfig.defaults);
+    test(
+      'readConfig lee la preferencia y cae en defaults si no hay nada',
+      () async {
+        final FakeSettingsService settings = FakeSettingsService();
+        expect(MotionController.readConfig(settings), MotionConfig.defaults);
 
-      final MotionConfig config = _configPersonalizada();
-      await _escribirMotion(settings, config);
+        final MotionConfig config = _configPersonalizada();
+        await _escribirMotion(settings, config);
 
-      expect(MotionController.readConfig(settings), config);
-    });
+        expect(MotionController.readConfig(settings), config);
+      },
+    );
 
-    test('applyImported persiste y actualiza el estado del controlador', () async {
-      final FakeSettingsService settings = FakeSettingsService();
-      final MotionController controller = MotionController(settings);
-      final MotionConfig config = _configPersonalizada();
+    test(
+      'applyImported persiste y actualiza el estado del controlador',
+      () async {
+        final FakeSettingsService settings = FakeSettingsService();
+        final MotionController controller = MotionController(settings);
+        final MotionConfig config = _configPersonalizada();
 
-      await controller.applyImported(config);
+        await controller.applyImported(config);
 
-      expect(controller.state, config);
-      expect(MotionController.readConfig(settings), config);
-      expect(
-        MotionController(settings).state,
-        config,
-        reason: 'Otro controlador debe leer lo persistido.',
-      );
-    });
+        expect(controller.state, config);
+        expect(MotionController.readConfig(settings), config);
+        expect(
+          MotionController(settings).state,
+          config,
+          reason: 'Otro controlador debe leer lo persistido.',
+        );
+      },
+    );
 
     test('reload recoge cambios externos sin recrear el controlador', () async {
       final FakeSettingsService settings = FakeSettingsService();
@@ -90,7 +96,9 @@ void main() {
       final MotionConfig config = _configPersonalizada();
       await _escribirMotion(settings, config);
 
-      final Object? decoded = jsonDecode(ThemeController(settings).exportJson());
+      final Object? decoded = jsonDecode(
+        ThemeController(settings).exportJson(),
+      );
 
       expect(decoded, isA<Map<Object?, Object?>>());
       final Map<Object?, Object?> json = decoded! as Map<Object?, Object?>;
@@ -105,28 +113,31 @@ void main() {
       );
     });
 
-    test('importJson restaura movimiento y devuelve el número de perfiles', () async {
-      final FakeSettingsService settings = FakeSettingsService();
-      final ThemeController controller = ThemeController(settings);
-      final MotionConfig config = _configPersonalizada();
-      final Map<String, Object?> perfil = CustomThemeProfile(
-        id: 'perfil-1',
-        name: 'Nocturno',
-        config: AppThemeConfig.defaults,
-      ).toJson();
+    test(
+      'importJson restaura movimiento y devuelve el número de perfiles',
+      () async {
+        final FakeSettingsService settings = FakeSettingsService();
+        final ThemeController controller = ThemeController(settings);
+        final MotionConfig config = _configPersonalizada();
+        final Map<String, Object?> perfil = CustomThemeProfile(
+          id: 'perfil-1',
+          name: 'Nocturno',
+          config: AppThemeConfig.defaults,
+        ).toJson();
 
-      final int perfiles = await controller.importJson(
-        jsonEncode(
-          _exportTema(motion: config.toJson())
-            ..['profiles'] = <Object>[perfil],
-        ),
-      );
+        final int perfiles = await controller.importJson(
+          jsonEncode(
+            _exportTema(motion: config.toJson())
+              ..['profiles'] = <Object>[perfil],
+          ),
+        );
 
-      expect(perfiles, 1);
-      expect(controller.profiles, hasLength(1));
-      expect(controller.profiles.first.name, 'Nocturno');
-      expect(MotionController.readConfig(settings), config);
-    });
+        expect(perfiles, 1);
+        expect(controller.profiles, hasLength(1));
+        expect(controller.profiles.first.name, 'Nocturno');
+        expect(MotionController.readConfig(settings), config);
+      },
+    );
 
     test('un export antiguo sin motion no modifica el movimiento', () async {
       final FakeSettingsService settings = FakeSettingsService();

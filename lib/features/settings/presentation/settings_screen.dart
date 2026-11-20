@@ -496,9 +496,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: Text('Siempre encima'),
-                    subtitle: Text(
-                      'Mantiene la ventana sobre otras apps',
-                    ),
+                    subtitle: Text('Mantiene la ventana sobre otras apps'),
                     value: state.alwaysOnTop,
                     onChanged: window.setAlwaysOnTop,
                   ),
@@ -721,10 +719,7 @@ class _TrimSlider extends StatelessWidget {
     return Row(
       children: <Widget>[
         const SizedBox(width: 4),
-        SizedBox(
-          width: 42,
-          child: Text(label, style: TextStyle(fontSize: 12)),
-        ),
+        SizedBox(width: 42, child: Text(label, style: TextStyle(fontSize: 12))),
         Expanded(
           child: Slider(
             value: value.toDouble().clamp(0, 15000),
@@ -924,7 +919,10 @@ class _HotkeysSection extends ConsumerWidget {
                       'Funcionan con Polaris minimizado o en la bandeja. '
                       'Dentro de la app, la barra espaciadora reproduce o '
                       'pausa.',
-                      style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.inkAlpha(0.54),
+                      ),
                     ),
                     const SizedBox(height: 6),
                     for (final HotkeyAction action in HotkeyAction.values)
@@ -1070,10 +1068,7 @@ class _HotkeyCaptureDialogState extends State<_HotkeyCaptureDialog> {
               const SizedBox(height: 10),
               Text(
                 _error!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.orangeAccent,
-                ),
+                style: TextStyle(fontSize: 12, color: Colors.orangeAccent),
               ),
             ],
           ],
@@ -1581,12 +1576,18 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                 if (info.title.isNotEmpty)
                   Text(
                     info.title,
-                    style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: context.inkAlpha(0.70),
+                    ),
                   ),
                 if (info.publishedAt != null)
                   Text(
                     'Publicada el ${Formatters.date(info.publishedAt!)}',
-                    style: TextStyle(fontSize: 11, color: context.inkAlpha(0.38)),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: context.inkAlpha(0.38),
+                    ),
                   ),
                 if (info.changelog.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 8),
@@ -1643,7 +1644,10 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                     Text(
                       'La app se cerrará para instalar la nueva versión y se '
                       'volverá a abrir automáticamente.',
-                      style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: context.inkAlpha(0.54),
+                      ),
                     ),
                   ] else ...<Widget>[
                     const SizedBox(height: 6),

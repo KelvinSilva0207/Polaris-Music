@@ -144,9 +144,7 @@ class _TitleBarButton extends StatelessWidget {
           child: Icon(
             icon,
             size: 17,
-            color: danger
-                ? const Color(0xFFFF8A80)
-                : context.inkAlpha(0.72),
+            color: danger ? const Color(0xFFFF8A80) : context.inkAlpha(0.72),
           ),
         ),
       ),

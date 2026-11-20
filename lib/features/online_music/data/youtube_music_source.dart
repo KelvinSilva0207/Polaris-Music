@@ -83,8 +83,7 @@ class YouTubeMusicSource implements MusicSourceProvider {
         OnlineSearchType.songs: 'EgWKAQIIAWoMEA4QChADEAQQCRAF',
         OnlineSearchType.albums: 'EgWKAQIYAWoMEA4QChADEAQQCRAF',
         OnlineSearchType.artists: 'EgWKAQIgAWoMEA4QChADEAQQCRAF',
-        OnlineSearchType.playlists:
-            'Eg-KAQwIABAAGAAgACgBMABqChAEEAMQCRAFEAo=',
+        OnlineSearchType.playlists: 'Eg-KAQwIABAAGAAgACgBMABqChAEEAMQCRAFEAo=',
       };
 
   final Dio _dio;
@@ -430,11 +429,7 @@ class YouTubeMusicSource implements MusicSourceProvider {
   }
 
   /// Busca un `browseId` de colección dentro de un renderer de búsqueda.
-  String _browseId(
-    Object? node, [
-    int depth = 0,
-    OnlineSearchType? wanted,
-  ]) {
+  String _browseId(Object? node, [int depth = 0, OnlineSearchType? wanted]) {
     if (depth > 10) return '';
     final Map<String, dynamic>? map = SourceJson.map(node);
     if (map == null) {
@@ -743,11 +738,11 @@ class YouTubeMusicSource implements MusicSourceProvider {
   String _userAgentFor(String client) => switch (client) {
     _ios =>
       'com.google.ios.youtube/${_versions[_ios] ?? _iosVersion} '
-      '(iPhone16,2; U; CPU iOS 18_3_1 like Mac OS X;)',
+          '(iPhone16,2; U; CPU iOS 18_3_1 like Mac OS X;)',
     _androidMusic =>
       'com.google.android.apps.youtube.music/'
-      '${_versions[_androidMusic] ?? _fallbackAndroidMusicVersion} '
-      '(Linux; U; Android 15; Pixel 9; gzip)',
+          '${_versions[_androidMusic] ?? _fallbackAndroidMusicVersion} '
+          '(Linux; U; Android 15; Pixel 9; gzip)',
     _ => _browserUserAgent,
   };
 
@@ -768,9 +763,7 @@ class YouTubeMusicSource implements MusicSourceProvider {
   ) {
     final Map<String, String> headers = <String, String>{
       'Accept': '*/*',
-      'Referer': client == _web
-          ? 'https://$_musicHost/'
-          : 'https://$_wwwHost/',
+      'Referer': client == _web ? 'https://$_musicHost/' : 'https://$_wwwHost/',
       'User-Agent': _userAgentFor(client),
       'X-YouTube-Client-Name': '${_clientIdFor(client)}',
       'X-YouTube-Client-Version':
@@ -853,8 +846,10 @@ class YouTubeMusicSource implements MusicSourceProvider {
         );
       }
       // m4a/AAC primero: es el formato que mejor soporta libmpv en Windows.
-      found.sort((_AudioCandidate a, _AudioCandidate b) =>
-          (b.isMp4 ? 1 : 0) - (a.isMp4 ? 1 : 0));
+      found.sort(
+        (_AudioCandidate a, _AudioCandidate b) =>
+            (b.isMp4 ? 1 : 0) - (a.isMp4 ? 1 : 0),
+      );
       return found;
     } on Object {
       // Un cliente caído no impide probar los demás.

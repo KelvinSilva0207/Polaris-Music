@@ -661,11 +661,7 @@ class _Header extends StatelessWidget {
           ],
         ),
       ),
-      child: Icon(
-        Icons.music_note_rounded,
-        color: context.ink,
-        size: 28,
-      ),
+      child: Icon(Icons.music_note_rounded, color: context.ink, size: 28),
     );
   }
 }
@@ -821,20 +817,13 @@ class _ArtworkRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          Icon(
-            Icons.image_rounded,
-            size: 14,
-            color: context.inkAlpha(0.32),
-          ),
+          Icon(Icons.image_rounded, size: 14, color: context.inkAlpha(0.32)),
           const SizedBox(width: 8),
           SizedBox(
             width: 104,
             child: Text(
               'Carátula',
-              style: TextStyle(
-                fontSize: 11.5,
-                color: context.inkAlpha(0.52),
-              ),
+              style: TextStyle(fontSize: 11.5, color: context.inkAlpha(0.52)),
             ),
           ),
           Expanded(

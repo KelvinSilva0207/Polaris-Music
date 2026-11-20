@@ -238,10 +238,9 @@ class SoundCloudSource implements MusicSourceProvider {
           externalId: 'soundcloud:${type.name}:$id',
           id: id,
           title: title,
-          subtitle:
-              SourceJson.text(user?['username']).isNotEmpty
-                  ? SourceJson.text(user?['username'])
-                  : SourceJson.text(json['description']),
+          subtitle: SourceJson.text(user?['username']).isNotEmpty
+              ? SourceJson.text(user?['username'])
+              : SourceJson.text(json['description']),
           artworkUrl: artwork,
           permalink: SourceJson.url(json['permalink_url']),
           source: MusicSourceId.soundcloud,

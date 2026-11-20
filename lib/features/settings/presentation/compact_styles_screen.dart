@@ -253,9 +253,7 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: Text('Ocultar la isla cuando no haya interacción'),
-              subtitle: Text(
-                'Vuelve a aparecer al cambiar de modo de ventana',
-              ),
+              subtitle: Text('Vuelve a aparecer al cambiar de modo de ventana'),
               value: style.autoHide,
               onChanged: (bool value) =>
                   _controller.setAutoHide(_surface, value),
@@ -327,7 +325,10 @@ class _Preview extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       'Vista previa en vivo',
-                      style: TextStyle(fontSize: 10, color: context.inkAlpha(0.60)),
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: context.inkAlpha(0.60),
+                      ),
                     ),
                     const SizedBox(height: 6),
                     LinearProgressIndicator(

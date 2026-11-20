@@ -194,46 +194,51 @@ class _RecordingAdapter implements HttpClientAdapter {
 
 void main() {
   group('MetadataAudioBridge', () {
-    test('elige el primer resolutor válido y etiqueta el origen real', () async {
-      const OnlineTrack metadata = OnlineTrack(
-        externalId: 'spotify:abc',
-        sourceId: 'abc',
-        title: 'Canción example',
-        artist: 'Artista Example',
-        durationMs: 200000,
-        sourceLabel: 'Spotify',
-      );
-      final _BridgeSource youtube = _BridgeSource(
-        MusicSourceId.youtube,
-        tracks: <OnlineTrack>[
-          _track('youtube', 'vid', 'Canción example', 'Artista Example'),
-        ],
-        stream: const ResolvedStream(
-          url: 'https://media.example/yt.m4a',
-          extension: 'm4a',
-          httpHeaders: <String, String>{'Referer': 'https://music.youtube.com/'},
-        ),
-      );
-      final _BridgeSource audius = _BridgeSource(
-        MusicSourceId.audius,
-        tracks: <OnlineTrack>[
-          _track('audius', 'aud', 'Canción example', 'Artista Example'),
-        ],
-        stream: const ResolvedStream(url: 'https://media.example/audius.mp3'),
-      );
-      // El orden del catálogo es distinto: el puente impone su propio orden.
-      final MetadataAudioBridge bridge = MetadataAudioBridge(
-        MusicSourceCatalog(<MusicSourceProvider>[audius, youtube]),
-      );
+    test(
+      'elige el primer resolutor válido y etiqueta el origen real',
+      () async {
+        const OnlineTrack metadata = OnlineTrack(
+          externalId: 'spotify:abc',
+          sourceId: 'abc',
+          title: 'Canción example',
+          artist: 'Artista Example',
+          durationMs: 200000,
+          sourceLabel: 'Spotify',
+        );
+        final _BridgeSource youtube = _BridgeSource(
+          MusicSourceId.youtube,
+          tracks: <OnlineTrack>[
+            _track('youtube', 'vid', 'Canción example', 'Artista Example'),
+          ],
+          stream: const ResolvedStream(
+            url: 'https://media.example/yt.m4a',
+            extension: 'm4a',
+            httpHeaders: <String, String>{
+              'Referer': 'https://music.youtube.com/',
+            },
+          ),
+        );
+        final _BridgeSource audius = _BridgeSource(
+          MusicSourceId.audius,
+          tracks: <OnlineTrack>[
+            _track('audius', 'aud', 'Canción example', 'Artista Example'),
+          ],
+          stream: const ResolvedStream(url: 'https://media.example/audius.mp3'),
+        );
+        // El orden del catálogo es distinto: el puente impone su propio orden.
+        final MetadataAudioBridge bridge = MetadataAudioBridge(
+          MusicSourceCatalog(<MusicSourceProvider>[audius, youtube]),
+        );
 
-      final ResolvedStream stream = await bridge.resolve(metadata);
+        final ResolvedStream stream = await bridge.resolve(metadata);
 
-      expect(stream.url, 'https://media.example/yt.m4a');
-      expect(stream.httpHeaders['Referer'], 'https://music.youtube.com/');
-      expect(stream.resolvedVia, 'Spotify → YouTube Music');
-      expect(youtube.resolveCalls, 1);
-      expect(audius.resolveCalls, 0);
-    });
+        expect(stream.url, 'https://media.example/yt.m4a');
+        expect(stream.httpHeaders['Referer'], 'https://music.youtube.com/');
+        expect(stream.resolvedVia, 'Spotify → YouTube Music');
+        expect(youtube.resolveCalls, 1);
+        expect(audius.resolveCalls, 0);
+      },
+    );
 
     test('descarta candidatos que no parecen la misma canción', () async {
       final _BridgeSource youtube = _BridgeSource(
@@ -382,7 +387,10 @@ void main() {
           isTrue,
           reason: 'sin Content-Length el progreso debe ser indefinido',
         );
-        expect(adapter.request!.headers['Referer'], 'https://music.youtube.com/');
+        expect(
+          adapter.request!.headers['Referer'],
+          'https://music.youtube.com/',
+        );
         expect(adapter.request!.headers['X-Test-Token'], 'token-123');
         expect(adapter.request!.headers['Accept'], contains('audio/*'));
         expect(saved, isNotNull);
@@ -395,50 +403,54 @@ void main() {
       }
     });
 
-    test('una pista sin equivalente reproducible falla con motivo visible',
-        () async {
-      final Directory dir = await Directory.systemTemp.createTemp(
-        'polaris-download-error-',
-      );
-      DownloadManager? manager;
+    test(
+      'una pista sin equivalente reproducible falla con motivo visible',
+      () async {
+        final Directory dir = await Directory.systemTemp.createTemp(
+          'polaris-download-error-',
+        );
+        DownloadManager? manager;
 
-      try {
-        manager = DownloadManager(
-          repository: _DownloadRepository(
-            resolveError: 'No encontramos una versión reproducible de esta '
-                'canción en fuentes abiertas.',
-          ),
-          registerDownloaded: (DownloadedTrack track) async => 1,
-          hasDownloaded: (String externalId) async => false,
-          musicDirectory: () async => dir,
-        );
-        final Future<List<DownloadTask>> finished = manager.changes.firstWhere(
-          (List<DownloadTask> tasks) => tasks.any(
-            (DownloadTask task) => task.status == DownloadStatus.failed,
-          ),
-        );
-        manager.enqueue(
-          _track('tidal', 'tid', 'Canción example', 'Artista Example'),
-        );
+        try {
+          manager = DownloadManager(
+            repository: _DownloadRepository(
+              resolveError:
+                  'No encontramos una versión reproducible de esta '
+                  'canción en fuentes abiertas.',
+            ),
+            registerDownloaded: (DownloadedTrack track) async => 1,
+            hasDownloaded: (String externalId) async => false,
+            musicDirectory: () async => dir,
+          );
+          final Future<List<DownloadTask>> finished = manager.changes
+              .firstWhere(
+                (List<DownloadTask> tasks) => tasks.any(
+                  (DownloadTask task) => task.status == DownloadStatus.failed,
+                ),
+              );
+          manager.enqueue(
+            _track('tidal', 'tid', 'Canción example', 'Artista Example'),
+          );
 
-        final List<DownloadTask> tasks = await finished.timeout(
-          const Duration(seconds: 10),
-        );
+          final List<DownloadTask> tasks = await finished.timeout(
+            const Duration(seconds: 10),
+          );
 
-        expect(tasks.single.status, DownloadStatus.failed);
-        expect(
-          tasks.single.error,
-          contains('No encontramos una versión reproducible'),
-        );
-        expect(
-          dir.listSync().whereType<File>(),
-          isEmpty,
-          reason: 'no debe quedar un archivo .part tras el fallo',
-        );
-      } finally {
-        await manager?.dispose();
-        if (dir.existsSync()) dir.deleteSync(recursive: true);
-      }
-    });
+          expect(tasks.single.status, DownloadStatus.failed);
+          expect(
+            tasks.single.error,
+            contains('No encontramos una versión reproducible'),
+          );
+          expect(
+            dir.listSync().whereType<File>(),
+            isEmpty,
+            reason: 'no debe quedar un archivo .part tras el fallo',
+          );
+        } finally {
+          await manager?.dispose();
+          if (dir.existsSync()) dir.deleteSync(recursive: true);
+        }
+      },
+    );
   });
 }

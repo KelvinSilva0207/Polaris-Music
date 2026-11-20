@@ -853,8 +853,7 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: <Color>[
-                  Color.lerp(widget.accent, context.ink, 0.22) ??
-                      widget.accent,
+                  Color.lerp(widget.accent, context.ink, 0.22) ?? widget.accent,
                   widget.accent,
                 ],
               ),
@@ -1496,10 +1495,7 @@ class _NowPlayingWavesState extends ConsumerState<_NowPlayingWaves>
     _backgrounded = _window!.value.backgrounded;
     final MotionConfig initial = ref.read(motionConfigProvider);
     _ambient = initial.ambient;
-    _scaledPeriod = initial.duration(
-      _period,
-      category: MotionCategory.ambient,
-    );
+    _scaledPeriod = initial.duration(_period, category: MotionCategory.ambient);
     _window!.addListener(_onWindowChanged);
     ref.listen(motionConfigProvider, (_, MotionConfig next) {
       _scaledPeriod = next.duration(_period, category: MotionCategory.ambient);

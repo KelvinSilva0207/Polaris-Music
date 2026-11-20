@@ -110,8 +110,9 @@ class ThemeController extends StateNotifier<ThemeState> {
       _touch(
         config.copyWith(
           surfaceOpacity: opacity,
-          glassOpacity:
-              config.finish == SurfaceFinish.matte ? config.glassOpacity : opacity,
+          glassOpacity: config.finish == SurfaceFinish.matte
+              ? config.glassOpacity
+              : opacity,
         ),
       ),
     );
@@ -138,21 +139,21 @@ class ThemeController extends StateNotifier<ThemeState> {
       v: partial.rgbBrightness,
     ).toColor();
     return _persist(
-        partial.copyWith(
-          preset: AppThemePreset.rgbDynamic,
-          paletteMode: ColorPaletteMode.fixedPreset,
-          accent: primary,
-          progressColor: primary,
-          volumeColor: secondaryColor,
-          karaokeColor: primary,
-          secondary: secondaryColor,
-          backdrop: <Color>[
-            Color.lerp(primary, current.background, 0.62) ?? current.background,
-            current.background,
-            Color.lerp(secondaryColor, current.background, 0.76) ??
-                current.background,
-          ],
-        ),
+      partial.copyWith(
+        preset: AppThemePreset.rgbDynamic,
+        paletteMode: ColorPaletteMode.fixedPreset,
+        accent: primary,
+        progressColor: primary,
+        volumeColor: secondaryColor,
+        karaokeColor: primary,
+        secondary: secondaryColor,
+        backdrop: <Color>[
+          Color.lerp(primary, current.background, 0.62) ?? current.background,
+          current.background,
+          Color.lerp(secondaryColor, current.background, 0.76) ??
+              current.background,
+        ],
+      ),
     );
   }
 
@@ -351,16 +352,16 @@ final Provider<AppThemeConfig> themeConfigProvider = Provider<AppThemeConfig>((
 /// No se persiste: al desactivar el flujo vuelve a aplicarse el HSV elegido.
 final StateNotifierProvider<RgbFlowController, double> rgbFlowPhaseProvider =
     StateNotifierProvider<RgbFlowController, double>((Ref ref) {
-  return RgbFlowController(ref);
-});
+      return RgbFlowController(ref);
+    });
 
 /// Configuración que alimenta `MaterialApp`: incluye el flujo cromático.
 final Provider<AppThemeConfig> flowingThemeConfigProvider =
     Provider<AppThemeConfig>((Ref ref) {
-  final AppThemeConfig config = ref.watch(themeConfigProvider);
-  final double phase = ref.watch(rgbFlowPhaseProvider);
-  return config.withRgbFlow(phase);
-});
+      final AppThemeConfig config = ref.watch(themeConfigProvider);
+      final double phase = ref.watch(rgbFlowPhaseProvider);
+      return config.withRgbFlow(phase);
+    });
 
 /// Reloj de baja frecuencia del flujo cromático.
 ///

@@ -158,8 +158,12 @@ class MusicSourceCatalog {
           return SourceResult(
             source: provider.id,
             status: provider.status,
-            albums: type == OnlineSearchType.albums ? collections : const <OnlineCollectionRef>[],
-            artists: type == OnlineSearchType.artists ? collections : const <OnlineCollectionRef>[],
+            albums: type == OnlineSearchType.albums
+                ? collections
+                : const <OnlineCollectionRef>[],
+            artists: type == OnlineSearchType.artists
+                ? collections
+                : const <OnlineCollectionRef>[],
             playlists: type == OnlineSearchType.playlists
                 ? collections
                 : const <OnlineCollectionRef>[],

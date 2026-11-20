@@ -129,7 +129,9 @@ class TrackTile extends ConsumerWidget {
             ?trailing,
             Text(
               Formatters.duration(track.duration),
-              style: theme.textTheme.bodySmall?.copyWith(color: context.inkAlpha(0.38)),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: context.inkAlpha(0.38),
+              ),
             ),
             const SizedBox(width: 4),
             IconButton(

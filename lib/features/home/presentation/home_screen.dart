@@ -211,10 +211,7 @@ class _StatChip extends StatelessWidget {
                 ),
                 Text(
                   value,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 17,
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],

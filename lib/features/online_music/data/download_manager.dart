@@ -251,8 +251,8 @@ class DownloadManager implements DownloadQueue {
       final String album = stream.resolvedVia == null
           ? (track.album.isEmpty ? track.sourceLabel : track.album)
           : (track.album.isEmpty
-              ? originLabel
-              : '$originLabel · ${track.album}');
+                ? originLabel
+                : '$originLabel · ${track.album}');
       final DownloadedTrack downloaded = DownloadedTrack(
         externalId: track.externalId,
         path: target.path,
@@ -295,10 +295,10 @@ class DownloadManager implements DownloadQueue {
       final String detail = error is MusicSourceException
           ? error.message
           : MusicSourceErrorMapper.map(
-            error,
-            MusicSourceIdX.fromExternalId(track.externalId) ??
-                MusicSourceId.audius,
-          ).detail;
+              error,
+              MusicSourceIdX.fromExternalId(track.externalId) ??
+                  MusicSourceId.audius,
+            ).detail;
       _update(
         initial,
         status: DownloadStatus.failed,

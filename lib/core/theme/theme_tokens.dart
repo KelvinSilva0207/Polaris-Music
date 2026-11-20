@@ -133,9 +133,10 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   /// Color opaco para paneles flotantes que no pueden desenfocar el fondo
   /// (por ejemplo, la isla dinámica animada). Mantiene la legibilidad.
   Color get panelOverlay => switch (cardStyle) {
-    CardStyle.glassmorphic => finish == SurfaceFinish.liquid
-        ? (Color.lerp(surface, secondary, 0.10) ?? surface)
-        : (Color.lerp(surface, Colors.white, 0.10) ?? surface),
+    CardStyle.glassmorphic =>
+      finish == SurfaceFinish.liquid
+          ? (Color.lerp(surface, secondary, 0.10) ?? surface)
+          : (Color.lerp(surface, Colors.white, 0.10) ?? surface),
     CardStyle.neumorphic => surface,
     CardStyle.flatMinimal => surface,
   };
@@ -204,7 +205,8 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     Gradient? gradient,
     bool elevated = true,
   }) {
-    final Gradient? effective = gradient ??
+    final Gradient? effective =
+        gradient ??
         (finish == SurfaceFinish.liquid
             ? LinearGradient(
                 begin: Alignment.topLeft,

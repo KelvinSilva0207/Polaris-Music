@@ -14,19 +14,16 @@ import 'source_helpers.dart';
 /// ajustes) y el reproductor resuelve un equivalente reproducible mediante
 /// [MetadataAudioBridge], etiquetando siempre el origen real del audio.
 class TidalSource implements MusicSourceProvider {
-  TidalSource({
-    required this.settings,
-    Dio? dio,
-    ArtworkCache? artworkCache,
-  }) : _dio =
-            dio ??
-            Dio(
-              BaseOptions(
-                connectTimeout: const Duration(seconds: 12),
-                receiveTimeout: const Duration(seconds: 25),
-              ),
+  TidalSource({required this.settings, Dio? dio, ArtworkCache? artworkCache})
+    : _dio =
+          dio ??
+          Dio(
+            BaseOptions(
+              connectTimeout: const Duration(seconds: 12),
+              receiveTimeout: const Duration(seconds: 25),
             ),
-        _artworkCache = artworkCache ?? ArtworkCache();
+          ),
+      _artworkCache = artworkCache ?? ArtworkCache();
 
   static const String _baseUrl = 'https://api.tidal.com/v1';
   static const String _market = 'US';
@@ -172,18 +169,16 @@ class TidalSource implements MusicSourceProvider {
       _ => '/playlists/${Uri.encodeComponent(collection.id)}/items',
     };
     try {
-      final Response<dynamic> response = await _get(
-        path,
-        <String, dynamic>{'limit': limit, 'countryCode': _market},
-      );
+      final Response<dynamic> response = await _get(path, <String, dynamic>{
+        'limit': limit,
+        'countryCode': _market,
+      });
       final Map<String, dynamic>? payload = SourceJson.map(response.data);
       final List<Object?> entries = SourceJson.list(payload?['items']);
       final List<Object?> tracks = collection.kind == OnlineSearchType.playlists
           ? entries
-              .map(
-                (Object? entry) => SourceJson.map(entry)?['item'],
-              )
-              .toList(growable: false)
+                .map((Object? entry) => SourceJson.map(entry)?['item'])
+                .toList(growable: false)
           : entries;
       return _parseTracks(tracks, limit);
     } on Object {
@@ -210,15 +205,12 @@ class TidalSource implements MusicSourceProvider {
     String query,
     int limit,
   ) async {
-    final Response<dynamic> response = await _get(
-      '/search',
-      <String, dynamic>{
-        'query': query,
-        'types': section.toUpperCase(),
-        'limit': limit,
-        'countryCode': _market,
-      },
-    );
+    final Response<dynamic> response = await _get('/search', <String, dynamic>{
+      'query': query,
+      'types': section.toUpperCase(),
+      'limit': limit,
+      'countryCode': _market,
+    });
     final Map<String, dynamic>? payload = SourceJson.map(response.data);
     final Map<String, dynamic>? page = SourceJson.map(payload?[section]);
     return SourceJson.list(page?['items'] ?? payload?['items']);
@@ -297,10 +289,9 @@ class TidalSource implements MusicSourceProvider {
           externalId: 'tidal:${type.name}:$id',
           id: id,
           title: title,
-          subtitle:
-              SourceJson.text(json['name']).isNotEmpty
-                  ? SourceJson.text(json['name'])
-                  : SourceJson.text(artist?['name']),
+          subtitle: SourceJson.text(json['name']).isNotEmpty
+              ? SourceJson.text(json['name'])
+              : SourceJson.text(artist?['name']),
           artworkUrl: _cover(json['cover']),
           permalink: 'https://tidal.com/browse/${type.name}/$id',
           source: MusicSourceId.tidal,

@@ -277,7 +277,10 @@ class _EmptyState extends StatelessWidget {
                   SizedBox(height: 3),
                   Text(
                     'Elige una canción desde la biblioteca',
-                    style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.60)),
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: context.inkAlpha(0.60),
+                    ),
                   ),
                 ],
               ),

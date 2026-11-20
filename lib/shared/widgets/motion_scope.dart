@@ -33,9 +33,11 @@ class _MotionScopeState extends ConsumerState<MotionScope> {
 
   void _onAccessibilityChanged() {
     if (!mounted) return;
-    final bool disabled =
-        WidgetsBinding.instance.platformDispatcher.accessibilityFeatures
-            .disableAnimations;
+    final bool disabled = WidgetsBinding
+        .instance
+        .platformDispatcher
+        .accessibilityFeatures
+        .disableAnimations;
     if (disabled == _systemDisable) return;
     setState(() => _systemDisable = disabled);
   }
@@ -52,20 +54,19 @@ class _MotionScopeState extends ConsumerState<MotionScope> {
     final MotionConfig stored = ref.watch(motionControllerProvider);
     final MotionConfig effective = _systemDisable
         ? stored.copyWith(
-          transitions: false,
-          ambient: false,
-          gestures: false,
-          island: false,
-        )
+            transitions: false,
+            ambient: false,
+            gestures: false,
+            island: false,
+          )
         : stored;
 
     final MediaQueryData media = MediaQuery.of(context);
-    final bool disableImplicit = media.disableAnimations || !effective.transitions;
+    final bool disableImplicit =
+        media.disableAnimations || !effective.transitions;
 
     return ProviderScope(
-      overrides: <Override>[
-        motionConfigProvider.overrideWithValue(effective),
-      ],
+      overrides: <Override>[motionConfigProvider.overrideWithValue(effective)],
       child: _MotionInherited(
         config: effective,
         child: MediaQuery(

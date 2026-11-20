@@ -73,10 +73,7 @@ class SubharmonicControl extends StatelessWidget {
                 child: Text(
                   '${(settings.mix * 100).toStringAsFixed(0)} %',
                   textAlign: TextAlign.end,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: context.inkAlpha(0.70),
-                  ),
+                  style: TextStyle(fontSize: 11, color: context.inkAlpha(0.70)),
                 ),
               ),
             ],
@@ -103,10 +100,7 @@ class SubharmonicControl extends StatelessWidget {
                 child: Text(
                   '${settings.crossoverHz.toStringAsFixed(0)} Hz',
                   textAlign: TextAlign.end,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: context.inkAlpha(0.70),
-                  ),
+                  style: TextStyle(fontSize: 11, color: context.inkAlpha(0.70)),
                 ),
               ),
             ],

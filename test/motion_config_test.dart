@@ -14,26 +14,26 @@ void main() {
       expect(MotionConfig.presets, hasLength(3));
     });
 
-    test('la velocidad acorta duraciones y las categorías apagadas duran cero', () {
-      const Duration base = Duration(milliseconds: 400);
+    test(
+      'la velocidad acorta duraciones y las categorías apagadas duran cero',
+      () {
+        const Duration base = Duration(milliseconds: 400);
 
-      expect(MotionConfig.balanced.duration(base), base);
-      expect(
-        MotionConfig.fluid.duration(base).inMilliseconds,
-        lessThan(base.inMilliseconds),
-      );
-      expect(
-        MotionConfig.minimal.duration(base),
-        Duration.zero,
-      );
-      expect(
-        MotionConfig.balanced.duration(
+        expect(MotionConfig.balanced.duration(base), base);
+        expect(
+          MotionConfig.fluid.duration(base).inMilliseconds,
+          lessThan(base.inMilliseconds),
+        );
+        expect(MotionConfig.minimal.duration(base), Duration.zero);
+        expect(
+          MotionConfig.balanced.duration(
+            base,
+            category: MotionCategory.ambient,
+          ),
           base,
-          category: MotionCategory.ambient,
-        ),
-        base,
-      );
-    });
+        );
+      },
+    );
 
     test('editar cualquier categoría convierte el perfil en personalizado', () {
       final MotionConfig edited = MotionConfig.balanced.copyWith(

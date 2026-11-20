@@ -39,11 +39,7 @@ class TrackArtwork extends StatelessWidget {
           ],
         ),
       ),
-      child: Icon(
-        icon,
-        color: context.inkAlpha(0.85),
-        size: size * 0.45,
-      ),
+      child: Icon(icon, color: context.inkAlpha(0.85), size: size * 0.45),
     );
 
     final String? artwork = path;
