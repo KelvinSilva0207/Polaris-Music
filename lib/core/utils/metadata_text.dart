@@ -6,6 +6,10 @@ import 'dart:convert';
 /// archivos declaran Latin-1 y en realidad contienen UTF-8 (o al revés). El
 /// resultado es mojibake como `MÃºsica`, `Rock Â©` o `Rock â€™ roll`.
 ///
+/// Además de esos marcadores, se limpian los glifos de reemplazo (`■`, `□`)
+/// y la secuencia `ï¿½` (un U+FFFD decodificado como Latin-1), que dejan
+/// títulos ilegibles aunque el resto de la etiqueta sea válido.
+///
 /// Las funciones son puras y sincrónicas: se pueden usar dentro de
 /// `Isolate.run` durante el escaneo y también al leer la base de datos.
 class MetadataText {
@@ -42,7 +46,28 @@ class MetadataText {
     0x0178: 0x9F,
   };
 
-  static const List<String> _markers = <String>['Ã', 'Â', 'â€', 'ðŸ'];
+  static const List<String> _markers = <String>['Ã', 'Â', 'â€', 'ðŸ', 'ï¿½'];
+
+  /// Puntos de código que indican que la etiqueta ya llegó rota.
+  static const Set<int> _replacementCodePoints = <int>{
+    0xFFFD,
+    0x25A0,
+    0x25A1,
+    0x25A7,
+    0x25A8,
+    0x25AA,
+  };
+
+  /// Glifos de reemplazo que pueden descartarse sin perder texto legible.
+  static final RegExp _replacementGlyphs = RegExp(
+    r'[\u25A0\u25A1\u25A7\u25A8\u25AA]',
+  );
+
+  static final RegExp _controlCharacters = RegExp(
+    r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u0080-\u009F]',
+  );
+
+  static final RegExp _whiteSpace = RegExp(r'\s+');
 
   /// Detecta marcadores clásicos de UTF-8 leído como Latin-1/CP1252.
   static bool _looksLikeMojibake(String value) {
@@ -83,7 +108,20 @@ class MetadataText {
     return bytes;
   }
 
-  /// Repara `Ã©`, `Â©`, `â€™`, `ÃƒÂ©`... de forma conservadora e idempotente.
+  /// Quita controles, BOM, espacios de ancho cero y glifos de reemplazo,
+  /// normaliza NBSP y colapsa espacios. U+FFFD se conserva a propósito para
+  /// que [clean] pueda decidir si toca devolver el respaldo.
+  static String _tidy(String value) => value
+      .replaceAll(_controlCharacters, '')
+      .replaceAll('\uFEFF', '')
+      .replaceAll('\u200B', '')
+      .replaceAll(_replacementGlyphs, ' ')
+      .replaceAll('\u00A0', ' ')
+      .replaceAll(_whiteSpace, ' ')
+      .trim();
+
+  /// Repara `Ã©`, `Â©`, `â€™`, `ÃƒÂ©`, `ï¿½`... de forma conservadora e
+  /// idempotente, sin devolver caracteres de control al editor de etiquetas.
   static String repair(String input) {
     String current = input.replaceAll('\x00', '').trim();
     // Hasta tres pasadas para mojibake doble: `ÃƒÂ©` → `Ã©` → `é`.
@@ -104,25 +142,21 @@ class MetadataText {
       current = candidate;
     }
     // Un `Â` suelto al final no tiene pareja UTF-8: se descarta.
-    return current.replaceAll(RegExp(r'Â+$'), '').trim();
+    return _tidy(current.replaceAll(RegExp(r'Â+$'), ''));
   }
 
   /// Texto listo para guardar o mostrar: repara, quita caracteres de control
   /// y cae a [fallback] si no queda nada legible.
   static String clean(String? raw, String fallback) {
     if (raw == null) return fallback;
-    String value = repair(raw);
-    value = value.replaceAll(
-      RegExp(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\u0080-\u009F]'),
-      '',
-    );
-    value = value.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final String value = _tidy(repair(raw));
     if (value.isEmpty || _isIllegible(value)) return fallback;
     return value;
   }
 
   static bool _isIllegible(String value) {
-    if (value.contains('\uFFFD')) return true;
+    if (value.codeUnits.any(_replacementCodePoints.contains)) return true;
+    if (value.contains('ï¿½')) return true;
     final int controls = value.codeUnits
         .where((int unit) => unit < 0x20 || (unit >= 0x7F && unit <= 0x9F))
         .length;

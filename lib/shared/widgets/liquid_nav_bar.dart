@@ -50,6 +50,8 @@ class _LiquidNavBarState extends State<LiquidNavBar>
   late final AnimationController _controller;
   late final CurvedAnimation _position;
   MotionConfig? _motion;
+  bool _allowed = true;
+  double _intensity = 1;
   int _from = 0;
   int _to = 0;
 
@@ -69,6 +71,8 @@ class _LiquidNavBarState extends State<LiquidNavBar>
   void didChangeDependencies() {
     super.didChangeDependencies();
     _motion = context.motion;
+    _allowed = context.motionAllowed(MotionCategory.gestures);
+    _intensity = _motion!.intensity;
     final Duration duration = _motion!.duration(
       const Duration(milliseconds: 520),
       category: MotionCategory.gestures,
@@ -84,7 +88,7 @@ class _LiquidNavBarState extends State<LiquidNavBar>
     if (oldWidget.selected == widget.selected) return;
     _from = _visualIndex;
     _to = widget.selected.index;
-    if (_motion?.gestures ?? true) {
+    if (_allowed) {
       _controller.forward(from: 0);
     } else {
       _from = _to;
@@ -154,6 +158,7 @@ class _LiquidNavBarState extends State<LiquidNavBar>
                   border: tokens.panelBorder.withValues(alpha: 0.85),
                   glow: accent.withValues(alpha: top ? 0.14 : 0.20),
                   accent: accent,
+                  intensity: _intensity,
                 ),
               ),
               Row(
@@ -292,6 +297,7 @@ class _LiquidIndicatorPainter extends CustomPainter {
     required this.border,
     required this.glow,
     required this.accent,
+    required this.intensity,
   }) : super(repaint: repaint);
 
   final Animation<double> position;
@@ -307,6 +313,7 @@ class _LiquidIndicatorPainter extends CustomPainter {
   final Color border;
   final Color glow;
   final Color accent;
+  final double intensity;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -324,7 +331,8 @@ class _LiquidIndicatorPainter extends CustomPainter {
 
     final double travel = (end - start).abs();
     final double stretch =
-        math.sin(math.pi * p) * math.min<double>(travel * 0.42, 36);
+        math.sin(math.pi * p) *
+        math.min<double>(travel * 0.42, 12 + 24 * intensity);
     final double lead = stretch * (end >= start ? 1 : -1);
     final Path blob = _blobPath(Offset(x, centerY), baseWidth, height, lead);
 
@@ -415,5 +423,6 @@ class _LiquidIndicatorPainter extends CustomPainter {
       old.width != width ||
       old.fill != fill ||
       old.border != border ||
-      old.glow != glow;
+      old.glow != glow ||
+      old.intensity != intensity;
 }

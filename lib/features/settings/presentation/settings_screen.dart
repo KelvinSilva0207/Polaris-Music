@@ -19,27 +19,20 @@ import '../../../core/services/backup_service.dart';
 import '../../../core/services/global_hotkey_service.dart';
 import '../../../core/services/settings_service.dart';
 import '../../../core/services/window_service.dart';
-import '../../../core/theme/app_theme_config.dart';
-import '../../../core/theme/color_math.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../features/dynamic_island/presentation/island_providers.dart';
 import '../../../features/equalizer/presentation/equalizer_providers.dart';
 import '../../../features/equalizer/presentation/equalizer_screen.dart';
 import '../../../features/home/presentation/home_screen.dart';
-import '../../../features/library/presentation/library_providers.dart';
 import '../../../features/player/domain/player_controller.dart';
 import '../../../features/player/presentation/player_providers.dart';
 import '../../../features/profiles_backup/domain/profiles_service.dart';
 import '../../../features/profiles_backup/presentation/profiles_providers.dart';
 import '../../../features/stats_sync/presentation/stats_screen.dart';
-import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/polaris_surface.dart';
-import 'color_picker_dialog.dart';
-import 'compact_styles_screen.dart';
 import 'customization_screen.dart';
-import 'typography_screen.dart';
 
 /// Ajustes de Polaris Music: apariencia, audio, ventana, respaldos y más.
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -54,9 +47,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
-    final ThemeState theme = ref.watch(themeControllerProvider);
-    final AppThemeConfig config = theme.config;
-    final Color accent = config.accent;
     final bool replayGain = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.replayGainEnabled),
     );
@@ -115,109 +105,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           title: 'Apariencia',
           icon: Icons.palette_outlined,
           children: <Widget>[
-            const _SettingLabel(
-              title: 'Temas base',
-              subtitle: 'Aplica un diseño completo con un solo toque',
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: AppThemeConfig.builtInPresets
-                  .map(
-                    (AppThemeConfig preset) => _PresetChip(
-                      config: preset,
-                      selected: config.preset == preset.preset,
-                      onTap: () => ref
-                          .read(themeControllerProvider.notifier)
-                          .applyPreset(preset.preset),
-                    ),
-                  )
-                  .toList(growable: false),
-            ),
-            const SizedBox(height: 18),
-            const _SettingLabel(
-              title: 'Color de acento',
-              subtitle: 'Rueda cromática libre con HEX, HSL/HSV y RGB',
-            ),
-            const SizedBox(height: 12),
-            InkWell(
-              onTap: () async {
-                final Color? picked = await ColorPickerDialog.show(
-                  context,
-                  title: 'Color de acento',
-                  initial: accent,
-                );
-                if (picked != null && mounted) {
-                  await ref
-                      .read(themeControllerProvider.notifier)
-                      .setAccent(picked);
-                }
-              },
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: accent.withValues(alpha: 0.55)),
-                ),
-                child: Row(
-                  children: <Widget>[
-                    Container(
-                      width: 30,
-                      height: 30,
-                      decoration: BoxDecoration(
-                        color: accent,
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        ColorMath.toHex(accent, withAlpha: true),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    Icon(Icons.colorize_rounded, size: 18),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(
+            _SettingCard(
+              icon: Icons.palette_outlined,
+              title: 'Apariencia',
+              subtitle: 'Temas, colores, acabados, movimiento, tipografía y diseños compactos',
+              onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
                   builder: (BuildContext context) =>
                       const CustomizationScreen(),
                 ),
               ),
-              icon: Icon(Icons.tune_rounded, size: 18),
-              label: Text('Personalización avanzada'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (BuildContext context) =>
-                      const CompactStylesScreen(),
-                ),
-              ),
-              icon: Icon(Icons.dashboard_customize_outlined, size: 18),
-              label: Text('Diseños compactos (isla, mini, teléfono…)'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (BuildContext context) => const TypographyScreen(),
-                ),
-              ),
-              icon: Icon(Icons.text_fields_rounded, size: 18),
-              label: Text('Tipografía y fuentes propias'),
             ),
           ],
         ),
@@ -356,42 +253,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               },
             ),
             const SizedBox(height: 6),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: <Widget>[
-                OutlinedButton.icon(
-                  onPressed: () => widget.onNavigate(AppSection.library),
-                  icon: Icon(Icons.folder_outlined, size: 18),
-                  label: Text('Gestionar carpetas'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () =>
-                      ref.read(scanControllerProvider.notifier).scan(),
-                  icon: Icon(Icons.radar_rounded, size: 18),
-                  label: Text('Escanear ahora'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => showDialog<void>(
-                    context: context,
-                    builder: (BuildContext context) => AlertDialog(
-                      title: Text('Duplicados'),
-                      content: Text(
-                        'La detección de duplicados está disponible en la '
-                        'pantalla de Biblioteca.',
-                      ),
-                      actions: <Widget>[
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: Text('Entendido'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  icon: Icon(Icons.copy_all_rounded, size: 18),
-                  label: Text('Duplicados'),
-                ),
-              ],
+            _SettingCard(
+              icon: Icons.library_music_outlined,
+              title: 'Administrar biblioteca',
+              subtitle: 'Escanear, gestionar carpetas y revisar duplicados',
+              onTap: () => widget.onNavigate(AppSection.library),
             ),
           ],
         ),
@@ -695,8 +561,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const SizedBox(height: 10),
         Text(
           'El ecualizador de 10 bandas aplica filtros reales mediante libmpv en '
-          'Windows y Android. El crossfade sigue pendiente porque requiere dos '
-          'motores reproduciendo a la vez.',
+          'Windows y Android. El crossfade encadena pistas de forma suave y su '
+          'duración se ajusta en Reproducción.',
           style: TextStyle(fontSize: 12, color: context.inkAlpha(0.60)),
         ),
       ],
@@ -803,58 +669,53 @@ class _SettingLabel extends StatelessWidget {
   }
 }
 
-class _PresetChip extends StatelessWidget {
-  const _PresetChip({
-    required this.config,
-    required this.selected,
+/// Tarjeta de navegación única para agrupar ajustes relacionados.
+class _SettingCard extends StatelessWidget {
+  const _SettingCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
     required this.onTap,
   });
 
-  final AppThemeConfig config;
-  final bool selected;
+  final IconData icon;
+  final String title;
+  final String subtitle;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
-      child: AnimatedContainer(
-        duration: context.motion.duration(const Duration(milliseconds: 220)),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: config.accent.withValues(alpha: selected ? 0.20 : 0.08),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: config.accent.withValues(alpha: selected ? 0.85 : 0.25),
-            width: selected ? 1.6 : 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Container(
-              width: 16,
-              height: 16,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(colors: config.backdrop),
-                border: Border.all(color: config.accent.withValues(alpha: 0.9)),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(14),
+          decoration: context.tokens.panelDecoration(radius: 16),
+          child: Row(
+            children: <Widget>[
+              Icon(icon, color: context.accent),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(title, style: TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.inkAlpha(0.54),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              config.preset.label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-            ),
-            if (selected) ...<Widget>[
-              const SizedBox(width: 6),
-              Icon(Icons.check_rounded, size: 15, color: config.accent),
+              const Icon(Icons.chevron_right_rounded),
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -1138,7 +999,7 @@ class _ProfilesSection extends ConsumerWidget {
     );
 
     return _Section(
-      title: 'Perfiles y respaldo',
+      title: 'Perfiles de usuario y respaldos',
       icon: Icons.group_outlined,
       children: <Widget>[
         profiles.when(
@@ -1210,12 +1071,12 @@ class _ProfilesSection extends ConsumerWidget {
             OutlinedButton.icon(
               onPressed: () => _export(context, ref),
               icon: Icon(Icons.archive_outlined, size: 18),
-              label: Text('Exportar respaldo'),
+              label: Text('Exportar copia completa'),
             ),
             OutlinedButton.icon(
               onPressed: () => _import(context, ref),
               icon: Icon(Icons.unarchive_outlined, size: 18),
-              label: Text('Importar respaldo'),
+              label: Text('Importar copia completa'),
             ),
           ],
         ),
@@ -1265,7 +1126,7 @@ class _ProfilesSection extends ConsumerWidget {
     final bool? zip = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) => AlertDialog(
-        title: Text('Exportar respaldo'),
+        title: Text('Exportar copia completa'),
         content: Text(
           'Elige el formato. El ZIP ocupa menos y está listo para compartir; '
           'el JSON es legible y fácil de inspeccionar.',
@@ -1638,7 +1499,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                       label: Text(
                         _installing
                             ? 'Iniciando instalador…'
-                            : 'Instalar ahora',
+                            : 'Instalar descarga',
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1674,7 +1535,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
                             ? null
                             : () => _download(info),
                         icon: Icon(Icons.download_rounded, size: 18),
-                        label: Text('Descargar'),
+                        label: Text('Descargar actualización'),
                       ),
                     OutlinedButton.icon(
                       onPressed: () =>

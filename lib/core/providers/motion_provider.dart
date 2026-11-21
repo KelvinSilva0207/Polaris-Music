@@ -84,3 +84,15 @@ final Provider<MotionConfig> motionConfigProvider = Provider<MotionConfig>((
 ) {
   return ref.watch(motionControllerProvider);
 });
+
+/// Interruptor ambiental resuelto por `MotionScope`.
+///
+/// Los controladores que viven por encima del árbol (por ejemplo, el flujo RGB
+/// del tema) no ven el `ProviderScope` anidado de `MotionScope`. Este provider
+/// puente publica el resultado de `TickerMode`, `MediaQuery.disableAnimations`
+/// y la preferencia efectiva para que esos controladores también se detengan.
+final StateProvider<bool> ambientMotionGateProvider = StateProvider<bool>((
+  Ref ref,
+) {
+  return true;
+});

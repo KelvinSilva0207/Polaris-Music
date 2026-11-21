@@ -71,14 +71,15 @@ class MetadataEditorService {
   }) async {
     if (track.id <= 0 || track.path.isEmpty) return null;
 
-    // Si el formulario recuperó texto corrupto de un tag antiguo, se repara
-    // antes de escribirlo de nuevo en el archivo y en la base de datos.
+    // Si el formulario recuperó texto corrupto de un tag antiguo, se limpia
+    // antes de escribirlo de nuevo en el archivo y en la base de datos. El
+    // respaldo vacío respeta los campos borrados a propósito por el usuario.
     final MetadataEditValues cleanValues = MetadataEditValues(
-      title: MetadataText.repair(values.title.trim()),
-      artist: MetadataText.repair(values.artist.trim()),
-      album: MetadataText.repair(values.album.trim()),
-      albumArtist: MetadataText.repair(values.albumArtist.trim()),
-      genre: MetadataText.repair(values.genre.trim()),
+      title: MetadataText.clean(values.title.trim(), ''),
+      artist: MetadataText.clean(values.artist.trim(), ''),
+      album: MetadataText.clean(values.album.trim(), ''),
+      albumArtist: MetadataText.clean(values.albumArtist.trim(), ''),
+      genre: MetadataText.clean(values.genre.trim(), ''),
       year: values.year,
       trackNumber: values.trackNumber,
       discNumber: values.discNumber,

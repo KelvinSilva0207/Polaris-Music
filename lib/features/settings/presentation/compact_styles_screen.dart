@@ -73,7 +73,7 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
         title: Text('Diseños compactos'),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Restablecer esta superficie',
+            tooltip: 'Restablecer diseño de esta superficie',
             onPressed: () => _controller.reset(_surface),
             icon: Icon(Icons.restore_rounded),
           ),
@@ -160,7 +160,7 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
           const SizedBox(height: 22),
           _SectionTitle(title: 'Forma y acabado'),
           _Label(
-            title: 'Estilo de tarjeta',
+            title: 'Estilo de tarjeta (solo esta superficie)',
             subtitle: style.cardStyle.description,
           ),
           const SizedBox(height: 6),
@@ -184,7 +184,7 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
           ),
           const SizedBox(height: 14),
           _Label(
-            title: 'Forma de carátula',
+            title: 'Forma de carátula (override por superficie)',
             subtitle: style.artworkShape == null
                 ? 'Hereda la forma global'
                 : style.artworkShape!.description,
@@ -222,7 +222,7 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
                 _controller.setCornerRadius(_surface, value.roundToDouble()),
           ),
           _Slider(
-            title: 'Opacidad',
+            title: 'Opacidad de esta superficie',
             value: style.opacity,
             min: 0.35,
             max: 1,
@@ -232,7 +232,7 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
                 _controller.setOpacity(_surface, value),
           ),
           _Slider(
-            title: 'Desenfoque',
+            title: 'Desenfoque de esta superficie',
             value: style.blur,
             min: 0,
             max: 32,

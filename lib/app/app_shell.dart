@@ -25,6 +25,7 @@ import '../features/player/presentation/player_providers.dart';
 import '../features/player/presentation/tray_mini_player.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/settings/presentation/update_dialog.dart';
+import '../shared/widgets/directional_transitions.dart';
 import '../shared/widgets/liquid_nav_bar.dart';
 import '../shared/widgets/motion_scope.dart';
 import '../shared/widgets/window_title_bar.dart';
@@ -41,6 +42,14 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell>
     with WidgetsBindingObserver {
+  /// Orden visual de los modos. `cycleMode()` no sigue el orden del enum.
+  static const List<WindowMode> _modeOrder = <WindowMode>[
+    WindowMode.normal,
+    WindowMode.mini,
+    WindowMode.phone,
+    WindowMode.island,
+  ];
+
   late final List<Widget> _screens;
   bool _updateDialogShown = false;
 
@@ -49,13 +58,25 @@ class _AppShellState extends ConsumerState<AppShell>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _screens = <Widget>[
-      const CompactThemeScope(
-        surface: CompactSurface.player,
-        child: NowPlayingScreen(),
+      const KeyedSubtree(
+        key: ValueKey<String>('section-player'),
+        child: CompactThemeScope(
+          surface: CompactSurface.player,
+          child: NowPlayingScreen(),
+        ),
       ),
-      const LibraryScreen(),
-      const OnlineMusicScreen(),
-      SettingsScreen(onNavigate: _goToSection),
+      const KeyedSubtree(
+        key: ValueKey<String>('section-library'),
+        child: LibraryScreen(),
+      ),
+      const KeyedSubtree(
+        key: ValueKey<String>('section-online'),
+        child: OnlineMusicScreen(),
+      ),
+      KeyedSubtree(
+        key: const ValueKey<String>('section-settings'),
+        child: SettingsScreen(onNavigate: _goToSection),
+      ),
     ];
     WidgetsBinding.instance.addPostFrameCallback((Duration _) {
       // Reanuda la última canción, posición exacta, cola y playlist activa.
@@ -201,8 +222,17 @@ class _AppShellState extends ConsumerState<AppShell>
         }
         // En segundo plano se cortan todos los ticks (vinilo, pulse de gestos,
         // indicadores...). mpv sigue reproduciendo; solo para la animación que
-        // nadie está viendo.
-        return TickerMode(enabled: !state.backgrounded, child: content);
+        // nadie está viendo. El TickerMode va dentro del contenido para que no
+        // congele la propia transición de entrada/salida.
+        return DirectionalContentSwitcher(
+          direction: _modeOrder.indexOf(state.mode),
+          duration: context.motion.duration(const Duration(milliseconds: 340)),
+          distance: 0.08,
+          child: KeyedSubtree(
+            key: ValueKey<String>('mode-${state.mode.name}'),
+            child: TickerMode(enabled: !state.backgrounded, child: content),
+          ),
+        );
       },
     );
   }
@@ -268,27 +298,20 @@ class _AppShellState extends ConsumerState<AppShell>
                                           // plataformas; el hueco se reserva
                                           // con `navClearance`.
                                           padding: EdgeInsets.zero,
-                                          child: IndexedStack(
+                                          // Mantiene las cuatro secciones
+                                          // montadas (como el IndexedStack) pero
+                                          // desliza/desvanece según la dirección
+                                          // del cambio de índice. Cada hijo lleva
+                                          // su propio TickerMode para detener el
+                                          // vinilo y los pulsos de la pestaña
+                                          // oculta sin congelar la transición.
+                                          child: DirectionalSectionStack(
                                             index: section.index,
-                                            // IndexedStack mantiene montadas las
-                                            // cuatro pantallas. Sin TickerMode el
-                                            // vinilo de la pestaña oculta sigue
-                                            // consumiendo ticks con la música en
-                                            // marcha; aquí se cortan al cambiar
-                                            // de sección. El `backgrounded`
-                                            // global lo aplica el TickerMode
-                                            // que envuelve esta vista.
-                                            children: <Widget>[
-                                              for (
-                                                int i = 0;
-                                                i < _screens.length;
-                                                i++
-                                              )
-                                                TickerMode(
-                                                  enabled: i == section.index,
-                                                  child: _screens[i],
-                                                ),
-                                            ],
+                                            duration: context.motion.duration(
+                                              const Duration(milliseconds: 340),
+                                            ),
+                                            distance: 0.10,
+                                            children: _screens,
                                           ),
                                         ),
                                       ),

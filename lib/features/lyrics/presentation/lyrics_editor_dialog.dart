@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
+import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/file_utils.dart';
 import '../../../core/utils/lrc_parser.dart';
 import '../../player/presentation/player_providers.dart';
@@ -80,10 +81,9 @@ class _LyricsEditorDialogState extends ConsumerState<LyricsEditorDialog> {
         mimeType: 'text/plain',
       );
       if (result != null && mounted) Navigator.of(context).pop(true);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('No se pudo exportar: $error')));
+    } catch (_) {
+      // Exportar es opcional: si el sistema cancela o falla, el editor sigue
+      // abierto y la letra no se pierde. Sin avisos emergentes.
     }
   }
 
@@ -97,10 +97,10 @@ class _LyricsEditorDialogState extends ConsumerState<LyricsEditorDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            const Text(
+            Text(
               'Pega aquí la letra o escribe una línea y pulsa «Marcar tiempo '
               'actual» en el instante exacto. Puedes repetirlo línea por línea.',
-              style: TextStyle(fontSize: 12, color: Colors.white60),
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.60)),
             ),
             const SizedBox(height: 14),
             TextField(

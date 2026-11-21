@@ -17,6 +17,24 @@ import 'playing_indicator.dart';
 import 'track_artwork.dart';
 import 'track_properties_modal.dart';
 
+/// Acciones compartidas por el menú “más acciones” y el clic derecho.
+/// Se mantiene una sola definición para que ambos accesos no puedan divergir.
+const List<PopupMenuEntry<String>> _trackMenuItems = <PopupMenuEntry<String>>[
+  PopupMenuItem<String>(value: 'play', child: Text('Reproducir ahora')),
+  PopupMenuItem<String>(value: 'queue', child: Text('Añadir a la cola')),
+  PopupMenuItem<String>(
+    value: 'play-next',
+    child: Text('Reproducir a continuación'),
+  ),
+  PopupMenuItem<String>(value: 'properties', child: Text('Propiedades')),
+  PopupMenuItem<String>(value: 'edit', child: Text('Editar metadatos')),
+  PopupMenuDivider(),
+  PopupMenuItem<String>(
+    value: 'delete',
+    child: Text('Quitar de la biblioteca'),
+  ),
+];
+
 /// Fila de pista usada por biblioteca, cola, historial y recomendaciones.
 class TrackTile extends ConsumerWidget {
   const TrackTile({
@@ -162,33 +180,7 @@ class TrackTile extends ConsumerWidget {
               ),
               onSelected: (String action) =>
                   _handleAction(context, ref, action),
-              itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-                const PopupMenuItem<String>(
-                  value: 'play',
-                  child: Text('Reproducir ahora'),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'queue',
-                  child: Text('Añadir a la cola'),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'play-next',
-                  child: Text('Reproducir a continuación'),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'properties',
-                  child: Text('Propiedades'),
-                ),
-                const PopupMenuItem<String>(
-                  value: 'edit',
-                  child: Text('Editar metadatos'),
-                ),
-                const PopupMenuDivider(),
-                const PopupMenuItem<String>(
-                  value: 'delete',
-                  child: Text('Quitar de la biblioteca'),
-                ),
-              ],
+              itemBuilder: (BuildContext context) => _trackMenuItems,
             ),
           ],
         ),
@@ -224,21 +216,7 @@ class TrackTile extends ConsumerWidget {
         overlay.size.width - position.dx,
         overlay.size.height - position.dy,
       ),
-      items: const <PopupMenuEntry<String>>[
-        PopupMenuItem<String>(value: 'play', child: Text('Reproducir ahora')),
-        PopupMenuItem<String>(value: 'queue', child: Text('Añadir a la cola')),
-        PopupMenuItem<String>(
-          value: 'play-next',
-          child: Text('Reproducir a continuación'),
-        ),
-        PopupMenuItem<String>(value: 'properties', child: Text('Propiedades')),
-        PopupMenuItem<String>(value: 'edit', child: Text('Editar metadatos')),
-        PopupMenuDivider(),
-        PopupMenuItem<String>(
-          value: 'delete',
-          child: Text('Quitar de la biblioteca'),
-        ),
-      ],
+      items: _trackMenuItems,
     );
     if (action != null && context.mounted) {
       await _handleAction(context, ref, action);

@@ -19,6 +19,7 @@ import '../../../core/theme/theme_tokens.dart';
 import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import 'color_picker_dialog.dart';
+import 'compact_styles_screen.dart';
 import 'typography_screen.dart';
 import '../../player/domain/player_controller.dart';
 import '../../player/presentation/player_providers.dart';
@@ -61,10 +62,10 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Personalización'),
+        title: Text('Apariencia'),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Restablecer tema Polaris',
+            tooltip: 'Restablecer tema',
             onPressed: () {
               ref.read(themeControllerProvider.notifier).resetToDefaults();
               _toast('Tema restablecido a Polaris Violet Glass');
@@ -88,7 +89,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           ),
           const SizedBox(height: 18),
           _SectionCard(
-            title: 'Vista previa',
+            title: 'Vista previa de tema',
             icon: Icons.visibility_outlined,
             child: _ThemePreview(
               config: config,
@@ -97,16 +98,6 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
               playing: ui.playback.playing,
               progress: ui.playback.progress,
             ),
-          ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (BuildContext context) => const TypographyScreen(),
-              ),
-            ),
-            icon: Icon(Icons.text_fields_rounded, size: 18),
-            label: Text('Tipografía, tamaño y fuentes propias'),
           ),
           const SizedBox(height: 22),
           Text(
@@ -132,7 +123,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            title: 'Acabado de superficie',
+            title: 'Acabado de superficie (material)',
             icon: Icons.blur_circular_rounded,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -184,28 +175,6 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            title: 'Editor libre',
-            icon: Icons.tune_rounded,
-            child: _FreeFinishEditor(
-              config: config,
-              onPick: (ThemeColorTarget target, Color current) async {
-                final Color? picked = await ColorPickerDialog.show(
-                  context,
-                  title: target.label,
-                  initial: current,
-                );
-                if (picked == null || !mounted) return;
-                await ref
-                    .read(themeControllerProvider.notifier)
-                    .setColor(target, picked);
-              },
-              onOpacity: (double value) => ref
-                  .read(themeControllerProvider.notifier)
-                  .setSurfaceOpacity(value),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _SectionCard(
             title: 'Animaciones y movimiento',
             icon: Icons.animation_rounded,
             child: _MotionControls(
@@ -224,7 +193,36 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            title: 'Estilo de contenedores (avanzado)',
+            title: 'Tipografía y fuentes',
+            icon: Icons.text_fields_rounded,
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => const TypographyScreen(),
+                ),
+              ),
+              icon: Icon(Icons.text_fields_rounded, size: 18),
+              label: Text('Abrir tipografía'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Diseños compactos',
+            icon: Icons.dashboard_customize_outlined,
+            child: OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) =>
+                      const CompactStylesScreen(),
+                ),
+              ),
+              icon: Icon(Icons.dashboard_customize_outlined, size: 18),
+              label: Text('Isla, mini y teléfono'),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _SectionCard(
+            title: 'Estilo de contenedores (global)',
             icon: Icons.layers_outlined,
             child: _OptionGrid(
               children: CardStyle.values
@@ -243,7 +241,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            title: 'Forma de la carátula',
+            title: 'Forma de la carátula (global)',
             icon: Icons.album_outlined,
             child: _OptionGrid(
               children: ArtworkShape.values
@@ -321,21 +319,36 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            title: 'Colores libres (RGB / HSV / HEX)',
+            title: 'Colores (RGB / HSV / HEX)',
             icon: Icons.colorize_rounded,
-            child: _ColorEditorList(
-              config: config,
-              onPick: (ThemeColorTarget target, Color current) async {
-                final Color? picked = await ColorPickerDialog.show(
-                  context,
-                  title: target.label,
-                  initial: current,
-                );
-                if (picked == null || !mounted) return;
-                await ref
-                    .read(themeControllerProvider.notifier)
-                    .setColor(target, picked);
-              },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                _ColorEditorList(
+                  config: config,
+                  onPick: (ThemeColorTarget target, Color current) async {
+                    final Color? picked = await ColorPickerDialog.show(
+                      context,
+                      title: target.label,
+                      initial: current,
+                    );
+                    if (picked == null || !mounted) return;
+                    await ref
+                        .read(themeControllerProvider.notifier)
+                        .setColor(target, picked);
+                  },
+                ),
+                const SizedBox(height: 10),
+                _ThemeSlider(
+                  label: 'Opacidad de superficie (color base)',
+                  value: config.surfaceOpacity,
+                  max: 1,
+                  suffix: '%',
+                  onChanged: (double value) => ref
+                      .read(themeControllerProvider.notifier)
+                      .setSurfaceOpacity(value),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -346,7 +359,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 _ThemeSlider(
-                  label: 'Desenfoque de tarjetas',
+                  label: 'Desenfoque global',
                   value: config.glassBlur.clamp(0, 32),
                   max: 32,
                   suffix: 'px',
@@ -355,7 +368,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                       .setGlassBlur(value),
                 ),
                 _ThemeSlider(
-                  label: 'Opacidad del cristal',
+                  label: 'Opacidad del cristal (efecto glass)',
                   value: config.glassOpacity.clamp(0, 1),
                   max: 1,
                   suffix: '%',
@@ -376,7 +389,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            title: 'Mis perfiles',
+            title: 'Perfiles de apariencia',
             icon: Icons.bookmark_border_rounded,
             child: _ProfilesEditor(
               profileName: _profileName,
@@ -392,7 +405,7 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
           ),
           const SizedBox(height: 16),
           _SectionCard(
-            title: 'Exportar e importar',
+            title: 'Tema (.json)',
             icon: Icons.import_export_rounded,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -411,12 +424,12 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
                     FilledButton.icon(
                       onPressed: _exportTheme,
                       icon: Icon(Icons.ios_share_rounded, size: 18),
-                      label: Text('Exportar .json'),
+                      label: Text('Exportar tema (.json)'),
                     ),
                     OutlinedButton.icon(
                       onPressed: _importTheme,
                       icon: Icon(Icons.file_open_outlined, size: 18),
-                      label: Text('Importar .json'),
+                      label: Text('Importar tema (.json)'),
                     ),
                   ],
                 ),
@@ -751,37 +764,6 @@ class _RgbControls extends StatelessWidget {
           ),
           value: config.rgbFlow,
           onChanged: onFlow,
-        ),
-      ],
-    );
-  }
-}
-
-/// Editor libre de color primario, secundario, fondo y opacidad.
-class _FreeFinishEditor extends StatelessWidget {
-  const _FreeFinishEditor({
-    required this.config,
-    required this.onPick,
-    required this.onOpacity,
-  });
-
-  final AppThemeConfig config;
-  final Future<void> Function(ThemeColorTarget target, Color current) onPick;
-  final ValueChanged<double> onOpacity;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        _ColorEditorList(config: config, onPick: onPick),
-        const SizedBox(height: 10),
-        _ThemeSlider(
-          label: 'Opacidad de superficie',
-          value: config.surfaceOpacity,
-          max: 1,
-          suffix: '%',
-          onChanged: onOpacity,
         ),
       ],
     );
@@ -1300,6 +1282,7 @@ class _ThemePreview extends StatelessWidget {
                         padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                         borderRadius: 18,
                         glowColor: accent,
+                        phase: 0.35,
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
@@ -1359,6 +1342,16 @@ class _ThemePreview extends StatelessWidget {
                             else
                               const SizedBox(height: 4),
                             const SizedBox(height: 8),
+                            Text(
+                              config.finish.label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.8,
+                                color: context.inkAlpha(0.54),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: <Widget>[
@@ -1640,7 +1633,9 @@ class _PreviewVinylState extends State<_PreviewVinyl>
   }
 
   void _sync() {
-    if (widget.playing && (_motion?.ambient ?? false) && !widget.paused) {
+    if (widget.playing &&
+        context.motionAllowed(MotionCategory.ambient) &&
+        !widget.paused) {
       if (!_spin.isAnimating) _spin.repeat();
     } else if (_spin.isAnimating) {
       _spin.stop();

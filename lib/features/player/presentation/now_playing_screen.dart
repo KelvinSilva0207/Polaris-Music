@@ -29,7 +29,7 @@ import '../../../shared/widgets/tactile_icon_button.dart';
 import '../../../shared/widgets/track_properties_modal.dart';
 import '../../dynamic_island/presentation/island_providers.dart';
 import '../../equalizer/presentation/equalizer_screen.dart';
-import '../../lyrics/presentation/in_artwork_lyrics.dart';
+import '../../lyrics/presentation/expanded_lyrics_view.dart';
 import '../domain/player_controller.dart';
 import 'artwork_gestures.dart';
 import 'player_providers.dart';
@@ -143,49 +143,73 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: <Widget>[
                     Expanded(
-                      flex: 5,
+                      flex: _showLyrics ? 6 : 5,
                       child: Padding(
                         padding: const EdgeInsets.only(bottom: 24),
-                        child: SingleChildScrollView(
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minHeight: math.max(
-                                constraints.maxHeight - 44,
-                                0,
-                              ),
-                            ),
-                            child: Container(
-                              alignment: Alignment.center,
-                              child: _ArtworkStage(
+                        child: _showLyrics
+                            ? _PlayerStage(
                                 track: track,
                                 config: effectiveConfig,
                                 accent: accent,
                                 playing: playing,
-                                showLyrics: _showLyrics,
-                                onCloseLyrics: _toggleLyrics,
+                                showLyrics: true,
+                                expanded: true,
                                 size: math.min(
-                                  math.min(constraints.maxWidth * 0.30, 400),
-                                  math.max(constraints.maxHeight * 0.58, 220),
+                                  math.min(constraints.maxWidth * 0.42, 520),
+                                  math.max(constraints.maxHeight * 0.72, 280),
                                 ),
                                 onSeekFraction: controller.seekFraction,
                                 onPrevious: controller.previous,
                                 onNext: controller.next,
                                 onLyrics: _toggleLyrics,
+                                onCloseLyrics: _toggleLyrics,
                                 onMinimize: _minimizePlayer,
+                              )
+                            : SingleChildScrollView(
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minHeight: math.max(
+                                      constraints.maxHeight - 44,
+                                      0,
+                                    ),
+                                  ),
+                                  child: Center(
+                                    child: _PlayerStage(
+                                      track: track,
+                                      config: effectiveConfig,
+                                      accent: accent,
+                                      playing: playing,
+                                      showLyrics: false,
+                                      size: math.min(
+                                        math.min(
+                                          constraints.maxWidth * 0.30,
+                                          400,
+                                        ),
+                                        math.max(
+                                          constraints.maxHeight * 0.58,
+                                          220,
+                                        ),
+                                      ),
+                                      onSeekFraction: controller.seekFraction,
+                                      onPrevious: controller.previous,
+                                      onNext: controller.next,
+                                      onLyrics: _toggleLyrics,
+                                      onCloseLyrics: _toggleLyrics,
+                                      onMinimize: _minimizePlayer,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
                       ),
                     ),
-                    const SizedBox(width: 26),
+                    SizedBox(width: _showLyrics ? 18 : 26),
                     Expanded(
-                      flex: 5,
+                      flex: _showLyrics ? 4 : 5,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: <Widget>[
                           Flexible(
-                            flex: 4,
+                            flex: _showLyrics ? 10 : 4,
                             fit: FlexFit.tight,
                             child: SingleChildScrollView(
                               padding: const EdgeInsets.only(bottom: 12),
@@ -194,30 +218,24 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                                 config: effectiveConfig,
                                 accent: accent,
                                 controller: controller,
-                                panelTab: _panelTab,
-                                onPanelChanged: (int value) =>
-                                    setState(() => _panelTab = value),
-                                panelHeight: null,
-                                includePanel: false,
-                                onOpenLyrics: _toggleLyrics,
-                                showLyrics: _showLyrics,
                               ),
                             ),
                           ),
-                          Expanded(
-                            flex: 5,
-                            child: _MediaPanel(
-                              track: track,
-                              controller: controller,
-                              accent: accent,
-                              tab: _panelTab,
-                              onTabChanged: (int value) =>
-                                  setState(() => _panelTab = value),
-                              height: null,
-                              onOpenLyrics: _toggleLyrics,
-                              lyricsVisible: _showLyrics,
+                          if (!_showLyrics)
+                            Expanded(
+                              flex: 5,
+                              child: _MediaPanel(
+                                track: track,
+                                controller: controller,
+                                accent: accent,
+                                tab: _panelTab,
+                                onTabChanged: (int value) =>
+                                    setState(() => _panelTab = value),
+                                height: null,
+                                onOpenLyrics: _toggleLyrics,
+                                lyricsVisible: _showLyrics,
+                              ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -226,44 +244,99 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
               );
             }
 
-            return ListView(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 140),
+            final double maxHeight = constraints.maxHeight.isFinite
+                ? constraints.maxHeight
+                : 900;
+            final double available = math.max(0, maxHeight - 30);
+            final double panelShare = constraints.maxWidth < 620 ? 0.34 : 0.44;
+            // La cola toma una porción del alto libre. En pantallas bajas se
+            // reduce hasta 120 px en lugar de ocultarse o recortarse; arriba
+            // crece con la ventana sin un techo que deje huecos artificiales.
+            final double panelHeight = math.min(
+              440,
+              math.max(120, available * panelShare),
+            );
+            final double stageSize = _showLyrics
+                ? math.max(240, maxHeight * 0.55)
+                : math.min(
+                    math.min(constraints.maxWidth - 88, 320),
+                    math.max(maxHeight * 0.5, 200),
+                  );
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Center(
-                  child: _ArtworkStage(
-                    track: track,
-                    config: effectiveConfig,
-                    accent: accent,
-                    playing: playing,
-                    showLyrics: _showLyrics,
-                    onCloseLyrics: _toggleLyrics,
-                    size: math.min(
-                      math.min(constraints.maxWidth - 88, 320),
-                      math.max(constraints.maxHeight * 0.5, 200),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 0),
+                    child: _showLyrics
+                        ? _PlayerStage(
+                            track: track,
+                            config: effectiveConfig,
+                            accent: accent,
+                            playing: playing,
+                            showLyrics: true,
+                            expanded: true,
+                            size: stageSize,
+                            onSeekFraction: controller.seekFraction,
+                            onPrevious: controller.previous,
+                            onNext: controller.next,
+                            onLyrics: _toggleLyrics,
+                            onCloseLyrics: _toggleLyrics,
+                            onMinimize: _minimizePlayer,
+                          )
+                        : Center(
+                            child: _PlayerStage(
+                              track: track,
+                              config: effectiveConfig,
+                              accent: accent,
+                              playing: playing,
+                              showLyrics: false,
+                              size: stageSize,
+                              onSeekFraction: controller.seekFraction,
+                              onPrevious: controller.previous,
+                              onNext: controller.next,
+                              onLyrics: _toggleLyrics,
+                              onCloseLyrics: _toggleLyrics,
+                              onMinimize: _minimizePlayer,
+                            ),
+                          ),
+                  ),
+                ),
+                Flexible(
+                  fit: FlexFit.loose,
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                      child: _PlayerColumn(
+                        track: track,
+                        config: effectiveConfig,
+                        accent: accent,
+                        controller: controller,
+                      ),
                     ),
-                    onSeekFraction: controller.seekFraction,
-                    onPrevious: controller.previous,
-                    onNext: controller.next,
-                    onLyrics: _toggleLyrics,
-                    onMinimize: _minimizePlayer,
                   ),
                 ),
-                const SizedBox(height: 20),
-                _PlayerColumn(
-                  track: track,
-                  config: effectiveConfig,
-                  accent: accent,
-                  controller: controller,
-                  panelTab: _panelTab,
-                  onPanelChanged: (int value) =>
-                      setState(() => _panelTab = value),
-                  panelHeight: math.max(
-                    300,
-                    math.min(460, constraints.maxHeight * 0.45),
+                if (!_showLyrics) ...<Widget>[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    height: panelHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                      child: _MediaPanel(
+                        track: track,
+                        controller: controller,
+                        accent: accent,
+                        tab: _panelTab,
+                        onTabChanged: (int value) =>
+                            setState(() => _panelTab = value),
+                        height: null,
+                        onOpenLyrics: _toggleLyrics,
+                        lyricsVisible: _showLyrics,
+                      ),
+                    ),
                   ),
-                  onOpenLyrics: _toggleLyrics,
-                  showLyrics: _showLyrics,
-                ),
+                ],
               ],
             );
           },
@@ -273,7 +346,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
   }
 }
 
-/// Columna de información, progreso, controles y panel de cola/letras.
+/// Columna de información, progreso y controles. El panel de cola/letras es
+/// un hermano flex para poder medirlo contra el alto disponible.
 ///
 /// Cada bloque observa solo la porción del estado que necesita para que el
 /// _tick_ de posición (5 veces por segundo) no reconstruya la pantalla entera.
@@ -283,24 +357,12 @@ class _PlayerColumn extends ConsumerWidget {
     required this.config,
     required this.accent,
     required this.controller,
-    required this.panelTab,
-    required this.onPanelChanged,
-    this.panelHeight,
-    this.includePanel = true,
-    required this.onOpenLyrics,
-    required this.showLyrics,
   });
 
   final Track track;
   final AppThemeConfig config;
   final Color accent;
   final PlayerController controller;
-  final int panelTab;
-  final ValueChanged<int> onPanelChanged;
-  final double? panelHeight;
-  final bool includePanel;
-  final VoidCallback onOpenLyrics;
-  final bool showLyrics;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -331,7 +393,12 @@ class _PlayerColumn extends ConsumerWidget {
           accent: config.usesDynamicPalette ? accent : config.volumeColor,
         ),
         const SizedBox(height: 6),
-        _QuickActions(accent: accent),
+        _QuickActions(
+          accent: accent,
+          playing: ref.watch(
+            playerControllerProvider.select((PlayerUiState s) => s.playing),
+          ),
+        ),
         if (sleepActive) _SleepBadge(controller: controller),
         if (error != null)
           Padding(
@@ -366,19 +433,6 @@ class _PlayerColumn extends ConsumerWidget {
               ),
             ),
           ),
-        if (includePanel) ...<Widget>[
-          const SizedBox(height: 18),
-          _MediaPanel(
-            track: track,
-            controller: controller,
-            accent: accent,
-            tab: panelTab,
-            onTabChanged: onPanelChanged,
-            height: panelHeight ?? 360,
-            onOpenLyrics: onOpenLyrics,
-            lyricsVisible: showLyrics,
-          ),
-        ],
       ],
     );
   }
@@ -828,7 +882,7 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
       button: true,
       label: widget.playing ? 'Pausar' : 'Reproducir',
       child: AnimatedScale(
-        scale: _pressed ? 0.9 : 1,
+        scale: _pressed ? 1 - (0.03 + 0.07 * context.motion.intensity) : 1,
         duration: context.motion.duration(
           const Duration(milliseconds: 130),
           category: MotionCategory.gestures,
@@ -1140,14 +1194,62 @@ class _SleepBadge extends ConsumerWidget {
 
 /// Acceso rápido al ecualizador junto a los controles.
 /// Las letras se abren desde la pestaña del panel inferior para no duplicar
-/// el mismo botón dos veces en la pantalla.
-class _QuickActions extends StatelessWidget {
-  const _QuickActions({required this.accent});
+/// el mismo botón dos veces en la pantalla. Las barras solo se mueven mientras
+/// reproduce y el perfil de movimiento lo permite.
+class _QuickActions extends StatefulWidget {
+  const _QuickActions({required this.accent, required this.playing});
 
   final Color accent;
+  final bool playing;
+
+  @override
+  State<_QuickActions> createState() => _QuickActionsState();
+}
+
+class _QuickActionsState extends State<_QuickActions>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _bars = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  )..repeat();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final Duration duration = context.motion.duration(
+      const Duration(milliseconds: 900),
+      category: MotionCategory.ambient,
+    );
+    _bars.duration = duration == Duration.zero
+        ? const Duration(milliseconds: 1)
+        : duration;
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _QuickActions oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.playing != widget.playing) _sync();
+  }
+
+  void _sync() {
+    final bool animate = context.ambientMotionAllowed(playing: widget.playing);
+    if (animate && !_bars.isAnimating) {
+      _bars.repeat();
+    } else if (!animate && _bars.isAnimating) {
+      _bars.stop();
+    }
+  }
+
+  @override
+  void dispose() {
+    _bars.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
+    final Color accent = widget.accent;
     final ButtonStyle style = OutlinedButton.styleFrom(
       foregroundColor: accent,
       side: BorderSide(color: accent.withValues(alpha: 0.35)),
@@ -1167,13 +1269,67 @@ class _QuickActions extends StatelessWidget {
               ),
             ),
           ),
-          icon: Icon(Icons.graphic_eq_rounded, size: 18),
+          icon: SizedBox(
+            width: 18,
+            height: 18,
+            child: AnimatedBuilder(
+              animation: _bars,
+              child: Icon(Icons.graphic_eq_rounded, size: 18),
+              builder: (BuildContext context, Widget? child) {
+                if (!_bars.isAnimating) return child ?? const SizedBox.shrink();
+                final double phase = _bars.value;
+                final double intensity = context.motion.intensity;
+                return CustomPaint(
+                  painter: _EqualizerBarsPainter(
+                    phase: phase,
+                    color: accent,
+                    intensity: intensity,
+                  ),
+                );
+              },
+            ),
+          ),
           label: Text('Ecualizador'),
           style: style,
         ),
       ],
     );
   }
+}
+
+class _EqualizerBarsPainter extends CustomPainter {
+  const _EqualizerBarsPainter({
+    required this.phase,
+    required this.color,
+    required this.intensity,
+  });
+
+  final double phase;
+  final Color color;
+  final double intensity;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const int count = 3;
+    final double width = size.width / (count * 2 - 1);
+    final Paint paint = Paint()..color = color;
+    for (int i = 0; i < count; i++) {
+      final double wave = 0.5 + 0.5 * math.sin((phase * 2 * math.pi) + i * 1.7);
+      final double height = size.height * (0.25 + 0.65 * wave * intensity);
+      final double x = i * width * 2;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, size.height - height, width, height),
+          Radius.circular(width / 2),
+        ),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _EqualizerBarsPainter old) =>
+      old.phase != phase || old.color != color || old.intensity != intensity;
 }
 
 class _MediaPanel extends ConsumerWidget {
@@ -1334,7 +1490,10 @@ class _MediaPanel extends ConsumerWidget {
 
     return fluid
         ? SizedBox.expand(child: panel)
-        : SizedBox(height: height, child: panel);
+        : ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: height!),
+            child: panel,
+          );
   }
 }
 
@@ -1683,13 +1842,11 @@ class _ArtworkStage extends ConsumerWidget {
     required this.config,
     required this.accent,
     required this.playing,
-    required this.showLyrics,
     required this.size,
     required this.onSeekFraction,
     required this.onPrevious,
     required this.onNext,
     required this.onLyrics,
-    required this.onCloseLyrics,
     required this.onMinimize,
   });
 
@@ -1697,13 +1854,11 @@ class _ArtworkStage extends ConsumerWidget {
   final AppThemeConfig config;
   final Color accent;
   final bool playing;
-  final bool showLyrics;
   final double size;
   final ValueChanged<double> onSeekFraction;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onLyrics;
-  final VoidCallback onCloseLyrics;
   final VoidCallback onMinimize;
 
   @override
@@ -1717,11 +1872,6 @@ class _ArtworkStage extends ConsumerWidget {
             ),
           )
         : 0;
-    // Posición en el orden activo: permite decidir si la transición entra desde
-    // la derecha (siguiente) o desde la izquierda (anterior), también en shuffle.
-    final int position = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.playback.index),
-    );
 
     // El anillo ocupa el 84 % interior: la carátula se ajusta para no
     // desbordar el círculo (el antiguo desajuste del estilo Vinilo).
@@ -1730,6 +1880,7 @@ class _ArtworkStage extends ConsumerWidget {
     final ValueNotifier<WindowUiState> windowNotifier = ref.watch(
       windowStateProvider,
     );
+    final bool paused = windowNotifier.value.backgrounded;
     final Widget artwork = ValueListenableBuilder<WindowUiState>(
       valueListenable: windowNotifier,
       builder: (BuildContext context, WindowUiState state, Widget? _) {
@@ -1766,43 +1917,105 @@ class _ArtworkStage extends ConsumerWidget {
           )
         : artwork;
 
-    // La carátula y las letras comparten el mismo área. El AnimatedSwitcher
-    // hace el crossfade; los gestos de carátula solo se montan cuando la imagen
-    // está visible para no robar el scroll de la letra.
     return SizedBox(
       width: size,
       height: size,
-      child: _CinematicSwitcher(
-        position: position,
-        child: showLyrics
-            ? KeyedSubtree(
-                // La clave incluye la pista: sin ella el State de LyricsPanel se
-                // reutiliza al cambiar de canción y conserva scroll/índice viejo.
-                key: ValueKey<String>('artwork-lyrics-${track.id}'),
-                child: InArtworkLyrics(
-                  track: track,
-                  size: size,
-                  accent: accent,
-                  onClose: onCloseLyrics,
-                ),
-              )
-            : KeyedSubtree(
-                key: ValueKey<String>(
-                  'artwork-${track.id}-${config.artworkShape.name}',
-                ),
-                child: ArtworkGestures(
-                  size: size,
-                  onSeekFraction: onSeekFraction,
-                  onPrevious: onPrevious,
-                  onNext: onNext,
-                  onLyrics: onLyrics,
-                  onMinimize: onMinimize,
-                  accent: accent,
-                  child: RepaintBoundary(child: body),
-                ),
-              ),
+      child: ArtworkGestures(
+        size: size,
+        onSeekFraction: onSeekFraction,
+        onPrevious: onPrevious,
+        onNext: onNext,
+        onLyrics: onLyrics,
+        onMinimize: onMinimize,
+        accent: accent,
+        seekEnabled: ring,
+        playing: playing,
+        paused: paused,
+        child: RepaintBoundary(child: body),
       ),
     );
+  }
+}
+
+/// Etapa de contenido del reproductor: carátula o letras expandidas.
+///
+/// Las letras ya no viven dentro del cuadro cuadrado de la carátula; cuando se
+/// activan sustituyen a esta etapa completa. La barra de progreso y los controles
+/// están fuera de este widget, por lo que nunca se cubren ni se reconstruyen.
+class _PlayerStage extends ConsumerWidget {
+  const _PlayerStage({
+    required this.track,
+    required this.config,
+    required this.accent,
+    required this.playing,
+    required this.showLyrics,
+    required this.size,
+    required this.onSeekFraction,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onLyrics,
+    required this.onCloseLyrics,
+    required this.onMinimize,
+    this.expanded = false,
+  });
+
+  final Track track;
+  final AppThemeConfig config;
+  final Color accent;
+  final bool playing;
+  final bool showLyrics;
+
+  /// Tamaño de la carátula cuando las letras están cerradas.
+  final double size;
+  final ValueChanged<double> onSeekFraction;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final VoidCallback onLyrics;
+  final VoidCallback onCloseLyrics;
+  final VoidCallback onMinimize;
+
+  /// Las letras ocupan todo el hueco que reciben del layout superior.
+  final bool expanded;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Posición en el orden activo: decide si la transición entra desde la
+    // derecha (siguiente) o desde la izquierda (anterior), también en shuffle.
+    final int position = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.index),
+    );
+
+    final Widget child = showLyrics
+        ? KeyedSubtree(
+            // La clave incluye la pista: sin ella el State de LyricsPanel se
+            // reutiliza al cambiar de canción y conserva scroll/índice viejo.
+            key: ValueKey<String>('artwork-lyrics-${track.id}'),
+            child: ExpandedLyricsView(
+              track: track,
+              accent: accent,
+              onClose: onCloseLyrics,
+            ),
+          )
+        : KeyedSubtree(
+            key: ValueKey<String>(
+              'artwork-${track.id}-${config.artworkShape.name}',
+            ),
+            child: _ArtworkStage(
+              track: track,
+              config: config,
+              accent: accent,
+              playing: playing,
+              size: size,
+              onSeekFraction: onSeekFraction,
+              onPrevious: onPrevious,
+              onNext: onNext,
+              onLyrics: onLyrics,
+              onMinimize: onMinimize,
+            ),
+          );
+
+    final Widget stage = _CinematicSwitcher(position: position, child: child);
+    return expanded ? SizedBox.expand(child: stage) : stage;
   }
 }
 
@@ -2001,7 +2214,90 @@ class _Card3DArtwork extends StatelessWidget {
   }
 }
 
-/// Vinilo con surcos y etiqueta central que gira solo al reproducir.
+/// Geometría derivada de un único centro: disco, surcos, etiqueta y brazo
+/// comparten proporciones acotadas para no recortarse a ninguna resolución.
+class _VinylLayout {
+  const _VinylLayout({
+    required this.box,
+    required this.disc,
+    required this.radius,
+    required this.border,
+    required this.label,
+    required this.grooveInner,
+    required this.grooveOuter,
+    required this.highlightRadius,
+    required this.highlightStroke,
+    required this.highlightBlur,
+    required this.pivot,
+    required this.elbow,
+    required this.stylus,
+    required this.pivotRadius,
+    required this.armWidth,
+    required this.headLength,
+    required this.headWidth,
+  });
+
+  final double box;
+  final double disc;
+  final double radius;
+  final double border;
+  final double label;
+  final double grooveInner;
+  final double grooveOuter;
+  final double highlightRadius;
+  final double highlightStroke;
+  final double highlightBlur;
+  final Offset pivot;
+  final Offset elbow;
+  final Offset stylus;
+  final double pivotRadius;
+  final double armWidth;
+  final double headLength;
+  final double headWidth;
+
+  static _VinylLayout compute(double box) {
+    final double size = box.isFinite && box > 0 ? box : 1;
+    final double pad = (size * 0.02).clamp(3.0, 8.0);
+    final double disc = size - 2 * pad;
+    final double radius = disc / 2;
+    final Offset center = Offset(size / 2, size / 2);
+
+    final double border = (disc * 0.004).clamp(1.0, 2.0);
+    final double label = disc * 0.44;
+    final double labelRadius = label / 2;
+    final double grooveInner = labelRadius + math.max(1.5, disc * 0.012);
+    final double grooveOuter = radius - border - math.max(3, disc * 0.035);
+
+    final double stroke = (disc * 0.02).clamp(2, 8);
+    final double blur = (disc * 0.015).clamp(1.5, 6);
+    final double highlight = math.min(
+      disc * 0.43,
+      radius - border - stroke / 2 - 2 * blur,
+    );
+
+    return _VinylLayout(
+      box: size,
+      disc: disc,
+      radius: radius,
+      border: border,
+      label: label,
+      grooveInner: grooveInner,
+      grooveOuter: grooveOuter,
+      highlightRadius: math.max(1, highlight),
+      highlightStroke: stroke,
+      highlightBlur: blur,
+      pivot: center + Offset(0.58 * radius, -0.58 * radius),
+      elbow: center + Offset(0.72 * radius, -0.18 * radius),
+      stylus: center + Offset(grooveInner + disc * 0.02, 0),
+      pivotRadius: (radius * 0.09).clamp(3, 10),
+      armWidth: math.max(2, radius * 0.045),
+      headLength: radius * 0.18,
+      headWidth: radius * 0.08,
+    );
+  }
+}
+
+/// Vinilo con surcos, etiqueta central y brazo, centrado y sin recortes.
 class _VinylArtwork extends StatefulWidget {
   const _VinylArtwork({
     required this.path,
@@ -2029,18 +2325,16 @@ class _VinylArtworkState extends State<_VinylArtwork>
     vsync: this,
     duration: _period,
   );
-  MotionConfig? _motion;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _motion = context.motion;
-    final Duration duration = _motion!.duration(
+    final Duration duration = context.motion.duration(
       _period,
       category: MotionCategory.ambient,
     );
     _spin.duration = duration == Duration.zero
-        ? const Duration(microseconds: 1)
+        ? const Duration(milliseconds: 1)
         : duration;
     _syncPlayback();
   }
@@ -2055,9 +2349,11 @@ class _VinylArtworkState extends State<_VinylArtwork>
   }
 
   void _syncPlayback() {
-    if (widget.playing && (_motion?.ambient ?? false) && !widget.paused) {
-      if (!_spin.isAnimating) _spin.repeat();
-    } else if (_spin.isAnimating) {
+    final bool animate =
+        context.ambientMotionAllowed(playing: widget.playing) && !widget.paused;
+    if (animate && !_spin.isAnimating) {
+      _spin.repeat();
+    } else if (!animate && _spin.isAnimating) {
       _spin.stop();
     }
   }
@@ -2070,18 +2366,19 @@ class _VinylArtworkState extends State<_VinylArtwork>
 
   @override
   Widget build(BuildContext context) {
-    final double labelSize = widget.size * 0.46;
+    final _VinylLayout v = _VinylLayout.compute(widget.size);
+    final Color ink = context.inkAlpha(0.78);
+
     return Center(
       child: SizedBox(
-        width: widget.size,
-        height: widget.size,
+        width: v.box,
+        height: v.box,
         child: Stack(
           alignment: Alignment.center,
           children: <Widget>[
-            // Cuerpo del vinilo y resplandor.
             Container(
-              width: widget.size,
-              height: widget.size,
+              width: v.disc,
+              height: v.disc,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 gradient: const RadialGradient(
@@ -2090,64 +2387,82 @@ class _VinylArtworkState extends State<_VinylArtwork>
                     Color(0xFF101010),
                     Color(0xFF040404),
                   ],
-                  stops: <double>[0.0, 0.72, 1.0],
+                  stops: <double>[0, 0.72, 1],
+                ),
+                border: Border.all(
+                  color: ink.withValues(alpha: 0.35),
+                  width: v.border,
                 ),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: widget.accent.withValues(alpha: 0.30),
-                    blurRadius: 52,
-                    spreadRadius: 4,
+                    color: widget.accent.withValues(alpha: 0.28),
+                    blurRadius: (v.disc * 0.26).clamp(18.0, 48.0),
+                    spreadRadius: (v.disc * 0.01).clamp(1.0, 4.0),
                   ),
                   BoxShadow(
-                    color: context.tokens.shadowColor.withValues(alpha: 0.60),
-                    blurRadius: 30,
-                    offset: const Offset(0, 18),
+                    color: context.tokens.shadowColor.withValues(alpha: 0.55),
+                    blurRadius: (v.disc * 0.14).clamp(12.0, 30.0),
+                    offset: Offset(0, v.disc * 0.045),
                   ),
                 ],
               ),
             ),
-            CustomPaint(
-              size: Size.square(widget.size),
-              painter: _VinylGroovesPainter(),
+            IgnorePointer(
+              child: CustomPaint(
+                size: Size.square(v.box),
+                painter: _VinylGroovesPainter(layout: v, ink: ink),
+              ),
             ),
-            // Etiqueta central giratoria con la carátula.
-            RotationTransition(
-              turns: _spin,
-              child: SizedBox(
-                width: labelSize,
-                height: labelSize,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: <Widget>[
-                    ClipOval(
-                      child: SizedBox(
-                        width: labelSize,
-                        height: labelSize,
-                        child: _ArtworkImage(
-                          path: widget.path,
-                          size: labelSize,
-                          shape: BoxShape.circle,
-                          accent: widget.accent,
+            IgnorePointer(
+              child: CustomPaint(
+                size: Size.square(v.box),
+                painter: _VinylTonearmPainter(
+                  layout: v,
+                  ink: ink,
+                  accent: widget.accent,
+                ),
+              ),
+            ),
+            RepaintBoundary(
+              child: RotationTransition(
+                turns: _spin,
+                child: SizedBox(
+                  width: v.label,
+                  height: v.label,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: <Widget>[
+                      ClipOval(
+                        clipBehavior: Clip.antiAlias,
+                        child: SizedBox(
+                          width: v.label,
+                          height: v.label,
+                          child: _ArtworkImage(
+                            path: widget.path,
+                            size: v.label,
+                            shape: BoxShape.circle,
+                            accent: widget.accent,
+                          ),
                         ),
                       ),
-                    ),
-                    Container(
-                      width: labelSize * 0.10,
-                      height: labelSize * 0.10,
-                      decoration: BoxDecoration(
-                        color: Color(0xFF0B0B0B),
-                        shape: BoxShape.circle,
+                      Container(
+                        width: v.label * 0.10,
+                        height: v.label * 0.10,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF0B0B0B),
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
-                    Container(
-                      width: labelSize * 0.035,
-                      height: labelSize * 0.035,
-                      decoration: BoxDecoration(
-                        color: Color(0xFF3A3A3A),
-                        shape: BoxShape.circle,
+                      Container(
+                        width: v.label * 0.035,
+                        height: v.label * 0.035,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF3A3A3A),
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -2159,39 +2474,101 @@ class _VinylArtworkState extends State<_VinylArtwork>
 }
 
 class _VinylGroovesPainter extends CustomPainter {
+  const _VinylGroovesPainter({required this.layout, required this.ink});
+
+  final _VinylLayout layout;
+  final Color ink;
+
   @override
   void paint(Canvas canvas, Size size) {
     final Offset center = size.center(Offset.zero);
-    final double maxRadius = size.shortestSide / 2;
     final Paint paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
+      ..strokeWidth = (layout.disc * 0.0025).clamp(0.6, 1.2);
 
-    for (int i = 0; i < 18; i++) {
-      final double radius = maxRadius * (0.52 + i * 0.025);
-      paint.color = Colors.white.withValues(alpha: i.isEven ? 0.045 : 0.025);
-      canvas.drawCircle(center, radius, paint);
+    const int count = 18;
+    final double step = (layout.grooveOuter - layout.grooveInner) / (count - 1);
+    for (int i = 0; i < count; i++) {
+      paint.color = ink.withValues(alpha: i.isEven ? 0.12 : 0.07);
+      canvas.drawCircle(center, layout.grooveInner + step * i, paint);
     }
 
-    // Reflejo tenue para dar volumen al disco.
     final Paint highlight = Paint()
       ..shader = ui.Gradient.linear(
-        Offset(0, 0),
+        Offset.zero,
         Offset(size.width, size.height),
         <Color>[
-          Colors.white.withValues(alpha: 0.10),
+          ink.withValues(alpha: 0.18),
           Colors.transparent,
-          Colors.white.withValues(alpha: 0.04),
+          ink.withValues(alpha: 0.08),
         ],
       )
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 10
-      ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 8);
-    canvas.drawCircle(center, maxRadius * 0.86, highlight);
+      ..strokeWidth = layout.highlightStroke
+      ..maskFilter = ui.MaskFilter.blur(
+        ui.BlurStyle.normal,
+        layout.highlightBlur,
+      );
+    canvas.drawCircle(center, layout.highlightRadius, highlight);
   }
 
   @override
-  bool shouldRepaint(covariant _VinylGroovesPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _VinylGroovesPainter old) =>
+      old.layout != layout || old.ink != ink;
+}
+
+class _VinylTonearmPainter extends CustomPainter {
+  const _VinylTonearmPainter({
+    required this.layout,
+    required this.ink,
+    required this.accent,
+  });
+
+  final _VinylLayout layout;
+  final Color ink;
+  final Color accent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint arm = Paint()
+      ..color = ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = layout.armWidth
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawCircle(
+      layout.pivot,
+      layout.pivotRadius,
+      Paint()
+        ..color = accent.withValues(alpha: 0.85)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      layout.pivot,
+      layout.pivotRadius * 0.42,
+      Paint()..color = const Color(0xFF101014),
+    );
+    canvas.drawLine(layout.pivot, layout.elbow, arm);
+    canvas.drawLine(layout.elbow, layout.stylus, arm);
+
+    final Offset back = layout.stylus - const Offset(1, 0) * layout.headLength;
+    final Paint head = Paint()
+      ..color = ink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = layout.headWidth
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(back, layout.stylus, head);
+    canvas.drawCircle(
+      layout.stylus,
+      layout.headWidth * 0.55,
+      Paint()..color = accent,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _VinylTonearmPainter old) =>
+      old.layout != layout || old.ink != ink || old.accent != accent;
 }
 
 /// Anillo de progreso que envuelve la carátula. La búsqueda y los deslizamientos
@@ -2220,7 +2597,11 @@ class _CircularProgressRing extends StatelessWidget {
           children: <Widget>[
             CustomPaint(
               size: Size.square(size),
-              painter: _RingPainter(progress: progress, accent: accent),
+              painter: _RingPainter(
+                progress: progress,
+                accent: accent,
+                ink: context.ink,
+              ),
             ),
             // La carátula ya llega reducida desde _ArtworkStage (84 %):
             // volver a encogerla aquí producía el desajuste del vinilo.
@@ -2233,10 +2614,15 @@ class _CircularProgressRing extends StatelessWidget {
 }
 
 class _RingPainter extends CustomPainter {
-  _RingPainter({required this.progress, required this.accent});
+  _RingPainter({
+    required this.progress,
+    required this.accent,
+    required this.ink,
+  });
 
   final double progress;
   final Color accent;
+  final Color ink;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -2249,7 +2635,7 @@ class _RingPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round
-      ..color = Colors.white.withValues(alpha: 0.10);
+      ..color = ink.withValues(alpha: 0.18);
     canvas.drawCircle(center, radius, base);
 
     final Paint glow = Paint()
@@ -2273,7 +2659,7 @@ class _RingPainter extends CustomPainter {
       ..shader = ui.Gradient.sweep(center, <Color>[
         accent.withValues(alpha: 0.55),
         accent,
-        Colors.white,
+        Color.lerp(accent, ink, 0.45) ?? accent,
       ]);
     canvas.drawArc(
       rect,
@@ -2286,7 +2672,9 @@ class _RingPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _RingPainter oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.accent != accent;
+      oldDelegate.progress != progress ||
+      oldDelegate.accent != accent ||
+      oldDelegate.ink != ink;
 }
 
 /// Fondo degradado con orbes de color; responde a la paleta dinámica.

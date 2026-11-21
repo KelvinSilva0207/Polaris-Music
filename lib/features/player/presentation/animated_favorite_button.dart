@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/motion_config.dart';
+import '../../../core/theme/theme_tokens.dart';
 import '../../../shared/widgets/motion_scope.dart';
 
 /// Botón de favorito con un latido y una pequeña explosión de partículas.
@@ -75,7 +76,9 @@ class _AnimatedFavoriteButtonState extends State<AnimatedFavoriteButton>
   @override
   void didUpdateWidget(covariant AnimatedFavoriteButton oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!oldWidget.isFavorite && widget.isFavorite && context.motion.gestures) {
+    if (!oldWidget.isFavorite &&
+        widget.isFavorite &&
+        context.motionAllowed(MotionCategory.gestures)) {
       _controller.forward(from: 0);
     }
   }
@@ -97,10 +100,10 @@ class _AnimatedFavoriteButtonState extends State<AnimatedFavoriteButton>
             ? Icons.favorite_rounded
             : Icons.favorite_border_rounded,
         color: !widget.enabled
-            ? Colors.white24
+            ? context.inkAlpha(0.24)
             : widget.isFavorite
             ? widget.accent
-            : Colors.white38,
+            : context.inkAlpha(0.54),
       ),
     );
 
@@ -118,6 +121,7 @@ class _AnimatedFavoriteButtonState extends State<AnimatedFavoriteButton>
                   painter: _FavoriteBurstPainter(
                     progress: progress,
                     color: widget.accent,
+                    intensity: context.motion.intensity,
                   ),
                   child: const SizedBox(width: 44, height: 44),
                 ),
@@ -131,10 +135,15 @@ class _AnimatedFavoriteButtonState extends State<AnimatedFavoriteButton>
 }
 
 class _FavoriteBurstPainter extends CustomPainter {
-  const _FavoriteBurstPainter({required this.progress, required this.color});
+  const _FavoriteBurstPainter({
+    required this.progress,
+    required this.color,
+    required this.intensity,
+  });
 
   final double progress;
   final Color color;
+  final double intensity;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -144,9 +153,9 @@ class _FavoriteBurstPainter extends CustomPainter {
 
     canvas.drawCircle(
       center,
-      12 + 20 * eased,
+      12 + (6 + 20 * intensity) * eased,
       Paint()
-        ..color = color.withValues(alpha: alpha * 0.55)
+        ..color = color.withValues(alpha: alpha * (0.20 + 0.45 * intensity))
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
@@ -166,5 +175,7 @@ class _FavoriteBurstPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _FavoriteBurstPainter old) =>
-      old.progress != progress || old.color != color;
+      old.progress != progress ||
+      old.color != color ||
+      old.intensity != intensity;
 }

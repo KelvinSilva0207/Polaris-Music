@@ -13,6 +13,7 @@ import '../core/theme/app_theme_config.dart';
 import '../core/theme/font_catalog.dart';
 import '../core/theme/typography_config.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
+import '../shared/widgets/directional_transitions.dart';
 import '../shared/widgets/motion_scope.dart';
 import 'app_shell.dart';
 
@@ -74,8 +75,10 @@ class _RootGate extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final bool onboardingDone = ref.watch(onboardingDoneProvider);
-    return AnimatedSwitcher(
+    return DirectionalContentSwitcher(
+      direction: onboardingDone ? 1 : 0,
       duration: context.motion.duration(const Duration(milliseconds: 300)),
+      distance: 0.10,
       child: onboardingDone
           ? const AppShell(key: ValueKey<String>('shell'))
           : const OnboardingScreen(key: ValueKey<String>('onboarding')),

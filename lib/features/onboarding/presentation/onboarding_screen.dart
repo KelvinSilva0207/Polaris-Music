@@ -36,7 +36,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       return;
     }
     _pages.nextPage(
-      duration: const Duration(milliseconds: 320),
+      duration: context.motion.duration(const Duration(milliseconds: 320)),
       curve: Curves.easeOutCubic,
     );
   }
@@ -44,7 +44,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   void _back() {
     if (_index == 0) return;
     _pages.previousPage(
-      duration: const Duration(milliseconds: 280),
+      duration: context.motion.duration(const Duration(milliseconds: 280)),
       curve: Curves.easeOutCubic,
     );
   }

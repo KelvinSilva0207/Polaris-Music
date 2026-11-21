@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/theme_tokens.dart';
+
 /// Encabezado de sección con acción opcional.
 class SectionHeader extends StatelessWidget {
   const SectionHeader({
@@ -33,7 +35,9 @@ class SectionHeader extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       subtitle!,
-                      style: text.bodySmall?.copyWith(color: Colors.white60),
+                      style: text.bodySmall?.copyWith(
+                        color: context.inkAlpha(0.60),
+                      ),
                     ),
                   ),
               ],

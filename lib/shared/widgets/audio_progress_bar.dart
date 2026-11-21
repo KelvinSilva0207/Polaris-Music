@@ -50,6 +50,7 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
   Widget build(BuildContext context) {
     final PolarisTokens tokens = context.tokens;
     final Color accent = widget.accent ?? tokens.progressColor;
+    final double intensity = context.motion.intensity;
     final Duration position = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.position),
     );
@@ -89,9 +90,12 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
             builder: (BuildContext context, BoxConstraints constraints) {
               final double width = constraints.maxWidth;
               final double railTop = widget.compact ? 13 : 34;
+              final double growth = 4 + 8 * intensity;
               final double thumbHeight = _dragFraction != null
-                  ? (widget.compact ? 22 : 30)
-                  : (_interacting ? (widget.compact ? 18 : 26) : 18);
+                  ? (widget.compact ? 22 : 22 + growth)
+                  : (_interacting
+                        ? (widget.compact ? 18 : 18 + growth * 0.75)
+                        : 18);
               final double thumbLeft = width <= 0
                   ? 0
                   : (shown * width - thumbWidth / 2).clamp(

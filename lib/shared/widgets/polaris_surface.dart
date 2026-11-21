@@ -19,6 +19,7 @@ class PolarisSurface extends StatelessWidget {
     this.borderRadius,
     this.blur,
     this.glowColor,
+    this.phase = 0,
     this.clipBehavior = Clip.antiAlias,
   });
 
@@ -27,6 +28,9 @@ class PolarisSurface extends StatelessWidget {
   final double? borderRadius;
   final double? blur;
   final Color? glowColor;
+
+  /// Fase del gradiente orgánico del acabado Liquid (0..1).
+  final double phase;
   final Clip clipBehavior;
 
   @override
@@ -35,19 +39,26 @@ class PolarisSurface extends StatelessWidget {
     final double radius = borderRadius ?? tokens.panelRadius;
     final double sigma = blur ?? tokens.glassBlur;
 
-    // Mate: sin BackdropFilter. Es el acabado recomendado en listas largas.
-    if (tokens.finish == SurfaceFinish.matte) {
+    final Gradient? finishGradient = tokens.finishGradient(
+      phase,
+      base: tokens.panelColor,
+    );
+
+    // Mate: sin BackdropFilter ni gradientes. Superficie plana y nítida.
+    if (tokens.isMatte) {
       return Container(
         padding: padding,
-        decoration: tokens.panelDecoration(radius: radius, glow: glowColor),
+        decoration: tokens.panelDecoration(
+          radius: radius,
+          glow: glowColor,
+          gradient: finishGradient,
+        ),
         child: child,
       );
     }
 
     // Líquido: blur acotado y gradiente orgánico, sin filtros apilados.
-    final double effectiveSigma = tokens.finish == SurfaceFinish.liquid
-        ? math.min(sigma, 16)
-        : sigma;
+    final double effectiveSigma = tokens.isLiquid ? math.min(sigma, 16) : sigma;
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       clipBehavior: clipBehavior,
@@ -58,7 +69,12 @@ class PolarisSurface extends StatelessWidget {
         ),
         child: Container(
           padding: padding,
-          decoration: tokens.panelDecoration(radius: radius, glow: glowColor),
+          decoration: tokens.panelDecoration(
+            radius: radius,
+            glow: glowColor,
+            gradient: finishGradient,
+            phase: phase,
+          ),
           child: child,
         ),
       ),

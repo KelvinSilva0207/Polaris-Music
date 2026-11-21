@@ -186,7 +186,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
                             )
                           : const Icon(Icons.download_rounded, size: 18),
                       label: Text(
-                        _working ? 'Actualizando…' : 'Actualizar ahora',
+                        _working ? 'Actualizando…' : 'Descargar e instalar',
                       ),
                     ),
                   ],
@@ -261,7 +261,7 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
             _progress = null;
             _status =
                 'Permite instalar aplicaciones desconocidas y pulsa '
-                '«Actualizar ahora» de nuevo.';
+                '«Descargar e instalar» de nuevo.';
           });
         case ApkInstallResult.failed:
           setState(() {

@@ -374,6 +374,7 @@ class RgbFlowController extends StateNotifier<double> {
     _window!.addListener(_onWindowChanged);
     _ref.listen<AppThemeConfig>(themeConfigProvider, (_, _) => _sync());
     _ref.listen<MotionConfig>(motionConfigProvider, (_, _) => _sync());
+    _ref.listen<bool>(ambientMotionGateProvider, (_, _) => _sync());
     _sync();
   }
 
@@ -391,7 +392,8 @@ class RgbFlowController extends StateNotifier<double> {
     final MotionConfig motion = _ref.read(motionConfigProvider);
     final bool enabled =
         _ref.read(themeConfigProvider).rgbFlow &&
-        motion.ambient &&
+        _ref.read(ambientMotionGateProvider) &&
+        motion.enabled(MotionCategory.ambient) &&
         !(_window?.value.backgrounded ?? false);
     if (!enabled) {
       _timer?.cancel();

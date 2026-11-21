@@ -7,7 +7,6 @@ import '../../../core/models/playback_state.dart';
 import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/compact_style_provider.dart';
-import '../../../core/providers/motion_provider.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/color_math.dart';
 import '../../../core/theme/compact_style_config.dart';
@@ -97,7 +96,6 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
     final CompactStyleConfig style = ref.watch(
       compactStyleProvider(CompactSurface.phone),
     );
-    final bool ambient = ref.watch(motionConfigProvider).ambient;
     final PolarisTokens tokens = context.tokens;
     final ResolvedCompactStyle resolved = style.resolve(tokens);
     final Color accent = resolved.accent;
@@ -111,7 +109,10 @@ class _PhoneModeShellState extends ConsumerState<PhoneModeShell>
     return ValueListenableBuilder<WindowUiState>(
       valueListenable: ref.watch(windowStateProvider),
       builder: (BuildContext context, WindowUiState state, Widget? child) {
-        final bool active = playing && ambient && !state.backgrounded;
+        final bool active =
+            playing &&
+            context.ambientMotionAllowed(playing: true) &&
+            !state.backgrounded;
         _syncSpin(active);
         return child ?? const SizedBox.shrink();
       },

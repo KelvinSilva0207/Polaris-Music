@@ -23,6 +23,12 @@ void main() {
       expect(MetadataText.repair('Rock ’ roll'), 'Rock ’ roll');
       expect(MetadataText.repair('Desconocido'), 'Desconocido');
     });
+
+    test('descarta caracteres de control y espacios invisibles', () {
+      expect(MetadataText.repair('\u0080Café'), 'Café');
+      expect(MetadataText.repair('Café\u00A0Opus'), 'Café Opus');
+      expect(MetadataText.repair('Caf\uFEFFé\u200B'), 'Café');
+    });
   });
 
   group('MetadataText.clean', () {
@@ -40,6 +46,17 @@ void main() {
     test('conserva el fallback Desconocido de la base de datos', () {
       expect(MetadataText.clean('', 'Desconocido'), 'Desconocido');
       expect(MetadataText.clean('Desconocido', 'pista-01'), 'Desconocido');
+    });
+
+    test('cae al respaldo con U+FFFD o su versión mal decodificada', () {
+      expect(MetadataText.clean('ï¿½', 'pista-01'), 'pista-01');
+      expect(MetadataText.clean('ï¿½Música', 'pista-01'), 'pista-01');
+    });
+
+    test('limpia glifos de reemplazo sin perder texto legible', () {
+      expect(MetadataText.clean('Café ■', 'pista-01'), 'Café');
+      expect(MetadataText.clean('■', 'pista-01'), 'pista-01');
+      expect(MetadataText.clean('Café\u00A0Opus', 'pista-01'), 'Café Opus');
     });
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import 'app_theme_config.dart';
@@ -101,6 +103,8 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   bool get isNeumorphic => cardStyle == CardStyle.neumorphic;
   bool get isFlat => cardStyle == CardStyle.flatMinimal;
   bool get isLight => brightness == Brightness.light;
+  bool get isLiquid => finish == SurfaceFinish.liquid;
+  bool get isMatte => finish == SurfaceFinish.matte;
 
   /// Tinta principal legible sobre el panel activo.
   Color get foreground => ColorMath.onColor(panelOverlay);
@@ -146,8 +150,79 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   /// `borderColor` viene del preset: Violet Glass usa blanco al 10 %.
   Color get panelBorder => borderColor;
 
+  /// Borde con dirección especular según el acabado activo.
+  ///
+  /// Glass refuerza el canto superior e izquierdo, Liquid lo tiñe con el
+  /// acento secundario y Mate usa un contorno nítido y legible en claro.
+  BoxBorder get specularPanelBorder {
+    final Color base = panelBorder;
+    final Color light = foreground;
+    switch (finish) {
+      case SurfaceFinish.glass:
+        return Border(
+          top: BorderSide(
+            color: Color.lerp(base, light, 0.30) ?? base,
+            width: 1.2,
+          ),
+          left: BorderSide(
+            color: Color.lerp(base, light, 0.18) ?? base,
+            width: 1,
+          ),
+          right: BorderSide(color: base, width: 1),
+          bottom: BorderSide(color: base, width: 1),
+        );
+      case SurfaceFinish.liquid:
+        final Color tinted = Color.lerp(base, secondary, 0.42) ?? base;
+        return Border(
+          top: BorderSide(
+            color: Color.lerp(tinted, light, 0.24) ?? tinted,
+            width: 1.4,
+          ),
+          left: BorderSide(color: tinted, width: 1.1),
+          right: BorderSide(color: tinted, width: 1),
+          bottom: BorderSide(
+            color: tinted.withValues(alpha: tinted.a * 0.55),
+            width: 1,
+          ),
+        );
+      case SurfaceFinish.matte:
+        return Border.all(
+          color: Color.lerp(base, light, isLight ? 0.55 : 0.26) ?? base,
+          width: 1,
+        );
+    }
+  }
+
+  /// Gradiente orgánico del acabado Liquid. Devuelve `null` en Material
+  /// opacos para que el panel conserve un color plano y alto contraste.
+  Gradient? finishGradient(double phase, {Color? base}) {
+    if (!isLiquid) return null;
+    final double angle = phase * 2 * math.pi;
+    final Alignment begin = Alignment(math.cos(angle), math.sin(angle));
+    final Alignment end = Alignment(-begin.x, -begin.y);
+    final Color panel = base ?? panelOverlay;
+    return LinearGradient(
+      begin: begin,
+      end: end,
+      colors: <Color>[
+        Color.lerp(panel, accent, isLight ? 0.12 : 0.24) ?? panel,
+        panel,
+        Color.lerp(panel, secondary, isLight ? 0.14 : 0.28) ?? panel,
+      ],
+    );
+  }
+
   /// Sombras de un panel, opcionalmente con un resplandor del acento.
   List<BoxShadow> panelShadows({Color? glow, double radius = 24}) {
+    if (isMatte) {
+      return <BoxShadow>[
+        BoxShadow(
+          color: shadowColor.withValues(alpha: shadowOpacity * 0.55),
+          blurRadius: radius * 0.55,
+          offset: const Offset(0, 5),
+        ),
+      ];
+    }
     switch (cardStyle) {
       case CardStyle.glassmorphic:
         return <BoxShadow>[
@@ -203,25 +278,19 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     Color? color,
     Color? borderColor,
     Gradient? gradient,
+    double phase = 0,
     bool elevated = true,
   }) {
+    final Color baseColor = color ?? (isMatte ? panelOverlay : panelColor);
     final Gradient? effective =
-        gradient ??
-        (finish == SurfaceFinish.liquid
-            ? LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  Color.lerp(panelColor, accent, 0.16) ?? panelColor,
-                  Color.lerp(panelColor, secondary, 0.20) ?? panelColor,
-                ],
-              )
-            : null);
+        gradient ?? finishGradient(phase, base: baseColor);
     return BoxDecoration(
-      color: effective == null ? (color ?? panelColor) : null,
+      color: effective == null ? baseColor : null,
       gradient: effective,
       borderRadius: BorderRadius.circular(radius ?? panelRadius),
-      border: Border.all(color: borderColor ?? panelBorder),
+      border: borderColor == null
+          ? specularPanelBorder
+          : Border.all(color: borderColor),
       boxShadow: elevated ? panelShadows(glow: glow) : null,
     );
   }

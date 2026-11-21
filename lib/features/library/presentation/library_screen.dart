@@ -9,12 +9,14 @@ import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/formatters.dart';
-import '../../../shared/widgets/empty_state.dart';
-import '../../../shared/widgets/track_tile.dart';
+import '../../../shared/widgets/directional_transitions.dart';
+import '../../../shared/widgets/motion_scope.dart';
 import '../data/library_scanner.dart';
 import '../domain/library_folder.dart';
 import '../domain/library_sort.dart';
+import '../domain/library_view.dart';
 import 'library_providers.dart';
+import 'library_views.dart';
 
 /// Biblioteca local: búsqueda, orden, escaneo y gestión de carpetas.
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -39,6 +41,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final ScanUiState scan = ref.watch(scanControllerProvider);
     final LibrarySort sort = ref.watch(librarySortProvider);
     final bool ascending = ref.watch(libraryAscendingProvider);
+    final LibraryView view = ref.watch(libraryViewProvider);
 
     return Column(
       children: <Widget>[
@@ -88,6 +91,26 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ],
               ),
               const SizedBox(height: 10),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: <Widget>[
+                    for (final LibraryView item in LibraryView.values)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: ChoiceChip(
+                          label: Text(item.fullLabel),
+                          tooltip: item.description,
+                          selected: item == view,
+                          onSelected: (_) =>
+                              ref.read(libraryViewProvider.notifier).state =
+                                  item,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               Row(
                 children: <Widget>[
                   if (Platform.isAndroid)
@@ -97,10 +120,13 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                       label: Text('Metrolist'),
                     ),
                   if (Platform.isAndroid) const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: _manageFolders,
-                    icon: Icon(Icons.folder_outlined, size: 18),
-                    label: Text('Carpetas'),
+                  Tooltip(
+                    message: 'Añadir o quitar carpetas de escaneo',
+                    child: OutlinedButton.icon(
+                      onPressed: _manageFolders,
+                      icon: Icon(Icons.folder_outlined, size: 18),
+                      label: Text('Gestionar'),
+                    ),
                   ),
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
@@ -168,61 +194,24 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
         ),
         Expanded(
-          child: tracks.when(
-            loading: () => Center(child: CircularProgressIndicator()),
-            error: (Object error, StackTrace stack) => Center(
-              child: Text(
-                'No se pudo cargar la biblioteca: $error',
-                style: TextStyle(color: Colors.redAccent),
-              ),
+          child: DirectionalContentSwitcher(
+            direction: view.index,
+            duration: context.motion.duration(
+              const Duration(milliseconds: 260),
             ),
-            data: (List<Track> list) {
-              if (list.isEmpty) {
-                return EmptyState(
-                  icon: Icons.queue_music_rounded,
-                  title: 'No hay pistas que mostrar',
-                  message:
-                      'Añade una carpeta con música y pulsa “Escanear” para '
-                      'indexar tus archivos.',
-                  action: FilledButton.icon(
-                    onPressed: _manageFolders,
-                    icon: Icon(Icons.create_new_folder_outlined),
-                    label: Text('Añadir carpeta'),
-                  ),
-                );
-              }
-              return Column(
-                children: <Widget>[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    child: Row(
-                      children: <Widget>[
-                        Text(
-                          '${Formatters.count(list.length)} pistas',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: context.inkAlpha(0.54)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-                      itemCount: list.length,
-                      itemBuilder: (BuildContext context, int index) {
-                        final Track track = list[index];
-                        return TrackTile(
-                          track: track,
-                          queue: list,
-                          index: index,
-                          showIndex: true,
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              );
-            },
+            distance: 0.06,
+            child: KeyedSubtree(
+              key: ValueKey<String>('library-view-${view.name}'),
+              child: switch (view) {
+                LibraryView.all => TrackResults(
+                  tracks: tracks,
+                  onManageFolders: _manageFolders,
+                ),
+                LibraryView.albums ||
+                LibraryView.artists => LibraryGroupsView(view: view),
+                LibraryView.folders => const FoldersView(),
+              },
+            ),
           ),
         ),
       ],

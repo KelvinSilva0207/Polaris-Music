@@ -14,6 +14,15 @@ enum MotionProfile {
     'Mínimo',
     'Sin transiciones ni giros decorativos: máxima claridad y ahorro de GPU.',
   ),
+  bajo(
+    'Bajo',
+    'Movimiento breve y funcional, sin ambiente continuo: máxima claridad.',
+  ),
+  medio(
+    'Medio',
+    'Equilibrio entre fluidez y sobriedad; animaciones cómodas y discretas.',
+  ),
+  alto('Alto', 'Transiciones amplias, pulses expresivos y ambiente continuo.'),
   custom('Personalizado', 'Velocidad y categorías ajustadas una a una.');
 
   const MotionProfile(this.label, this.description);
@@ -74,20 +83,46 @@ class MotionConfig {
     gestures: false,
     island: false,
   );
-  static const MotionConfig defaults = balanced;
+
+  /// Perfiles solicitados por la UI: Bajo / Medio / Alto.
+  /// `minimal`, `balanced` y `fluid` se conservan por compatibilidad con JSON.
+  static const MotionConfig bajo = MotionConfig(
+    profile: MotionProfile.bajo,
+    speed: 1.35,
+    transitions: true,
+    ambient: false,
+    gestures: true,
+    island: true,
+  );
+  static const MotionConfig medio = MotionConfig(
+    profile: MotionProfile.medio,
+    speed: 1,
+    transitions: true,
+    ambient: true,
+    gestures: true,
+    island: true,
+  );
+  static const MotionConfig alto = MotionConfig(
+    profile: MotionProfile.alto,
+    speed: 0.82,
+    transitions: true,
+    ambient: true,
+    gestures: true,
+    island: true,
+  );
+  static const MotionConfig defaults = medio;
 
   /// Perfiles seleccionables desde Personalización (excluye `custom`).
-  static const List<MotionConfig> presets = <MotionConfig>[
-    fluid,
-    balanced,
-    minimal,
-  ];
+  static const List<MotionConfig> presets = <MotionConfig>[bajo, medio, alto];
 
   factory MotionConfig.fromProfile(MotionProfile profile) => switch (profile) {
     MotionProfile.fluid => fluid,
     MotionProfile.balanced => balanced,
     MotionProfile.minimal => minimal,
-    MotionProfile.custom => balanced,
+    MotionProfile.bajo => bajo,
+    MotionProfile.medio => medio,
+    MotionProfile.alto => alto,
+    MotionProfile.custom => medio,
   };
 
   bool enabled(MotionCategory category) => switch (category) {
@@ -109,6 +144,19 @@ class MotionConfig {
   }
 
   bool get anyAnimation => transitions || ambient || gestures || island;
+
+  /// Amplitud recomendada para micro-animaciones decorativas.
+  ///
+  /// Las duraciones ya se derivan de [speed]; este valor modula recorridos,
+  /// escalas, brillos y número de partículas. Nunca afecta a la precisión de
+  /// arrastre de la línea de tiempo.
+  double get intensity => switch (profile) {
+    MotionProfile.alto || MotionProfile.fluid => 1,
+    MotionProfile.medio || MotionProfile.balanced => 0.65,
+    MotionProfile.bajo => 0.35,
+    MotionProfile.minimal => 0,
+    MotionProfile.custom => ((1.6 - speed) / 1.2).clamp(0.15, 1),
+  };
 
   MotionConfig copyWith({
     MotionProfile? profile,

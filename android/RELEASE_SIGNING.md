@@ -63,7 +63,8 @@ Gradle. La clave nunca se sube al artefacto ni al repo.
 versionCode = major * 10_000_000 + minor * 100_000 + patch * 1_000 + build
 ```
 
-Para `version: 1.0.7+8` el valor es `10_007_008`, mayor que el antiguo `7`.
+Para `version: 1.0.8+9` el valor es `10_008_009`, mayor que el anterior
+`10_007_008`.
 Cada subida de `major`, `minor`, `patch` o `build` aumenta el código. El
 número de build debe estar entre `0` y `999`.
 

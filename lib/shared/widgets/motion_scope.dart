@@ -64,6 +64,17 @@ class _MotionScopeState extends ConsumerState<MotionScope> {
     final MediaQueryData media = MediaQuery.of(context);
     final bool disableImplicit =
         media.disableAnimations || !effective.transitions;
+    final bool ambientAllowed =
+        effective.enabled(MotionCategory.ambient) &&
+        // ignore: deprecated_member_use
+        TickerMode.of(context) &&
+        !media.disableAnimations;
+    if (ref.read(ambientMotionGateProvider) != ambientAllowed) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ref.read(ambientMotionGateProvider.notifier).state = ambientAllowed;
+      });
+    }
 
     return ProviderScope(
       overrides: <Override>[motionConfigProvider.overrideWithValue(effective)],
@@ -95,4 +106,17 @@ class _MotionInherited extends InheritedWidget {
 /// Configuración de movimiento vigente en este contexto.
 extension MotionContext on BuildContext {
   MotionConfig get motion => _MotionInherited.of(this);
+}
+
+/// Comprobación única para animaciones que deben detenerse en pausa,
+/// minimizado, pestaña oculta o cuando el sistema pide reducir movimiento.
+extension MotionGate on BuildContext {
+  bool motionAllowed(MotionCategory category) =>
+      motion.enabled(category) &&
+      // ignore: deprecated_member_use
+      TickerMode.of(this) &&
+      !MediaQuery.of(this).disableAnimations;
+
+  bool ambientMotionAllowed({required bool playing}) =>
+      playing && motionAllowed(MotionCategory.ambient);
 }

@@ -275,10 +275,12 @@ class _SourceCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: highlight
             ? color.withValues(alpha: 0.08)
-            : Colors.white.withValues(alpha: 0.03),
+            : context.inkAlpha(0.03),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: highlight ? color.withValues(alpha: 0.5) : Colors.white12,
+          color: highlight
+              ? color.withValues(alpha: 0.5)
+              : context.inkAlpha(0.12),
         ),
       ),
       child: Column(

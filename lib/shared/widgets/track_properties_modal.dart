@@ -204,8 +204,9 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
                                     value: _firstNonEmpty(<String?>[
                                       metadata == null
                                           ? null
-                                          : MetadataText.repair(
+                                          : MetadataText.clean(
                                               metadata.title ?? '',
+                                              '',
                                             ),
                                       widget.track.title,
                                     ]),
@@ -216,8 +217,9 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
                                     value: _firstNonEmpty(<String?>[
                                       metadata == null
                                           ? null
-                                          : MetadataText.repair(
+                                          : MetadataText.clean(
                                               metadata.artist ?? '',
+                                              '',
                                             ),
                                       widget.track.artist,
                                     ]),
@@ -228,8 +230,9 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
                                     value: _firstNonEmpty(<String?>[
                                       metadata == null
                                           ? null
-                                          : MetadataText.repair(
+                                          : MetadataText.clean(
                                               metadata.album ?? '',
+                                              '',
                                             ),
                                       widget.track.album,
                                     ]),
@@ -365,7 +368,7 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
     final String genres = metadata == null
         ? ''
         : metadata.genres
-              .map((String g) => MetadataText.repair(g))
+              .map((String g) => MetadataText.clean(g, ''))
               .where((String g) => g.trim().isNotEmpty)
               .join(', ');
     return _firstNonEmpty(<String?>[genres, widget.track.genre]);
@@ -484,11 +487,11 @@ BoxDecoration _panelDecoration(PolarisTokens tokens, Color accent) {
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: <Color>[
-          Colors.white.withValues(alpha: 0.14),
-          Colors.white.withValues(alpha: 0.04),
+          tokens.foreground.withValues(alpha: 0.14),
+          tokens.foreground.withValues(alpha: 0.04),
         ],
       ),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      border: tokens.specularPanelBorder,
       boxShadow: <BoxShadow>[
         BoxShadow(
           color: accent.withValues(alpha: 0.18),
@@ -507,7 +510,7 @@ BoxDecoration _panelDecoration(PolarisTokens tokens, Color accent) {
     return BoxDecoration(
       borderRadius: BorderRadius.circular(radius),
       color: tokens.surface,
-      border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
+      border: Border.all(color: tokens.foreground.withValues(alpha: 0.06)),
       boxShadow: <BoxShadow>[
         BoxShadow(
           color: tokens.neumorphicLight.withValues(alpha: 0.9),
@@ -525,7 +528,7 @@ BoxDecoration _panelDecoration(PolarisTokens tokens, Color accent) {
   return BoxDecoration(
     borderRadius: BorderRadius.circular(radius),
     color: tokens.surface.withValues(alpha: 0.98),
-    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+    border: Border.all(color: tokens.foreground.withValues(alpha: 0.08)),
     boxShadow: <BoxShadow>[
       BoxShadow(
         color: tokens.shadowColor.withValues(alpha: 0.45),
@@ -701,10 +704,7 @@ class _Section extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: Divider(
-                  height: 1,
-                  color: Colors.white.withValues(alpha: 0.08),
-                ),
+                child: Divider(height: 1, color: context.inkAlpha(0.08)),
               ),
             ],
           ),

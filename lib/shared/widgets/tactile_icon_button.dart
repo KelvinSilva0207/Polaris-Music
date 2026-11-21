@@ -84,13 +84,16 @@ class _TactileIconButtonState extends State<TactileIconButton>
 
   void _handlePressed() {
     if (!widget.enabled) return;
-    if (context.motion.gestures) _controller.forward(from: 0);
+    if (context.motionAllowed(MotionCategory.gestures)) {
+      _controller.forward(from: 0);
+    }
     widget.onPressed();
   }
 
   @override
   Widget build(BuildContext context) {
     final Color accent = widget.echoColor ?? context.accent;
+    final double intensity = context.motion.intensity;
     final Widget button = IconButton(
       tooltip: widget.tooltip,
       iconSize: widget.iconSize,
@@ -112,7 +115,11 @@ class _TactileIconButtonState extends State<TactileIconButton>
             if (progress > 0 && progress < 1)
               IgnorePointer(
                 child: CustomPaint(
-                  painter: _EchoPainter(progress: progress, color: accent),
+                  painter: _EchoPainter(
+                    progress: progress,
+                    color: accent,
+                    intensity: intensity,
+                  ),
                   child: const SizedBox(width: 48, height: 48),
                 ),
               ),
@@ -126,10 +133,15 @@ class _TactileIconButtonState extends State<TactileIconButton>
 
 /// Eco circular que se expande y se desvanece en el instante de la pulsación.
 class _EchoPainter extends CustomPainter {
-  const _EchoPainter({required this.progress, required this.color});
+  const _EchoPainter({
+    required this.progress,
+    required this.color,
+    required this.intensity,
+  });
 
   final double progress;
   final Color color;
+  final double intensity;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -138,9 +150,9 @@ class _EchoPainter extends CustomPainter {
     final Offset center = Offset(size.width / 2, size.height / 2);
     canvas.drawCircle(
       center,
-      10 + 14 * eased,
+      10 + (8 + 12 * intensity) * eased,
       Paint()
-        ..color = color.withValues(alpha: alpha * 0.42)
+        ..color = color.withValues(alpha: alpha * (0.16 + 0.36 * intensity))
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2,
     );
@@ -148,5 +160,7 @@ class _EchoPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _EchoPainter old) =>
-      old.progress != progress || old.color != color;
+      old.progress != progress ||
+      old.color != color ||
+      old.intensity != intensity;
 }

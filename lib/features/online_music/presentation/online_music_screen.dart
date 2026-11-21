@@ -510,8 +510,9 @@ class _OnlineHeader extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 'Audius y YouTube Music funcionan sin cuenta. SoundCloud, '
-                'Spotify y Tidal necesitan un token en Ajustes; Spotify y Tidal '
-                'solo aportan metadatos y el audio se busca en fuentes abiertas.',
+                'Spotify y Tidal necesitan un token en Configurar fuentes; '
+                'Spotify y Tidal solo aportan metadatos y el audio se busca en '
+                'fuentes abiertas.',
                 style: text.bodySmall?.copyWith(color: context.inkAlpha(0.60)),
               ),
             ],
@@ -920,7 +921,7 @@ class _SourceIssueBanner extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
             ),
           ),
-          TextButton(onPressed: onConfigure, child: Text('Ajustes')),
+          TextButton(onPressed: onConfigure, child: Text('Configurar fuentes')),
           IconButton(
             tooltip: 'Reintentar',
             onPressed: onRetry,

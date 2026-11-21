@@ -114,7 +114,7 @@ class _TypographyScreenState extends ConsumerState<TypographyScreen> {
         title: const Text('Tipografía'),
         actions: <Widget>[
           IconButton(
-            tooltip: 'Restablecer tipografía',
+            tooltip: 'Restablecer tipografía global',
             onPressed: _resetAll,
             icon: const Icon(Icons.restart_alt_rounded),
           ),
@@ -339,9 +339,9 @@ class _SurfaceFontTile extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.03),
+          color: context.inkAlpha(0.03),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+          border: Border.all(color: context.inkAlpha(0.07)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,7 +409,7 @@ class _SurfaceFontTile extends ConsumerWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                'Vista previa',
+                'Vista previa tipográfica',
                 style: TextStyle(
                   fontFamily: resolveFontFamily(
                     selected == _inherit
@@ -441,9 +441,9 @@ class _Section extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: context.inkAlpha(0.03),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.07)),
+        border: Border.all(color: context.inkAlpha(0.07)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
