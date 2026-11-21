@@ -13,6 +13,7 @@ import '../../../core/models/update_info.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/update_prompt_provider.dart';
 import '../../../core/providers/theme_provider.dart';
+import '../../../core/services/app_shutdown.dart';
 import '../../../core/services/app_updater_service.dart';
 import '../../../core/services/backup_service.dart';
 import '../../../core/services/global_hotkey_service.dart';
@@ -1744,19 +1745,26 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
   Future<void> _openOrInstall(String path) async {
     if (Platform.isAndroid && path.toLowerCase().endsWith('.apk')) {
       final AppUpdaterService updater = ref.read(appUpdaterServiceProvider);
-      final bool started = await updater.installApk(path);
+      final ApkInstallResult result = await updater.installApk(path);
       if (!mounted) return;
-      if (!started) {
-        await updater.openInstallPermissionSettings();
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Permite instalar aplicaciones desconocidas y vuelve a pulsar '
-              '«Instalar APK».',
+      switch (result) {
+        case ApkInstallResult.permissionRequired:
+          await updater.openInstallPermissionSettings();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Permite instalar aplicaciones desconocidas y vuelve a pulsar '
+                '«Instalar APK».',
+              ),
             ),
-          ),
-        );
+          );
+        case ApkInstallResult.failed:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo abrir el instalador.')),
+          );
+        case ApkInstallResult.started:
+          break;
       }
       return;
     }
@@ -1809,8 +1817,8 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
       return;
     }
 
-    // Da tiempo al instalador a arrancar antes de liberar el ejecutable.
-    await Future<void>.delayed(const Duration(milliseconds: 700));
-    exit(0);
+    // El helper ya lanzado espera a que salimos; cerramos servicios y mutex
+    // antes de liberar EXE/DLLs para que Inno Setup no encuentre bloqueos.
+    await AppShutdown.forWindowsUpdate();
   }
 }

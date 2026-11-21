@@ -13,6 +13,7 @@ import java.io.File
 class MainActivity : AudioServiceActivity() {
     companion object {
         private const val UPDATER_CHANNEL = "com.polaris.polaris_music/updater"
+        private const val LOG_TAG = "PolarisUpdater"
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -20,9 +21,28 @@ class MainActivity : AudioServiceActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, UPDATER_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "canInstall" -> result.success(canRequestInstall())
+
                     "installApk" -> {
                         val path = call.argument<String>("path")
-                        result.success(path != null && installApk(path))
+                        if (path.isNullOrBlank()) {
+                            result.error("INVALID_PATH", "Ruta de APK vacía", null)
+                            return@setMethodCallHandler
+                        }
+                        if (!canRequestInstall()) {
+                            result.error(
+                                "PERMISSION_REQUIRED",
+                                "Falta REQUEST_INSTALL_PACKAGES",
+                                null,
+                            )
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            result.success(installApk(path))
+                        } catch (e: Exception) {
+                            android.util.Log.e(LOG_TAG, "No se pudo abrir el APK", e)
+                            result.error("INSTALL_FAILED", e.message, null)
+                        }
                     }
 
                     "openInstallSettings" -> result.success(openInstallSettings())
@@ -32,40 +52,40 @@ class MainActivity : AudioServiceActivity() {
             }
     }
 
+    /** Android O+ exige el permiso de "instalar aplicaciones desconocidas". */
+    private fun canRequestInstall(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()
+
     /**
-     * Abre el instalador del sistema para el APK descargado por la app.
-     * Devuelve false cuando falta el permiso de instalación; en ese caso la
-     * app abre los ajustes y el usuario puede reintentar.
+     * Copia el APK descargado a `cacheDir/updates` y lo comparte mediante
+     * FileProvider con el instalador del sistema. El authority usa el
+     * `applicationId`, idéntico al `namespace` y al manifesto.
      */
     private fun installApk(path: String): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
-            // La app abre los ajustes del sistema al recibir `false`.
-            return false
+        val source = File(path)
+        if (!source.exists() || source.length() <= 0L) {
+            error("El APK descargado no existe o está vacío")
         }
 
-        return try {
-            val dir = File(cacheDir, "updates").apply { mkdirs() }
-            val target = File(dir, "polaris-update.apk")
-            File(path).copyTo(target, overwrite = true)
+        val dir = File(cacheDir, "updates").apply { mkdirs() }
+        val target = File(dir, "polaris-update.apk")
+        source.copyTo(target, overwrite = true)
 
-            val uri: Uri = FileProvider.getUriForFile(
-                this,
-                "$packageName.fileprovider",
-                target,
-            )
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            startActivity(intent)
-            true
-        } catch (e: Exception) {
-            android.util.Log.e("PolarisUpdater", "No se pudo abrir el APK", e)
-            false
+        val uri: Uri = FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            target,
+        )
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+        startActivity(intent)
+        return true
     }
 
+    /** Abre los ajustes específicos de "instalar aplicaciones desconocidas". */
     private fun openInstallSettings(): Boolean {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -77,7 +97,7 @@ class MainActivity : AudioServiceActivity() {
             }
             true
         } catch (e: Exception) {
-            android.util.Log.e("PolarisUpdater", "No se pudieron abrir los ajustes", e)
+            android.util.Log.e(LOG_TAG, "No se pudieron abrir los ajustes", e)
             false
         }
     }

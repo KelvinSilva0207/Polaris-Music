@@ -287,11 +287,30 @@ class UpdateService {
   /// `true` si la actualización puede instalarse sin salir de la app.
   bool get canInstallSilently => !kIsWeb && Platform.isWindows;
 
+  /// Argumentos del instalador de Inno Setup para una actualización silenciosa.
+  ///
+  /// `/FORCECLOSEAPPLICATIONS` evita el diálogo de cierre y `AppMutex` permite
+  /// detectar también el proceso residente en la bandeja. El helper de PowerShell
+  /// creado en [installDownloadedUpdate] espera a que esta app termine antes de
+  /// ejecutar el instalador, así no hay DLL/EXE bloqueados.
+  static List<String> installerArguments({required bool allUsers}) => <String>[
+    '/SILENT',
+    '/SUPPRESSMSGBOXES',
+    '/NORESTART',
+    '/CLOSEAPPLICATIONS',
+    '/FORCECLOSEAPPLICATIONS',
+    '/RESTARTAPPLICATIONS',
+    '/LOG',
+    '/AUTOUPDATE',
+    allUsers ? '/ALLUSERS' : '/CURRENTUSER',
+  ];
+
   /// Ejecuta el instalador descargado en modo desatendido.
   ///
-  /// La app debe cerrarse justo después de que este método devuelva `true`:
-  /// Inno Setup espera a que se libere el ejecutable, instala la nueva versión
-  /// y vuelve a abrir Polaris Music al terminar (`/AUTOUPDATE`).
+  /// Se lanza un proceso detached de PowerShell que espera a que **esta**
+  /// instancia termine (liberando mutex, Drift y DLLs) y solo entonces arranca
+  /// el instalador. La app debe cerrarse justo después de que este método
+  /// devuelva `true`; el instalador vuelve a abrirla con `/AUTOUPDATE`.
   Future<bool> installDownloadedUpdate(String path) async {
     if (!canInstallSilently) return false;
 
@@ -302,32 +321,95 @@ class UpdateService {
         return false;
       }
 
-      final List<String> arguments = <String>[
-        '/SILENT',
-        '/SUPPRESSMSGBOXES',
-        '/NORESTART',
-        '/CLOSEAPPLICATIONS',
-        '/RESTARTAPPLICATIONS',
-        '/LOG',
-        '/AUTOUPDATE',
-        _installScopeArgument(),
-      ];
+      final List<String> arguments = installerArguments(
+        allUsers: _installScopeArgument() == '/ALLUSERS',
+      );
 
-      final Process process = await Process.start(
-        installer.path,
-        arguments,
-        mode: ProcessStartMode.detached,
-      );
-      AppLog.i(
-        _tag,
-        'Instalador lanzado (pid ${process.pid}) con ${arguments.join(' ')}',
-      );
-      return true;
+      final File helper = await _writeUpdateHelper(installer.path, arguments);
+      try {
+        final Process process = await Process.start('powershell.exe', <String>[
+          '-NoProfile',
+          '-NonInteractive',
+          '-WindowStyle',
+          'Hidden',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-File',
+          helper.path,
+        ], mode: ProcessStartMode.detached);
+        AppLog.i(
+          _tag,
+          'Actualizador lanzado (pid ${process.pid}); espera a que termine '
+          'esta instancia antes de instalar',
+        );
+        return true;
+      } catch (error, stack) {
+        AppLog.w(
+          _tag,
+          'No se pudo lanzar el helper; se intenta el instalador directo',
+          error,
+          stack,
+        );
+        final Process process = await Process.start(
+          installer.path,
+          arguments,
+          mode: ProcessStartMode.detached,
+        );
+        AppLog.i(_tag, 'Instalador directo lanzado (pid ${process.pid})');
+        return true;
+      }
     } catch (error, stack) {
       AppLog.w(_tag, 'No se pudo lanzar el instalador', error, stack);
       return false;
     }
   }
+
+  /// Escribe un script temporal que espera el PID actual y luego instala.
+  ///
+  /// No usa variables de PowerShell: todos los valores se inyectan como
+  /// literales comillas simples para evitar inyección por rutas con `$`.
+  Future<File> _writeUpdateHelper(
+    String installer,
+    List<String> arguments,
+  ) async {
+    final Directory dir = await getTemporaryDirectory();
+    final File script = File(p.join(dir.path, 'polaris-update-$pid.ps1'));
+    final String quotedArgs = arguments.map(_powerShellQuote).join(', ');
+    // El script corre en otro proceso: $pid sería el del helper. Inyectamos
+    // como literal el PID de esta instancia de Flutter, que es la que debe
+    // terminar antes de sobrescribir EXE/DLLs.
+    final int parentPid = pid;
+
+    final StringBuffer content = StringBuffer()
+      ..writeln('try {')
+      ..writeln(
+        '  (Get-Process -Id $parentPid -ErrorAction Stop)'
+        '.WaitForExit(60000) | Out-Null',
+      )
+      ..writeln('} catch {}')
+      ..writeln('try {')
+      ..writeln(
+        '  Start-Process -FilePath ${_powerShellQuote(installer)} '
+        '-ArgumentList @($quotedArgs) -ErrorAction Stop | Out-Null',
+      )
+      ..writeln('} catch {')
+      ..writeln(
+        '  Remove-Item -LiteralPath ${_powerShellQuote(script.path)} '
+        '-Force -ErrorAction SilentlyContinue',
+      )
+      ..writeln('  exit 1')
+      ..writeln('}')
+      ..writeln(
+        'Remove-Item -LiteralPath ${_powerShellQuote(script.path)} '
+        '-Force -ErrorAction SilentlyContinue',
+      );
+
+    await script.writeAsString(content.toString());
+    return script;
+  }
+
+  static String _powerShellQuote(String value) =>
+      "'${value.replaceAll("'", "''")}'";
 
   /// Elige el ámbito de instalación para que una actualización no duplique la
   /// app: `Program Files` → todos los usuarios; cualquier otra ruta → usuario

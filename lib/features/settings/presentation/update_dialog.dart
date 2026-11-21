@@ -1,11 +1,13 @@
 import 'dart:async' show unawaited;
-import 'dart:io' show Platform, exit;
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/update_info.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/services/app_shutdown.dart';
+import '../../../core/services/app_updater_service.dart';
 import '../../../core/theme/theme_tokens.dart';
 
 /// Aviso de nueva versión que aparece 3 s después del arranque.
@@ -240,31 +242,42 @@ class _UpdateDialogState extends ConsumerState<UpdateDialog> {
         });
         return;
       }
-      await Future<void>.delayed(const Duration(milliseconds: 700));
-      exit(0);
+      // El helper ya lanzado espera a que este proceso termine. Cerramos Drift,
+      // bandeja y DLLs antes de salir para que Inno Setup no encuentre bloqueos.
+      await AppShutdown.forWindowsUpdate();
+      return;
     }
 
     if (Platform.isAndroid) {
       setState(() => _status = 'Abriendo el instalador de Android…');
-      final bool started = await updater.installApk(path);
+      final ApkInstallResult result = await updater.installApk(path);
       if (!mounted) return;
-      if (!started) {
-        await updater.openInstallPermissionSettings();
-        if (!mounted) return;
-        setState(() {
-          _working = false;
-          _progress = null;
-          _status =
-              'Permite instalar aplicaciones desconocidas y pulsa '
-              '«Actualizar ahora» de nuevo.';
-        });
-        return;
+      switch (result) {
+        case ApkInstallResult.permissionRequired:
+          await updater.openInstallPermissionSettings();
+          if (!mounted) return;
+          setState(() {
+            _working = false;
+            _progress = null;
+            _status =
+                'Permite instalar aplicaciones desconocidas y pulsa '
+                '«Actualizar ahora» de nuevo.';
+          });
+        case ApkInstallResult.failed:
+          setState(() {
+            _working = false;
+            _progress = null;
+            _status =
+                'No se pudo abrir el instalador. Comprueba el APK descargado '
+                'y vuelve a intentarlo.';
+          });
+        case ApkInstallResult.started:
+          setState(() {
+            _working = false;
+            _progress = 1;
+            _status = 'Descarga lista. Confirma la instalación en el sistema.';
+          });
       }
-      setState(() {
-        _working = false;
-        _progress = 1;
-        _status = 'Descarga lista. Confirma la instalación en el sistema.';
-      });
       return;
     }
 

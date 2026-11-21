@@ -2,7 +2,7 @@
 ;  Polaris Music - instalador oficial para Windows
 ;
 ;  Compilar con:  installer\build_installer.ps1
-;  o directamente: ISCC.exe /DMyAppVersion=1.0.6 installer\polaris_music.iss
+;  o directamente: ISCC.exe /DMyAppVersion=1.0.7 installer\polaris_music.iss
 ;
 ;  El instalador es por usuario por defecto (sin UAC), lo que permite que la
 ;  autoactualización desde la app se ejecute de forma silenciosa. Tambien puede
@@ -22,7 +22,7 @@
 #ifndef MyAppVersion
   #define MyAppVersion GetEnv("POLARIS_VERSION")
   #if MyAppVersion == ""
-    #define MyAppVersion "1.0.6"
+    #define MyAppVersion "1.0.7"
   #endif
 #endif
 
@@ -103,6 +103,8 @@ Type: files; Name: "{app}\data\flutter_assets\assets\icons\polaris.png"
 
 [Files]
 ; Build de Flutter para Windows (exe, DLLs y carpeta data).
+; Solo se sobrescribe {app}: la base de datos Drift, temas, caché y ajustes
+; viven en %APPDATA%\Polaris Music\polaris_music y no se tocan nunca.
 Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -140,6 +142,61 @@ end;
 function ShouldRelaunchAfterUpdate(): Boolean;
 begin
   Result := WizardSilent and CmdLineParamExists('/AUTOUPDATE');
+end;
+
+{ ---------------------------------------------------------------------------
+  Espera a que la app libere el mutex antes de sobrescribir archivos.
+
+  La autoactualización lanza primero un helper que espera a que el proceso de
+  Polaris termine. Esta comprobación es una red de seguridad: si el helper falla
+  o el proceso sigue vivo, esperamos hasta 30 s en modo /AUTOUPDATE antes de
+  tocar EXE/DLLs. En una instalación interactiva no se aplica este espera:
+  Inno Setup cierra la app mediante AppMutex + CloseApplications.
+  --------------------------------------------------------------------------- }
+
+const
+  SYNCHRONIZE_ACCESS = $00100000;
+
+function OpenMutexW(DesiredAccess: Longword; InheritHandle: Boolean; Name: String): Longword;
+  external 'OpenMutexW@kernel32.dll stdcall';
+function CloseHandle(Handle: Longword): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+function GetTickCount(): Longword;
+  external 'GetTickCount@kernel32.dll stdcall';
+procedure Sleep(Milliseconds: Longword);
+  external 'Sleep@kernel32.dll stdcall';
+
+function PolarisMutexHandle(): Longword;
+begin
+  Result := OpenMutexW(SYNCHRONIZE_ACCESS, False, 'PolarisMusicMutex');
+end;
+
+function WaitForPolarisExit(TimeoutMs: Longword): Boolean;
+var
+  Started, Handle: Longword;
+begin
+  Started := GetTickCount();
+  repeat
+    Handle := PolarisMutexHandle();
+    if Handle = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+    CloseHandle(Handle);
+    Sleep(200);
+  until (GetTickCount() - Started) >= TimeoutMs;
+  Result := PolarisMutexHandle() = 0;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  if WizardSilent and CmdLineParamExists('/AUTOUPDATE') then
+  begin
+    if not WaitForPolarisExit(30000) then
+      Result := 'Polaris Music sigue abierto. Ciérralo e inténtalo de nuevo.';
+  end;
 end;
 
 { ---------------------------------------------------------------------------
