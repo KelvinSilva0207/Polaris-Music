@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/legacy.dart';
 
 import '../../../core/models/track.dart';
+import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/compact_style_provider.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/compact_style_config.dart';
@@ -58,15 +59,30 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
   Timer? _dismissTimer;
   Size? _capsuleSize;
   double? _capsuleRadius;
+  ValueNotifier<WindowUiState>? _window;
 
   @override
   void initState() {
     super.initState();
+    // `window.hide()` no cambia el modo: la isla sigue montada. Sin escuchar
+    // el notifier, al mostrarla de nuevo seguía en opacity 0 e ignoraba hover.
+    _window = ref.read(windowStateProvider);
+    _window!.addListener(_onWindowChanged);
+    _scheduleAutoHide();
+  }
+
+  void _onWindowChanged() {
+    if (!_window!.value.visible) return;
+    if (_dismissing) {
+      _dismissTimer?.cancel();
+      if (mounted) setState(() => _dismissing = false);
+    }
     _scheduleAutoHide();
   }
 
   @override
   void dispose() {
+    _window?.removeListener(_onWindowChanged);
     _hideTimer?.cancel();
     _dismissTimer?.cancel();
     super.dispose();
@@ -169,15 +185,9 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
         (PlayerUiState s) => s.playback.buffering,
       ),
     );
-    final Duration position = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.playback.position),
-    );
-    final Duration duration = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.playback.duration),
-    );
-    final double progress = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.playback.progress),
-    );
+    // Posición y progreso se suscriben en hijos aislados: observarlos aquí
+    // reconstruiría el `CompactPanel` (con BackdropFilter) 5 veces por segundo.
+
     final PlayerController controller = ref.read(
       playerControllerProvider.notifier,
     );
@@ -201,10 +211,15 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     final Size capsuleSize = expanded
         ? WindowService.islandExpandedCapsule
         : WindowService.islandCompactCapsule;
-    WidgetsBinding.instance.addPostFrameCallback((Duration _) {
-      if (!mounted) return;
-      _syncCapsuleGeometry(capsuleSize, resolved.radius);
-    });
+    // La región nativa se ajusta al terminar la animación de tamaño: aplicarla
+    // en post-frame recortaba la cápsula a mitad de expansión y disparaba un
+    // onExit del MouseRegion que la volvía a contraer.
+    if (_capsuleSize == null) {
+      WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+        if (!mounted) return;
+        _syncCapsuleGeometry(capsuleSize, resolved.radius);
+      });
+    }
 
     return Material(
       color: Colors.transparent,
@@ -234,15 +249,14 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
                   track: track,
                   playing: playing,
                   buffering: buffering,
-                  position: position,
-                  duration: duration,
-                  progress: progress,
                   hovering: expanded,
                   message: message,
                   style: resolved,
                   controller: controller,
                   onRestore: widget.onRestore,
                   onHide: _requestHide,
+                  onGeometrySettled: () =>
+                      _syncCapsuleGeometry(capsuleSize, resolved.radius),
                 ),
               ),
             ),
@@ -253,34 +267,58 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
   }
 }
 
+/// Único hijo de la isla que sigue el tick de posición.
+class _IslandProgress extends ConsumerWidget {
+  const _IslandProgress({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final double progress = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.progress),
+    );
+    // Sin progreso real no se dibuja nada: evita la línea huérfana en el borde.
+    if (progress <= 0) return const SizedBox.shrink();
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      height: 3,
+      child: LinearProgressIndicator(
+        value: progress.clamp(0.0, 1.0),
+        minHeight: 3,
+        backgroundColor: color.withValues(alpha: 0.12),
+        valueColor: AlwaysStoppedAnimation<Color>(color),
+      ),
+    );
+  }
+}
+
 class _Capsule extends StatelessWidget {
   const _Capsule({
     required this.track,
     required this.playing,
     required this.buffering,
-    required this.position,
-    required this.duration,
-    required this.progress,
     required this.hovering,
     required this.message,
     required this.style,
     required this.controller,
     required this.onRestore,
     required this.onHide,
+    required this.onGeometrySettled,
   });
 
   final Track? track;
   final bool playing;
   final bool buffering;
-  final Duration position;
-  final Duration duration;
-  final double progress;
   final bool hovering;
   final String? message;
   final ResolvedCompactStyle style;
   final PlayerController controller;
   final VoidCallback onRestore;
   final VoidCallback onHide;
+  final VoidCallback onGeometrySettled;
 
   @override
   Widget build(BuildContext context) {
@@ -299,6 +337,7 @@ class _Capsule extends StatelessWidget {
       child: AnimatedContainer(
         duration: capsuleDuration,
         curve: Curves.easeOutCubic,
+        onEnd: onGeometrySettled,
         width: hovering
             ? WindowService.islandExpandedCapsule.width
             : WindowService.islandCompactCapsule.width,
@@ -312,23 +351,9 @@ class _Capsule extends StatelessWidget {
             children: <Widget>[
               // Sin progreso real no se dibuja nada: evita la línea huérfana
               // en el borde de la cápsula cuando no hay pista o está parada.
-              if (progress > 0)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 3,
-                  child: LinearProgressIndicator(
-                    value: progress.clamp(0.0, 1.0),
-                    minHeight: 3,
-                    backgroundColor: style.progressColor.withValues(
-                      alpha: 0.12,
-                    ),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      style.progressColor,
-                    ),
-                  ),
-                ),
+              RepaintBoundary(
+                child: _IslandProgress(color: style.progressColor),
+              ),
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   hovering ? 12 : 8,
@@ -364,8 +389,6 @@ class _Capsule extends StatelessWidget {
                                   ),
                                   track: track,
                                   message: message,
-                                  position: position,
-                                  duration: duration,
                                   playing: playing,
                                 )
                               : _CompactInfo(
@@ -451,24 +474,28 @@ class _CompactInfo extends StatelessWidget {
   }
 }
 
-class _ExpandedInfo extends StatelessWidget {
+/// Solo se monta mientras la isla está expandida; sus selectores de posición
+/// no arrastran el resto de la cápsula.
+class _ExpandedInfo extends ConsumerWidget {
   const _ExpandedInfo({
     super.key,
     required this.track,
     required this.message,
-    required this.position,
-    required this.duration,
     required this.playing,
   });
 
   final Track? track;
   final String? message;
-  final Duration position;
-  final Duration duration;
   final bool playing;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Duration position = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.position),
+    );
+    final Duration duration = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.duration),
+    );
     final String title = message ?? track?.title ?? 'Polaris Music';
     final String subtitle = message != null
         ? 'Aviso de Polaris'

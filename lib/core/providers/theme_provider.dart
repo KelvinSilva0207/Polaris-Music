@@ -15,6 +15,7 @@ import '../theme/color_math.dart';
 import '../theme/motion_config.dart';
 import '../utils/logger.dart';
 import '../utils/palette_extractor.dart';
+import '../../features/player/presentation/player_providers.dart';
 
 /// Motor de personalización visual de Polaris.
 ///
@@ -375,6 +376,12 @@ class RgbFlowController extends StateNotifier<double> {
     _ref.listen<AppThemeConfig>(themeConfigProvider, (_, _) => _sync());
     _ref.listen<MotionConfig>(motionConfigProvider, (_, _) => _sync());
     _ref.listen<bool>(ambientMotionGateProvider, (_, _) => _sync());
+    // El flujo cromático es ambiental: no tiene sentido regenerar un ThemeData
+    // completo mientras la música está en pausa.
+    _ref.listen<bool>(
+      playerControllerProvider.select((s) => s.playing),
+      (_, _) => _sync(),
+    );
     _sync();
   }
 
@@ -394,6 +401,7 @@ class RgbFlowController extends StateNotifier<double> {
         _ref.read(themeConfigProvider).rgbFlow &&
         _ref.read(ambientMotionGateProvider) &&
         motion.enabled(MotionCategory.ambient) &&
+        _ref.read(playerControllerProvider.select((s) => s.playing)) &&
         !(_window?.value.backgrounded ?? false);
     if (!enabled) {
       _timer?.cancel();
@@ -426,7 +434,9 @@ class RgbFlowController extends StateNotifier<double> {
 }
 
 /// Acento real del reproductor: paleta de la carátula o color fijo.
-final FutureProviderFamily<Color, String?> artworkAccentProvider =
-    FutureProvider.family<Color, String?>((Ref ref, String? path) {
+/// `autoDispose` evita acumular una entrada por cada carátula reproducida en
+/// una sesión larga (el provider es `family`, indexado por ruta de archivo).
+final AutoDisposeFutureProviderFamily<Color, String?> artworkAccentProvider =
+    FutureProvider.autoDispose.family<Color, String?>((Ref ref, String? path) {
       return PaletteExtractor.fromFile(path);
     });

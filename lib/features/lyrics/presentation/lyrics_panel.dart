@@ -5,8 +5,6 @@ import '../../../core/models/track.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/lrc_parser.dart';
 import '../../../shared/widgets/motion_scope.dart';
-import '../../player/domain/player_controller.dart';
-import '../../player/presentation/player_providers.dart';
 import '../data/lyrics_service.dart';
 import 'lyrics_providers.dart';
 
@@ -79,11 +77,9 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
     final AsyncValue<LyricsResult?> lyrics = ref.watch(
       lyricsForTrackProvider(widget.track),
     );
-    final int positionMs = ref.watch(
-      playerControllerProvider.select(
-        (PlayerUiState s) => s.playback.position.inMilliseconds,
-      ),
-    );
+    // El proveedor convierte el tick de posición en un índice: solo cambia
+    // cuando pasa a la línea siguiente, no 5 veces por segundo.
+    final int? active = ref.watch(lyricsActiveIndexProvider(widget.track));
 
     return lyrics.when(
       loading: () => const _LyricsLoading(),
@@ -116,9 +112,6 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
           );
         }
 
-        final int? active = document.activeIndexAt(
-          Duration(milliseconds: positionMs),
-        );
         if (active != null) _scrollToActive(active);
 
         final PolarisTokens tokens = context.tokens;

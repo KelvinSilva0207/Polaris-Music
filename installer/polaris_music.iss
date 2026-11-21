@@ -2,7 +2,7 @@
 ;  Polaris Music - instalador oficial para Windows
 ;
 ;  Compilar con:  installer\build_installer.ps1
-;  o directamente: ISCC.exe /DMyAppVersion=1.0.8 installer\polaris_music.iss
+;  o directamente: ISCC.exe /DMyAppVersion=1.0.9 installer\polaris_music.iss
 ;
 ;  El instalador es por usuario por defecto (sin UAC), lo que permite que la
 ;  autoactualización desde la app se ejecute de forma silenciosa. Tambien puede
@@ -22,7 +22,7 @@
 #ifndef MyAppVersion
   #define MyAppVersion GetEnv("POLARIS_VERSION")
   #if MyAppVersion == ""
-    #define MyAppVersion "1.0.8"
+    #define MyAppVersion "1.0.9"
   #endif
 #endif
 

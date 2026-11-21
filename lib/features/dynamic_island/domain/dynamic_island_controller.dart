@@ -71,10 +71,15 @@ class DynamicIslandController extends StateNotifier<DynamicIslandState> {
   Timer? _messageTimer;
   int? _lastTrackId;
 
+  /// Expansión fijada por el usuario: ni un aviso ni el temporizador automático
+  /// deben compactarla.
+  bool _userExpanded = false;
+
   void onPlayback(PlaybackSnapshot snapshot) {
     final int? trackId = snapshot.currentTrack?.id;
     if (trackId != null && trackId != _lastTrackId) {
       _lastTrackId = trackId;
+      _userExpanded = false;
       state = state.copyWith(mode: IslandMode.expanded, message: null);
       _scheduleCollapse();
     }
@@ -82,31 +87,38 @@ class DynamicIslandController extends StateNotifier<DynamicIslandState> {
 
   Future<void> setEnabled(bool value) async {
     await _settings.setBool(AppConstants.keyIslandEnabled, value);
+    _collapseTimer?.cancel();
+    _messageTimer?.cancel();
+    _userExpanded = false;
     state = state.copyWith(
       enabled: value,
+      message: null,
       mode: value ? IslandMode.compact : IslandMode.hidden,
     );
     if (value) _scheduleCollapse();
   }
 
   void toggleExpanded() {
-    if (state.mode == IslandMode.expanded) {
-      state = state.copyWith(mode: IslandMode.compact);
-      _collapseTimer?.cancel();
-    } else {
-      state = state.copyWith(mode: IslandMode.expanded);
-      _scheduleCollapse();
-    }
+    // La interacción del usuario tiene prioridad sobre avisos y auto-ocultado.
+    _collapseTimer?.cancel();
+    _messageTimer?.cancel();
+    _userExpanded = state.mode != IslandMode.expanded;
+    state = state.copyWith(
+      message: null,
+      mode: _userExpanded ? IslandMode.expanded : IslandMode.compact,
+    );
   }
 
   /// Muestra un mensaje breve (volumen, cambio de modo, etc.).
   void flash(String message, {Duration duration = const Duration(seconds: 3)}) {
     if (!state.enabled) return;
     _messageTimer?.cancel();
+    _collapseTimer?.cancel();
     state = state.copyWith(message: message, mode: IslandMode.expanded);
     _messageTimer = Timer(duration, () {
       if (!mounted) return;
-      state = state.copyWith(message: null, mode: IslandMode.compact);
+      state = state.copyWith(message: null);
+      if (!_userExpanded) _scheduleCollapse();
     });
   }
 
@@ -114,7 +126,7 @@ class DynamicIslandController extends StateNotifier<DynamicIslandState> {
     _collapseTimer?.cancel();
     _collapseTimer = Timer(const Duration(seconds: 5), () {
       if (!mounted) return;
-      if (state.message == null) {
+      if (state.message == null && !_userExpanded) {
         state = state.copyWith(mode: IslandMode.compact);
       }
     });

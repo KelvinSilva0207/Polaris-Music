@@ -139,92 +139,101 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                   onTapCancel: () {
                     if (mounted) setState(() => _dragFraction = null);
                   },
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    children: <Widget>[
-                      // Riel de fondo: apenas visible para dar profundidad.
-                      Positioned(
-                        left: 0,
-                        right: 0,
-                        top: railTop,
-                        height: railHeight,
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(railHeight),
-                            color: context.inkAlpha(0.10),
-                            border: Border.all(color: context.inkAlpha(0.06)),
-                          ),
-                        ),
-                      ),
-                      // Riel reproducido con degradado y resplandor del acento.
-                      Positioned(
-                        left: 0,
-                        top: railTop,
-                        height: railHeight,
-                        width: math.max(railHeight, shown * width),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(railHeight),
-                            gradient: LinearGradient(
-                              colors: <Color>[
-                                accent.withValues(alpha: 0.85),
-                                Color.lerp(accent, context.ink, 0.28) ?? accent,
-                              ],
-                            ),
-                            boxShadow: <BoxShadow>[
-                              BoxShadow(
-                                color: accent.withValues(alpha: 0.38),
-                                blurRadius: 14,
-                                spreadRadius: 1,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Pulgar en forma de píldora vertical.
-                      Positioned(
-                        left: thumbLeft,
-                        top: railTop + (railHeight - thumbHeight) / 2,
-                        child: AnimatedContainer(
-                          duration: context.motion.duration(
-                            const Duration(milliseconds: 160),
-                            category: MotionCategory.gestures,
-                          ),
-                          curve: Curves.easeOutCubic,
-                          width: thumbWidth,
-                          height: thumbHeight,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(thumbWidth),
-                            color: context.ink,
-                            border: Border.all(
-                              color: accent.withValues(alpha: 0.65),
-                            ),
-                            boxShadow: <BoxShadow>[
-                              BoxShadow(
-                                color: accent.withValues(alpha: 0.55),
-                                blurRadius: _interacting ? 14 : 8,
-                                spreadRadius: _interacting ? 2 : 0,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      // Tooltip con el tiempo exacto apuntado.
-                      if (previewFraction != null && !widget.compact)
+                  child: RepaintBoundary(
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: <Widget>[
+                        // Riel de fondo: apenas visible para dar profundidad.
                         Positioned(
                           left: 0,
                           right: 0,
-                          top: 0,
-                          child: Align(
-                            alignment: Alignment(previewFraction * 2 - 1, 0),
-                            child: _TimePill(
-                              label: Formatters.duration(previewTime),
-                              accent: accent,
-                              glass: tokens.isGlass,
+                          top: railTop,
+                          height: railHeight,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(railHeight),
+                              color: context.inkAlpha(0.10),
+                              border: Border.all(color: context.inkAlpha(0.06)),
                             ),
                           ),
                         ),
-                    ],
+                        // Resplandor sin blur: una franja translúcida más ancha
+                        // cuesta mucho menos de rasterizar que un BoxShadow.
+                        Positioned(
+                          left: 0,
+                          top: railTop - 3,
+                          height: railHeight + 6,
+                          width: math.max(railHeight, shown * width),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(
+                                railHeight + 3,
+                              ),
+                              color: accent.withValues(alpha: 0.16),
+                            ),
+                          ),
+                        ),
+                        // Riel reproducido con degradado del acento.
+                        Positioned(
+                          left: 0,
+                          top: railTop,
+                          height: railHeight,
+                          width: math.max(railHeight, shown * width),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(railHeight),
+                              gradient: LinearGradient(
+                                colors: <Color>[
+                                  accent.withValues(alpha: 0.85),
+                                  Color.lerp(accent, context.ink, 0.28) ??
+                                      accent,
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Pulgar: la posición salta con la pista (sin animar),
+                        // solo tamaño y color se interpolan al interactuar.
+                        // AnimatedContainer con `left` reiniciaba su controlador
+                        // cada tick y generaba interpolaciones innecesarias.
+                        Positioned(
+                          left: thumbLeft,
+                          top: railTop + (railHeight - thumbHeight) / 2,
+                          child: AnimatedContainer(
+                            duration: context.motion.duration(
+                              const Duration(milliseconds: 160),
+                              category: MotionCategory.gestures,
+                            ),
+                            curve: Curves.easeOutCubic,
+                            width: thumbWidth,
+                            height: thumbHeight,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(thumbWidth),
+                              color: context.ink,
+                              border: Border.all(
+                                color: accent.withValues(alpha: 0.65),
+                                width: _interacting ? 2 : 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Tooltip con el tiempo exacto apuntado.
+                        if (previewFraction != null && !widget.compact)
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            top: 0,
+                            child: Align(
+                              alignment: Alignment(previewFraction * 2 - 1, 0),
+                              child: _TimePill(
+                                label: Formatters.duration(previewTime),
+                                accent: accent,
+                                glass: tokens.isGlass,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               );

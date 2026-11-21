@@ -56,9 +56,16 @@ class TrackTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final PlayerUiState ui = ref.watch(playerControllerProvider);
-    final bool current = ui.track?.id == track.id;
-    final bool playing = ui.playing;
+    // Selectores escalares: el estado del reproductor cambia con cada tick de
+    // posición (~5 Hz). Observarlo aquí reconstruiría todas las filas visibles
+    // de la biblioteca aunque ni la pista ni el estado de play cambiaran.
+    final int? currentId = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.track?.id),
+    );
+    final bool playing = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playing),
+    );
+    final bool current = currentId == track.id;
     final ThemeData theme = Theme.of(context);
     final Color accent = context.accent;
 

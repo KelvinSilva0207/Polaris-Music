@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart' hide RepeatMode;
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_navigation.dart';
@@ -716,11 +717,16 @@ class _WaveformProgress extends StatelessWidget {
                   seek(details.localPosition),
               onHorizontalDragUpdate: (DragUpdateDetails details) =>
                   seek(details.localPosition),
-              child: SizedBox(
-                height: 54,
-                width: double.infinity,
-                child: CustomPaint(
-                  painter: _WaveformPainter(progress: progress, accent: accent),
+              child: RepaintBoundary(
+                child: SizedBox(
+                  height: 54,
+                  width: double.infinity,
+                  child: CustomPaint(
+                    painter: _WaveformPainter(
+                      progress: progress,
+                      accent: accent,
+                    ),
+                  ),
                 ),
               ),
             );
@@ -733,21 +739,32 @@ class _WaveformProgress extends StatelessWidget {
 }
 
 class _WaveformPainter extends CustomPainter {
-  _WaveformPainter({required this.progress, required this.accent});
+  _WaveformPainter({required this.progress, required this.accent}) {
+    // Dos únicos objetos Paint por repintado en vez de ~64 `Color` nuevos.
+    _playedPaint = Paint()
+      ..strokeCap = StrokeCap.round
+      ..color = accent;
+    _pendingPaint = Paint()
+      ..strokeCap = StrokeCap.round
+      ..color = accent.withValues(alpha: 0.18);
+  }
 
   final double progress;
   final Color accent;
+  late final Paint _playedPaint;
+  late final Paint _pendingPaint;
 
   @override
   void paint(Canvas canvas, Size size) {
     const int bars = 64;
-    final double gap = 2;
+    const double gap = 2;
     final double barWidth = math.max(
       1.5,
       (size.width - gap * (bars - 1)) / bars,
     );
     final double playedX = size.width * progress;
-    final Paint paint = Paint()..strokeCap = StrokeCap.round;
+    _playedPaint.strokeWidth = barWidth;
+    _pendingPaint.strokeWidth = barWidth;
 
     for (int i = 0; i < bars; i++) {
       final double t = i / (bars - 1);
@@ -760,9 +777,9 @@ class _WaveformPainter extends CustomPainter {
       final double x = i * (barWidth + gap);
       final double top = (size.height - height) / 2;
 
-      final bool played = x + barWidth <= playedX;
-      paint.color = played ? accent : accent.withValues(alpha: 0.18);
-      paint.strokeWidth = barWidth;
+      final Paint paint = x + barWidth <= playedX
+          ? _playedPaint
+          : _pendingPaint;
       canvas.drawLine(
         Offset(x + barWidth / 2, top),
         Offset(x + barWidth / 2, top + height),
@@ -1211,11 +1228,16 @@ class _QuickActionsState extends State<_QuickActions>
   late final AnimationController _bars = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 900),
-  )..repeat();
+  );
+
+  /// Se cachea fuera del builder: `context.motion` es barato, pero crear la
+  /// dependencia 60 veces/s es innecesario.
+  double _intensity = 0;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _intensity = context.motion.intensity;
     final Duration duration = context.motion.duration(
       const Duration(milliseconds: 900),
       category: MotionCategory.ambient,
@@ -1278,12 +1300,11 @@ class _QuickActionsState extends State<_QuickActions>
               builder: (BuildContext context, Widget? child) {
                 if (!_bars.isAnimating) return child ?? const SizedBox.shrink();
                 final double phase = _bars.value;
-                final double intensity = context.motion.intensity;
                 return CustomPaint(
                   painter: _EqualizerBarsPainter(
                     phase: phase,
                     color: accent,
-                    intensity: intensity,
+                    intensity: _intensity,
                   ),
                 );
               },
@@ -1529,6 +1550,10 @@ class _QueueList extends StatelessWidget {
     return ListView.builder(
       padding: EdgeInsets.only(bottom: padBottom),
       itemCount: queue.length,
+      // Altura fija y ventana de cache: medir filas con altura variable y sin
+      // cacheExtent provoca tirones al desplazar colas largas.
+      itemExtent: 72,
+      scrollCacheExtent: const ScrollCacheExtent.pixels(300),
       itemBuilder: (BuildContext context, int i) {
         final Track track = queue[i];
         final bool current = i == index;
@@ -1597,23 +1622,27 @@ class _QueueList extends StatelessWidget {
           onTap: () => controller.playAt(i),
         );
 
-        return AnimatedContainer(
-          duration: context.motion.duration(const Duration(milliseconds: 260)),
-          curve: Curves.easeOutCubic,
-          margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            boxShadow: current && playing
-                ? <BoxShadow>[
-                    BoxShadow(
-                      color: accent.withValues(alpha: 0.25),
-                      blurRadius: 16,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : const <BoxShadow>[],
+        return RepaintBoundary(
+          child: AnimatedContainer(
+            duration: context.motion.duration(
+              const Duration(milliseconds: 260),
+            ),
+            curve: Curves.easeOutCubic,
+            margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: current && playing
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: accent.withValues(alpha: 0.25),
+                        blurRadius: 16,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : const <BoxShadow>[],
+            ),
+            child: tile,
           ),
-          child: tile,
         );
       },
     );
@@ -1717,21 +1746,24 @@ class _NowPlayingWavesState extends ConsumerState<_NowPlayingWaves>
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (BuildContext context, Widget? _) => Container(
-          width: 18,
-          height: 18,
-          decoration: BoxDecoration(
-            color: context.tokens.panelOverlay.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: widget.color.withValues(alpha: 0.35)),
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _controller,
+          child: Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              color: context.tokens.panelOverlay.withValues(alpha: 0.94),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: widget.color.withValues(alpha: 0.35)),
+            ),
           ),
-          child: CustomPaint(
-            painter: _QueueWavePainter(
+          builder: (BuildContext context, Widget? child) => CustomPaint(
+            foregroundPainter: _QueueWavePainter(
               phase: _controller.value,
               color: widget.color,
             ),
+            child: child,
           ),
         ),
       ),
@@ -1865,13 +1897,8 @@ class _ArtworkStage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final bool ring =
         config.progressBarType == ProgressBarType.circularAroundArtwork;
-    final double progress = ring
-        ? ref.watch(
-            playerControllerProvider.select(
-              (PlayerUiState s) => s.playback.progress,
-            ),
-          )
-        : 0;
+    // El progreso se suscribe dentro del anillo: si se observara aquí, el tick
+    // de posición (~5 Hz) reconstruiría la carátula, los gestos y el vinilo.
 
     // El anillo ocupa el 84 % interior: la carátula se ajusta para no
     // desbordar el círculo (el antiguo desajuste del estilo Vinilo).
@@ -1909,12 +1936,7 @@ class _ArtworkStage extends ConsumerWidget {
     );
 
     final Widget body = ring
-        ? _CircularProgressRing(
-            size: size,
-            progress: progress,
-            accent: accent,
-            child: artwork,
-          )
+        ? _CircularProgressRing(size: size, accent: accent, child: artwork)
         : artwork;
 
     return SizedBox(
@@ -2039,9 +2061,10 @@ class _ArtworkImage extends StatelessWidget {
   Widget build(BuildContext context) {
     final String? artwork = path;
     Widget content;
-    // Si la carátula se movió o se borró, se usa el respaldo sin intentar
-    // decodificarla (el errorBuilder sigue cubriendo formatos corruptos).
-    if (artwork == null || artwork.isEmpty || !File(artwork).existsSync()) {
+    // No se llama a `existsSync()`: es E/S síncrona en el hilo de UI y se
+    // ejecutaba por cada fila de la cola. `errorBuilder` cubre archivos
+    // movidos, borrados o corruptos sin bloquear el scroll.
+    if (artwork == null || artwork.isEmpty) {
       content = Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -2326,6 +2349,11 @@ class _VinylArtworkState extends State<_VinylArtwork>
     duration: _period,
   );
 
+  /// La geometría solo depende del tamaño. Reutilizar la misma instancia evita
+  /// que `shouldRepaint` compare por identidad y repinte los surcos con blur
+  /// en cada reconstrucción del padre.
+  _VinylLayout? _layout;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -2366,7 +2394,10 @@ class _VinylArtworkState extends State<_VinylArtwork>
 
   @override
   Widget build(BuildContext context) {
-    final _VinylLayout v = _VinylLayout.compute(widget.size);
+    if (_layout == null || _layout!.box != widget.size) {
+      _layout = _VinylLayout.compute(widget.size);
+    }
+    final _VinylLayout v = _layout!;
     final Color ink = context.inkAlpha(0.78);
 
     return Center(
@@ -2408,18 +2439,22 @@ class _VinylArtworkState extends State<_VinylArtwork>
               ),
             ),
             IgnorePointer(
-              child: CustomPaint(
-                size: Size.square(v.box),
-                painter: _VinylGroovesPainter(layout: v, ink: ink),
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  size: Size.square(v.box),
+                  painter: _VinylGroovesPainter(layout: v, ink: ink),
+                ),
               ),
             ),
             IgnorePointer(
-              child: CustomPaint(
-                size: Size.square(v.box),
-                painter: _VinylTonearmPainter(
-                  layout: v,
-                  ink: ink,
-                  accent: widget.accent,
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  size: Size.square(v.box),
+                  painter: _VinylTonearmPainter(
+                    layout: v,
+                    ink: ink,
+                    accent: widget.accent,
+                  ),
                 ),
               ),
             ),
@@ -2573,21 +2608,23 @@ class _VinylTonearmPainter extends CustomPainter {
 
 /// Anillo de progreso que envuelve la carátula. La búsqueda y los deslizamientos
 /// los gestiona [ArtworkGestures] por encima de todo el conjunto.
-class _CircularProgressRing extends StatelessWidget {
+/// Anillo aislado: solo este widget se reconstruye con el tick de posición.
+class _CircularProgressRing extends ConsumerWidget {
   const _CircularProgressRing({
     required this.size,
-    required this.progress,
     required this.accent,
     required this.child,
   });
 
   final double size;
-  final double progress;
   final Color accent;
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final double progress = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.progress),
+    );
     return Center(
       child: SizedBox(
         width: size,
@@ -2595,12 +2632,14 @@ class _CircularProgressRing extends StatelessWidget {
         child: Stack(
           alignment: Alignment.center,
           children: <Widget>[
-            CustomPaint(
-              size: Size.square(size),
-              painter: _RingPainter(
-                progress: progress,
-                accent: accent,
-                ink: context.ink,
+            RepaintBoundary(
+              child: CustomPaint(
+                size: Size.square(size),
+                painter: _RingPainter(
+                  progress: progress,
+                  accent: accent,
+                  ink: context.ink,
+                ),
               ),
             ),
             // La carátula ya llega reducida desde _ArtworkStage (84 %):
@@ -2638,36 +2677,22 @@ class _RingPainter extends CustomPainter {
       ..color = ink.withValues(alpha: 0.18);
     canvas.drawCircle(center, radius, base);
 
+    final double sweep = 2 * math.pi * progress.clamp(0.0, 1.0);
+    // Resplandor sin MaskFilter: un trazo ancho translúcido da la misma
+    // sensación luminosa sin pagar un filtro de desenfoque en cada tick.
     final Paint glow = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 10
       ..strokeCap = StrokeCap.round
-      ..color = accent.withValues(alpha: 0.45)
-      ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 10);
-    canvas.drawArc(
-      rect,
-      start,
-      2 * math.pi * progress.clamp(0.0, 1.0),
-      false,
-      glow,
-    );
+      ..color = accent.withValues(alpha: 0.20);
+    canvas.drawArc(rect, start, sweep, false, glow);
 
     final Paint active = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
       ..strokeCap = StrokeCap.round
-      ..shader = ui.Gradient.sweep(center, <Color>[
-        accent.withValues(alpha: 0.55),
-        accent,
-        Color.lerp(accent, ink, 0.45) ?? accent,
-      ]);
-    canvas.drawArc(
-      rect,
-      start,
-      2 * math.pi * progress.clamp(0.0, 1.0),
-      false,
-      active,
-    );
+      ..color = accent;
+    canvas.drawArc(rect, start, sweep, false, active);
   }
 
   @override

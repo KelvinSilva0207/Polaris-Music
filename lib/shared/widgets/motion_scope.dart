@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/motion_provider.dart';
@@ -32,6 +33,9 @@ class _MotionScopeState extends ConsumerState<MotionScope> {
   }
 
   void _onAccessibilityChanged() {
+    // El callback previo pertenece a SemanticsBinding: sin invocarlo, el
+    // sistema no actualiza MediaQuery ni la semántica al cambiar accesibilidad.
+    _previousAccessibilityCallback?.call();
     if (!mounted) return;
     final bool disabled = WidgetsBinding
         .instance
@@ -39,7 +43,20 @@ class _MotionScopeState extends ConsumerState<MotionScope> {
         .accessibilityFeatures
         .disableAnimations;
     if (disabled == _systemDisable) return;
-    setState(() => _systemDisable = disabled);
+
+    void apply() {
+      if (!mounted) return;
+      setState(() => _systemDisable = disabled);
+    }
+
+    // SemanticsBinding difiere este trabajo durante persistentCallbacks;
+    // hacerlo aquí de forma inmediata provocaría `setState()` durante el build.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => apply());
+    } else {
+      apply();
+    }
   }
 
   @override

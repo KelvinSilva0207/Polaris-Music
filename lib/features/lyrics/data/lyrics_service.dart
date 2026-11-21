@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -37,8 +38,19 @@ class LyricsService {
   final LyricsDao _dao;
   final Dio _dio;
 
-  /// Caché en memoria para no consultar Drift al reconstruir la UI.
-  final Map<int, LyricsResult> _memory = <int, LyricsResult>{};
+  /// Caché LRU acotada para no consultar Drift al reconstruir la UI sin
+  /// retener el documento de cada pista escuchada en una sesión larga.
+  static const int _maxMemoryEntries = 64;
+  final LinkedHashMap<int, LyricsResult> _memory =
+      LinkedHashMap<int, LyricsResult>();
+
+  void _cacheResult(int trackId, LyricsResult result) {
+    _memory.remove(trackId);
+    _memory[trackId] = result;
+    if (_memory.length > _maxMemoryEntries) {
+      _memory.remove(_memory.keys.first);
+    }
+  }
 
   Future<LyricsResult?> resolve(Track track, {bool allowOnline = true}) async {
     final LyricsResult? cached = _memory[track.id];
@@ -52,7 +64,7 @@ class LyricsService {
           document: LrcDocument.parse(raw),
           source: 'local',
         );
-        _memory[track.id] = result;
+        _cacheResult(track.id, result);
         return result;
       } catch (error, stack) {
         AppLog.w(_tag, 'No se pudo leer ${local.path}', error, stack);
@@ -66,7 +78,7 @@ class LyricsService {
         source: row.source,
         fromCache: true,
       );
-      _memory[track.id] = result;
+      _cacheResult(track.id, result);
       return result;
     }
 
@@ -94,7 +106,7 @@ class LyricsService {
       document: LrcDocument.parse(content),
       source: 'lrclib',
     );
-    _memory[track.id] = result;
+    _cacheResult(track.id, result);
     return result;
   }
 
@@ -139,10 +151,9 @@ class LyricsService {
         source: source,
       );
     }
-    _memory[track.id] = LyricsResult(
-      document: document,
-      source: source,
-      fromCache: true,
+    _cacheResult(
+      track.id,
+      LyricsResult(document: document, source: source, fromCache: true),
     );
   }
 

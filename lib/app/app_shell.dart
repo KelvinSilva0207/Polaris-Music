@@ -79,6 +79,7 @@ class _AppShellState extends ConsumerState<AppShell>
       ),
     ];
     WidgetsBinding.instance.addPostFrameCallback((Duration _) {
+      if (!mounted) return;
       // Reanuda la última canción, posición exacta, cola y playlist activa.
       unawaited(ref.read(playerControllerProvider.notifier).restoreSession());
       _maybeScanOnStartup();
@@ -103,6 +104,7 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 
   Future<void> _maybeScanOnStartup() async {
+    if (!mounted) return;
     final bool scanOnStartup = ref.read(settingsServiceProvider).scanOnStartup;
     if (!scanOnStartup) return;
     try {

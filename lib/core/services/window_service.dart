@@ -141,6 +141,10 @@ class WindowService with WindowListener {
         await windowManager.show();
         await windowManager.focus();
       });
+      // Los accesos a isla/mini desde la bandeja llaman a `_applyMode` sin
+      // pasar por `setMode`. Guardar los límites aquí evita que al restaurar
+      // se use el fallback (0, 0) y la ventana aparezca en la esquina.
+      _savedBounds ??= await windowManager.getBounds();
       _initialized = true;
       _publish();
       AppLog.i(_tag, 'Ventana inicializada con barra de título personalizada');

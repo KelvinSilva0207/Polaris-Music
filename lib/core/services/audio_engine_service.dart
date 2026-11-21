@@ -25,10 +25,10 @@ import '../utils/replay_gain.dart';
 /// - Recorte de silencios: offsets `start`/`end` de `Media` (mpv), sin tocar la
 ///   cadena `af` del ecualizador.
 class AudioEngineService {
-  /// Evita que el cache demuxer crezca más de lo necesario: con 16 MB
-  /// (demuxer-max-bytes / demuxer-max-back-bytes) se reduce RAM sin notar
-  /// cortes en redes normales ni en archivos locales.
-  static const int _demuxerBufferSize = 16 * 1024 * 1024;
+  /// Caché demuxer por deck. 8 MB son suficientes para archivos locales y
+  /// streaming normal, y se pagan DOS veces cuando hay crossfade: reducirlo
+  /// de 16 MB recorta 16 MB de memoria nativa en cada fundido.
+  static const int _demuxerBufferSize = 8 * 1024 * 1024;
 
   static Player _createPlayer() {
     return Player(

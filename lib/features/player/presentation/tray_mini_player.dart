@@ -11,6 +11,32 @@ import '../../../shared/widgets/track_artwork.dart';
 import '../domain/player_controller.dart';
 import 'player_providers.dart';
 
+/// Único hijo de la mini ventana que sigue el tick de posición.
+class _TrayProgress extends ConsumerWidget {
+  const _TrayProgress({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final double progress = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.progress),
+    );
+    if (progress <= 0) return const SizedBox.shrink();
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: LinearProgressIndicator(
+        value: progress.clamp(0.0, 1.0),
+        minHeight: 2.5,
+        backgroundColor: color.withValues(alpha: 0.12),
+        valueColor: AlwaysStoppedAnimation<Color>(color),
+      ),
+    );
+  }
+}
+
 /// Mini reproductor de bandeja.
 ///
 /// Es la misma ventana en `WindowMode.mini`: compacta, siempre encima, sin
@@ -37,9 +63,8 @@ class TrayMiniPlayer extends ConsumerWidget {
     final double volume = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.volume),
     );
-    final double progress = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.playback.progress),
-    );
+    // El progreso se aísla en un hijo para no reconstruir el CompactPanel
+    // (con BackdropFilter) cada tick de posición.
     final PlayerController controller = ref.read(
       playerControllerProvider.notifier,
     );
@@ -58,22 +83,9 @@ class TrayMiniPlayer extends ConsumerWidget {
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              if (progress > 0)
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  child: LinearProgressIndicator(
-                    value: progress.clamp(0.0, 1.0),
-                    minHeight: 2.5,
-                    backgroundColor: resolved.progressColor.withValues(
-                      alpha: 0.12,
-                    ),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      resolved.progressColor,
-                    ),
-                  ),
-                ),
+              RepaintBoundary(
+                child: _TrayProgress(color: resolved.progressColor),
+              ),
               if (track == null)
                 _EmptyState(
                   accent: resolved.accent,

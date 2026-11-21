@@ -51,11 +51,21 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
     final ThemeState theme = ref.watch(themeControllerProvider);
     final AppThemeConfig config = theme.config;
     final MotionConfig motion = ref.watch(motionConfigProvider);
-    final PlayerUiState ui = ref.watch(playerControllerProvider);
+    // Selectores escalares: la pantalla tiene previews animados y superficies
+    // con blur, así que reconstruirla 5 veces/s por la posición produce jank.
+    final Track? previewTrack = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.track),
+    );
+    final bool previewPlaying = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.playing),
+    );
+    final double previewProgress = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.progress),
+    );
 
     final Color accent = config.usesDynamicPalette
         ? (ref
-                  .watch(artworkAccentProvider(ui.track?.artworkPath))
+                  .watch(artworkAccentProvider(previewTrack?.artworkPath))
                   .valueOrNull ??
               config.accent)
         : config.accent;
@@ -93,10 +103,10 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
             icon: Icons.visibility_outlined,
             child: _ThemePreview(
               config: config,
-              track: ui.track,
+              track: previewTrack,
               accent: accent,
-              playing: ui.playback.playing,
-              progress: ui.playback.progress,
+              playing: previewPlaying,
+              progress: previewProgress,
             ),
           ),
           const SizedBox(height: 22),

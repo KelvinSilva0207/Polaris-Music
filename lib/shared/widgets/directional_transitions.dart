@@ -49,6 +49,16 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
   void initState() {
     super.initState();
     _current = _bounded(widget.index);
+    // Sin este listener la pantalla saliente permanece en escena para siempre:
+    // con opacity 0 seguía recibiendo toques y robaba eventos a la entrante.
+    _controller.addStatusListener((AnimationStatus status) {
+      if (status != AnimationStatus.completed &&
+          status != AnimationStatus.dismissed) {
+        return;
+      }
+      if (!mounted || _previous == null) return;
+      setState(() => _previous = null);
+    });
   }
 
   @override
@@ -110,14 +120,19 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
       );
     }
 
-    return SlideTransition(
-      position: Tween<Offset>(
-        begin: Offset.zero,
-        end: _offset(-1),
-      ).animate(_outgoing),
-      child: FadeTransition(
-        opacity: Tween<double>(begin: 1, end: 0).animate(_outgoing),
-        child: child,
+    // La saliente se ignora: con opacity 0 sigue siendo hit-testable y podía
+    // interceptar toques de la sección entrante según el orden del Stack.
+    return IgnorePointer(
+      ignoring: true,
+      child: SlideTransition(
+        position: Tween<Offset>(
+          begin: Offset.zero,
+          end: _offset(-1),
+        ).animate(_outgoing),
+        child: FadeTransition(
+          opacity: Tween<double>(begin: 1, end: 0).animate(_outgoing),
+          child: child,
+        ),
       ),
     );
   }
@@ -132,7 +147,9 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
             child: Offstage(
               offstage: i != _current && i != _previous,
               child: TickerMode(
-                enabled: i == _current,
+                // La saliente conserva sus tickers durante la transición; al
+                // terminar, `_previous` se limpia y solo queda la activa.
+                enabled: i == _current || i == _previous,
                 child: _decorate(i, widget.children[i]),
               ),
             ),
@@ -191,9 +208,22 @@ class _DirectionalContentSwitcherState
       duration: widget.duration,
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
-      // Pintar solo la entrante evita el "ghost" de capas superpuestas.
+      // No descartar `previousChildren`: hacerlo desmontaba la vista anterior
+      // en el mismo frame y rompía el estado de isla/mini al cambiar de modo.
       layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) =>
-          currentChild ?? const SizedBox.shrink(),
+          Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              IgnorePointer(
+                ignoring: true,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: previousChildren,
+                ),
+              ),
+              ?currentChild,
+            ],
+          ),
       transitionBuilder: (Widget child, Animation<double> animation) {
         return SlideTransition(
           position: Tween<Offset>(

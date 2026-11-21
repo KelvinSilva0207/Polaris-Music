@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/app_providers.dart';
 import '../../core/providers/motion_provider.dart';
+import '../../core/services/window_service.dart';
 import '../../core/theme/motion_config.dart';
 
 /// Insignia discreta de «pista en reproducción».
@@ -37,10 +38,15 @@ class _PlayingIndicatorState extends ConsumerState<PlayingIndicator>
     duration: const Duration(milliseconds: 900),
   );
 
+  /// `windowStateProvider` es un notifier estable: `ref.listen` nunca se
+  /// dispara porque la referencia no cambia, solo su `value`.
+  ValueNotifier<WindowUiState>? _window;
+
   @override
   void initState() {
     super.initState();
-    ref.listen(windowStateProvider, (_, _) => _sync());
+    _window = ref.read(windowStateProvider);
+    _window!.addListener(_sync);
     ref.listen(motionConfigProvider, (_, _) => _sync());
     ref.listen(ambientMotionGateProvider, (_, _) => _sync());
     _sync();
@@ -69,6 +75,7 @@ class _PlayingIndicatorState extends ConsumerState<PlayingIndicator>
 
   @override
   void dispose() {
+    _window?.removeListener(_sync);
     _controller.dispose();
     super.dispose();
   }
@@ -78,22 +85,27 @@ class _PlayingIndicatorState extends ConsumerState<PlayingIndicator>
     if (!widget.active) return const SizedBox.shrink();
 
     return IgnorePointer(
-      child: AnimatedBuilder(
-        animation: _controller,
-        builder: (BuildContext context, Widget? _) => Container(
-          width: widget.size,
-          height: widget.size,
-          decoration: BoxDecoration(
-            color: widget.color.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: widget.color.withValues(alpha: 0.45)),
+      child: RepaintBoundary(
+        child: AnimatedBuilder(
+          animation: _controller,
+          // La decoración se construye una sola vez; cada frame solo cambia
+          // el painter de primer plano.
+          child: Container(
+            width: widget.size,
+            height: widget.size,
+            decoration: BoxDecoration(
+              color: widget.color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: widget.color.withValues(alpha: 0.45)),
+            ),
           ),
-          child: CustomPaint(
-            painter: _PlayingBarsPainter(
+          builder: (BuildContext context, Widget? child) => CustomPaint(
+            foregroundPainter: _PlayingBarsPainter(
               phase: _controller.value,
               color: widget.color,
               animate: _controller.isAnimating,
             ),
+            child: child,
           ),
         ),
       ),

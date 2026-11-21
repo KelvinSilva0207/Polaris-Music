@@ -20,11 +20,11 @@ Future<void> main() async {
 
   // La caché de imágenes por defecto (1000 imágenes / 100 MiB) es excesiva para
   // una biblioteca con carátulas: cada pista visible decodifica una imagen y
-  // el excedente se acumula hasta cerca de 100 MiB. Con 700 entradas y 64 MiB
-  // seguimos teniendo margen para la cola, la carátula principal y las vistas
-  // compactas sin disparar el consumo de RAM de Windows.
-  PaintingBinding.instance.imageCache.maximumSize = 700;
-  PaintingBinding.instance.imageCache.maximumSizeBytes = 64 * 1024 * 1024;
+  // el excedente se acumula hasta cerca de 100 MiB. Las miniaturas se decodifican
+  // a 24–160 px, así que 500 entradas y 48 MiB bastan para cola + carátula
+  // principal + vistas compactas sin disparar el working set en Windows.
+  PaintingBinding.instance.imageCache.maximumSize = 500;
+  PaintingBinding.instance.imageCache.maximumSizeBytes = 48 * 1024 * 1024;
 
   await AppLog.initialize();
 
