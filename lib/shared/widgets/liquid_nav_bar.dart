@@ -192,7 +192,6 @@ class _LiquidNavBarState extends State<LiquidNavBar>
                         top ? 38 : 42,
                       ),
                       fill: accent.withValues(alpha: top ? 0.18 : 0.22),
-                      border: tokens.panelBorder.withValues(alpha: 0.85),
                       glow: accent.withValues(alpha: top ? 0.14 : 0.20),
                       accent: accent,
                       intensity: _intensity,
@@ -342,7 +341,6 @@ class _LiquidIndicatorPainter extends CustomPainter {
     required this.baseWidth,
     required this.height,
     required this.fill,
-    required this.border,
     required this.glow,
     required this.accent,
     required this.intensity,
@@ -360,7 +358,6 @@ class _LiquidIndicatorPainter extends CustomPainter {
   final double baseWidth;
   final double height;
   final Color fill;
-  final Color border;
   final Color glow;
   final Color accent;
   final double intensity;
@@ -399,23 +396,32 @@ class _LiquidIndicatorPainter extends CustomPainter {
       lead,
     );
 
-    // Resplandor del acento dibujado como trazo ancho y translúcido: evita
-    // filtros de desenfoque y sigue siendo barato en móvil.
+    // Halo por capas en vez de un trazo: no queda ningún borde rígido alrededor
+    // del ítem activo y el acento se funde con Glass, Liquid, Mate o claro.
+    // El tamaño de las capas se limita al hueco real de la barra para que no se
+    // corten ni en móvil ni en la variante superior de escritorio.
+    final double roomY = (centerY * 2) / height;
+    final double roomX = (width / centers.length) / baseWidth;
+    final double spread = math.max<double>(
+      1,
+      math.min<double>(1.32, math.min(roomX, roomY)),
+    );
+    final double innerSpread = 1 + (spread - 1) * 0.5;
+    final Offset center = Offset(x, centerY);
     canvas.drawPath(
-      blob,
-      Paint()
-        ..color = glow
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 8,
+      _blobPath(center, pillWidth * spread, pillHeight * spread, lead),
+      Paint()..color = glow.withValues(alpha: glow.a * 0.35),
+    );
+    canvas.drawPath(
+      _blobPath(
+        center,
+        pillWidth * innerSpread,
+        pillHeight * innerSpread,
+        lead,
+      ),
+      Paint()..color = glow.withValues(alpha: glow.a * 0.7),
     );
     canvas.drawPath(blob, Paint()..color = fill);
-    canvas.drawPath(
-      blob,
-      Paint()
-        ..color = border
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4,
-    );
 
     // Brillo breve en el borde delantero: refuerza la dirección del viaje.
     if (lead.abs() > 2) {
@@ -486,7 +492,6 @@ class _LiquidIndicatorPainter extends CustomPainter {
       old.to != to ||
       old.width != width ||
       old.fill != fill ||
-      old.border != border ||
       old.glow != glow ||
       old.intensity != intensity ||
       old.reveal != reveal ||
