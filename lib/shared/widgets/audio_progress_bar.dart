@@ -330,10 +330,20 @@ class _TimeLabel extends StatelessWidget {
 /// acento. El altavoz silencia/restaura el volumen con un clic y la rueda del
 /// ratón ajusta el nivel cuando el cursor está encima.
 class VolumeSlider extends ConsumerStatefulWidget {
-  const VolumeSlider({super.key, required this.controller, this.accent});
+  const VolumeSlider({
+    super.key,
+    required this.controller,
+    this.accent,
+    this.compact = false,
+  });
 
   final PlayerController controller;
   final Color? accent;
+
+  /// Reduce solo los huecos internos; el icono, el riel y el porcentaje
+  /// conservan su tamaño para que la lectura no se degrade en ventanas
+  /// estrechas.
+  final bool compact;
 
   @override
   ConsumerState<VolumeSlider> createState() => _VolumeSliderState();
@@ -355,6 +365,7 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
   Widget build(BuildContext context) {
     final PolarisTokens tokens = context.tokens;
     final Color accent = widget.accent ?? tokens.volumeColor;
+    final double innerGap = widget.compact ? 6 : 10;
     final double volume = ref
         .watch(
           playerControllerProvider.select(
@@ -420,7 +431,7 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: innerGap),
         Expanded(
           child: MouseRegion(
             cursor: SystemMouseCursors.click,
@@ -522,7 +533,7 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: innerGap),
         SizedBox(
           width: 36,
           child: Text(

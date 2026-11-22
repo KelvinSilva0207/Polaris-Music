@@ -1181,18 +1181,56 @@ class _VolumeRow extends ConsumerWidget {
       playerControllerProvider.select((PlayerUiState s) => s.playback.speed),
     );
 
-    return Row(
-      children: <Widget>[
-        Expanded(
-          child: VolumeSlider(controller: controller, accent: accent),
-        ),
-        const SizedBox(width: 12),
-        _SpeedMenu(speed: speed, onChanged: controller.setSpeed),
-        const SizedBox(width: 8),
-        _ABLoopButton(controller: controller, accent: accent),
-        const SizedBox(width: 8),
-        _SleepMenu(controller: controller),
-      ],
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final double width = constraints.maxWidth;
+        // Con ventana ancha se mantiene la composición original. Al reducirla
+        // se compactan los huecos y, si apenas queda sitio, los controles
+        // secundarios bajan a una segunda línea en lugar de asfixiar el riel.
+        const double comfortableWidth = 560;
+        const double compactWidth = 300;
+        final bool stacked = width.isFinite && width < compactWidth;
+        final bool compact =
+            width.isFinite && width < comfortableWidth && !stacked;
+        final double outerGap = compact ? 8 : 12;
+        final double innerGap = compact || stacked ? 5 : 8;
+
+        List<Widget> trailing() => <Widget>[
+          if (!stacked) SizedBox(width: outerGap),
+          _SpeedMenu(speed: speed, onChanged: controller.setSpeed),
+          SizedBox(width: innerGap),
+          _ABLoopButton(controller: controller, accent: accent),
+          SizedBox(width: innerGap),
+          _SleepMenu(controller: controller),
+        ];
+
+        Widget slider() => VolumeSlider(
+          controller: controller,
+          accent: accent,
+          compact: compact || stacked,
+        );
+
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              slider(),
+              const SizedBox(height: 4),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: trailing(),
+              ),
+            ],
+          );
+        }
+
+        return Row(
+          children: <Widget>[
+            Expanded(child: slider()),
+            ...trailing(),
+          ],
+        );
+      },
     );
   }
 }
