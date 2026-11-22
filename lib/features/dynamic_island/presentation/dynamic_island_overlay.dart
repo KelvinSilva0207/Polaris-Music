@@ -260,6 +260,12 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
       });
     }
 
+    // La forma nativa (región + sombra) existe aunque Flutter deje de tickar
+    // al perder foco. Si los tickers están muteados, las animaciones implícitas
+    // se quedan en su valor inicial (opacity 0) y la isla parece solo una
+    // sombra. En ese estado usamos los valores finales directamente: la isla
+    // sigue siendo visible y el auto-ocultado/apartado no depende de un ticker.
+    final bool ticking = TickerMode.of(context);
     return Material(
       color: Colors.transparent,
       child: Center(
@@ -268,17 +274,18 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
           duration: introDuration,
           curve: Curves.easeOutCubic,
           builder: (BuildContext context, double scale, Widget? child) {
+            final double effective = ticking ? scale.clamp(0.0, 1.0) : 1;
             return Opacity(
-              opacity: scale.clamp(0.0, 1.0),
-              child: Transform.scale(scale: scale, child: child),
+              opacity: effective,
+              child: Transform.scale(scale: effective, child: child),
             );
           },
           child: AnimatedScale(
-            scale: _dismissing ? 0.68 : 1,
+            scale: ticking && _dismissing ? 0.68 : 1,
             duration: dismissDuration,
             curve: Curves.easeInCubic,
             child: AnimatedOpacity(
-              opacity: _dismissing ? 0 : 1,
+              opacity: ticking && _dismissing ? 0 : 1,
               duration: dismissDuration,
               curve: Curves.easeInCubic,
               child: MouseRegion(

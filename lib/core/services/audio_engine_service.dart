@@ -8,6 +8,7 @@ import '../models/playback_state.dart';
 import '../models/track.dart';
 import '../models/track_technical_info.dart';
 import '../utils/logger.dart';
+import '../utils/media_uri.dart';
 import '../utils/replay_gain.dart';
 
 /// Motor de reproducción basado en media_kit (libmpv).
@@ -528,11 +529,12 @@ class AudioEngineService {
   /// cola original como con la barajada, porque compara la ruta del archivo y
   /// no una posición de lista que mpv ya ha reordenado.
   Track? _trackForUri(String uri) {
+    final String normalized = normalizeMediaUri(uri);
     for (final Track track in _state.activeQueue) {
-      if (track.path == uri) return track;
+      if (normalizeMediaUri(track.path) == normalized) return track;
     }
     for (final Track track in _state.queue) {
-      if (track.path == uri) return track;
+      if (normalizeMediaUri(track.path) == normalized) return track;
     }
     return null;
   }
@@ -1235,12 +1237,18 @@ class AudioEngineService {
     final int newIndex = incomingIndex < 0 || activeLength == 0
         ? _state.index
         : incomingIndex.clamp(0, activeLength - 1);
-    final Track? newTrack =
+    final Track? resolved =
         incomingIndex >= 0 && incomingIndex < incomingPlaylist.medias.length
         ? _trackForUri(incomingPlaylist.medias[incomingIndex].uri)
-        : (newIndex >= 0 && newIndex < activeLength
-              ? _state.activeQueue[newIndex]
-              : _state.currentTrack);
+        : null;
+    // Red de seguridad: un Media que no pueda resolverse (URI remota con
+    // esquema distinto, pista efímera, etc.) nunca debe dejar la vista sin
+    // pista mientras el deck entrante está sonando.
+    final Track? newTrack =
+        resolved ??
+        (newIndex >= 0 && newIndex < activeLength
+            ? _state.activeQueue[newIndex]
+            : _state.currentTrack);
     final List<Track> shuffled = _state.shuffledQueue.isEmpty
         ? const <Track>[]
         : List<Track>.unmodifiable(_state.activeQueue);

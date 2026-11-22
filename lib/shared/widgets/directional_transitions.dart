@@ -195,12 +195,9 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
             child: Offstage(
               offstage: i != _current && i != _previous,
               child: TickerMode(
-                // Solo la entrante mantiene tickers. El movimiento de la
-                // saliente lo empuja el controller del stack, no sus animadores
-                // internos: detener el vinilo, ondas y glows del reproductor
-                // mientras entra la biblioteca libera el presupuesto de frame
-                // y evita que la transición se perciba como un salto forzado.
-                enabled: i == _current,
+                // La saliente conserva sus tickers durante la transición; al
+                // terminar, `_previous` se limpia y solo queda la activa.
+                enabled: i == _current || i == _previous,
                 child: _decorate(i, widget.children[i]),
               ),
             ),
@@ -372,10 +369,7 @@ class _DirectionalContentSwitcherState extends State<DirectionalContentSwitcher>
                     begin: 1,
                     end: 0,
                   ).animate(_outgoingFade),
-                  // Igual que en el stack de secciones: el contenido saliente
-                  // se desliza con el controller del switcher, así que sus
-                  // propios tickers no deben competir por el frame.
-                  child: TickerMode(enabled: false, child: previous),
+                  child: previous,
                 ),
               ),
             ),
