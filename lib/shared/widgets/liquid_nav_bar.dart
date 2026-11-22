@@ -152,7 +152,14 @@ class _LiquidNavBarState extends State<LiquidNavBar>
           height: top ? 52 : 66,
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
           decoration: tokens
-              .panelDecoration(radius: top ? 20 : 26, glow: accent)
+              .panelDecoration(
+                radius: top ? 20 : 26,
+                glow: accent,
+                // Sin contorno: el borde especular de los paneles se percibe
+                // como un recuadro alrededor de los iconos. El halo radial del
+                // indicador es la única guía visual del ítem activo.
+                borderColor: Colors.transparent,
+              )
               .copyWith(
                 color: tokens.panelOverlay.withValues(alpha: top ? 0.94 : 0.96),
               ),
@@ -303,6 +310,13 @@ class _LiquidNavItem extends StatelessWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(top ? 18 : 22),
+          // El splash/hover de Material dibuja un rectángulo alrededor del
+          // icono al pasar el ratón. La interacción se conserva, pero sin
+          // ninguna marca visible que compita con el halo del indicador.
+          splashFactory: NoSplash.splashFactory,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          focusColor: Colors.transparent,
           onTap: onTap,
           child: AnimatedScale(
             scale: selected ? 1.08 : 1,
