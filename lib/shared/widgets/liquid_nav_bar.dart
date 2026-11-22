@@ -107,6 +107,12 @@ class _LiquidNavBarState extends State<LiquidNavBar>
   @override
   void didUpdateWidget(covariant LiquidNavBar oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // El despliegue es de entrada (o de cambio de layout), no de selección.
+    // Repetirlo en cada tap reconstruía toda la barra justo cuando el stack
+    // de secciones y la biblioteca están peleando por el mismo frame.
+    if (oldWidget.layout != widget.layout && _revealAllowed) {
+      _reveal.forward(from: 0);
+    }
     if (oldWidget.selected == widget.selected) return;
     _from = _visualIndex;
     _to = widget.selected.index;
@@ -116,7 +122,6 @@ class _LiquidNavBarState extends State<LiquidNavBar>
       _from = _to;
       _controller.value = 1;
     }
-    if (_revealAllowed) _reveal.forward(from: 0);
   }
 
   /// Índice que se está mostrando ahora mismo, incluso a mitad de viaje.
