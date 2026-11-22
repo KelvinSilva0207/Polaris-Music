@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
 import 'package:polaris_music/core/models/track.dart';
 import 'package:polaris_music/core/utils/m3u_parser.dart';
 import 'package:polaris_music/features/library/domain/smart_playlist.dart';
@@ -29,19 +30,23 @@ Track _track(
 void main() {
   group('M3U', () {
     test('lee EXTINF y resuelve rutas relativas', () {
+      const String basePath = r'C:\Musica';
       final M3uDocument document = M3uDocument.parse(
         '#EXTM3U\n'
         '#EXTINF:123,Artista - Canción\n'
         'cancion.mp3\n'
         '#EXTINF:-1,Sin duración\n'
         'sub/otra.mp3\n',
-        basePath: r'C:\Musica',
+        basePath: basePath,
       );
 
       expect(document.entries, hasLength(2));
       expect(document.entries.first.title, 'Artista - Canción');
       expect(document.entries.first.durationSeconds, 123);
-      expect(document.entries.first.location, r'C:\Musica\cancion.mp3');
+      expect(
+        document.entries.first.location,
+        p.normalize(p.join(basePath, 'cancion.mp3')),
+      );
       expect(document.entries.last.durationSeconds, isNull);
     });
 
