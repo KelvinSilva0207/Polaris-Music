@@ -7,6 +7,27 @@ import 'typography_config.dart';
 
 export 'app_theme_config.dart' show ArtworkShape, CardStyle;
 
+/// Borde de la pantalla al que se aparta la isla cuando no hay interacción.
+///
+/// La isla vuelve a aparecer desde ese mismo borde al acercar el cursor.
+enum IslandPeekEdge { top, left, right, bottom }
+
+extension IslandPeekEdgeX on IslandPeekEdge {
+  String get label => switch (this) {
+    IslandPeekEdge.top => 'Arriba',
+    IslandPeekEdge.left => 'Izquierda',
+    IslandPeekEdge.right => 'Derecha',
+    IslandPeekEdge.bottom => 'Abajo',
+  };
+
+  IconData get icon => switch (this) {
+    IslandPeekEdge.top => Icons.keyboard_arrow_up_rounded,
+    IslandPeekEdge.left => Icons.keyboard_arrow_left_rounded,
+    IslandPeekEdge.right => Icons.keyboard_arrow_right_rounded,
+    IslandPeekEdge.bottom => Icons.keyboard_arrow_down_rounded,
+  };
+}
+
 /// Superficies compactas que pueden personalizarse de forma independiente.
 enum CompactSurface { island, mini, phone, player }
 
@@ -55,6 +76,7 @@ class CompactStyleConfig {
     this.fontScale,
     this.autoHide = false,
     this.autoHideSeconds = 8,
+    this.islandPeekEdge = IslandPeekEdge.top,
   });
 
   static const CompactStyleConfig island = CompactStyleConfig(
@@ -67,6 +89,7 @@ class CompactStyleConfig {
     glow: true,
     autoHide: true,
     autoHideSeconds: 8,
+    islandPeekEdge: IslandPeekEdge.top,
   );
 
   static const CompactStyleConfig mini = CompactStyleConfig(
@@ -128,6 +151,9 @@ class CompactStyleConfig {
   final bool autoHide;
   final int autoHideSeconds;
 
+  /// Borde elegido para apartar la isla y por el que vuelve a aparecer.
+  final IslandPeekEdge islandPeekEdge;
+
   factory CompactStyleConfig.defaultsFor(CompactSurface surface) =>
       switch (surface) {
         CompactSurface.island => island,
@@ -151,6 +177,7 @@ class CompactStyleConfig {
     Object? fontScale = _unset,
     bool? autoHide,
     int? autoHideSeconds,
+    IslandPeekEdge? islandPeekEdge,
   }) => CompactStyleConfig(
     accent: identical(accent, _unset) ? this.accent : accent as Color?,
     background: identical(background, _unset)
@@ -178,6 +205,7 @@ class CompactStyleConfig {
         : fontScale as double?,
     autoHide: autoHide ?? this.autoHide,
     autoHideSeconds: autoHideSeconds ?? this.autoHideSeconds,
+    islandPeekEdge: islandPeekEdge ?? this.islandPeekEdge,
   );
 
   Map<String, Object?> toJson() => <String, Object?>{
@@ -195,6 +223,7 @@ class CompactStyleConfig {
     'fontScale': fontScale,
     'autoHide': autoHide,
     'autoHideSeconds': autoHideSeconds,
+    'islandPeekEdge': islandPeekEdge.name,
   };
 
   factory CompactStyleConfig.fromJson(
@@ -236,6 +265,9 @@ class CompactStyleConfig {
       autoHideSeconds: json['autoHideSeconds'] is int
           ? (json['autoHideSeconds']! as int).clamp(2, 60)
           : base.autoHideSeconds,
+      islandPeekEdge:
+          _enumByName(IslandPeekEdge.values, json['islandPeekEdge']) ??
+          base.islandPeekEdge,
     );
   }
 

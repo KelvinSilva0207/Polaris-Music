@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polaris_music/core/services/island_shape.dart';
 import 'package:polaris_music/core/services/window_service.dart';
+import 'package:polaris_music/core/theme/compact_style_config.dart';
 
 void main() {
   group('IslandShape (región de la isla en Windows)', () {
@@ -72,37 +73,125 @@ void main() {
       }
     });
 
-    test('al apartarse solo asoma la franja inferior de la cápsula', () {
-      final double top = IslandShape.peekTop(
-        windowTop: 0,
-        windowHeight: WindowService.islandSize.height,
-        capsuleHeight: WindowService.islandCompactCapsule.height,
+    test('cada borde deja asomar solo la franja elegida de la cápsula', () {
+      // Ventana centrada arriba en un área de trabajo de 1000 x 800.
+      const Offset normal = Offset(300, 0);
+      const Rect display = Rect.fromLTWH(0, 0, 1000, 800);
+      final Size windowSize = WindowService.islandSize;
+      final Size capsule = WindowService.islandCompactCapsule;
+
+      final Offset top = IslandShape.peekPosition(
+        normalTopLeft: normal,
+        windowSize: windowSize,
+        capsuleSize: capsule,
+        displayBounds: display,
+        edge: IslandPeekEdge.top,
       );
-      final double capsuleBottom =
-          top +
-          (WindowService.islandSize.height +
-                  WindowService.islandCompactCapsule.height) /
-              2;
-
-      expect(top, closeTo(-84, 0.01));
-      expect(capsuleBottom, closeTo(IslandShape.defaultPeekHeight, 0.01));
-    });
-
-    test('la zona del borde cubre la isla sin abarcar toda la pantalla', () {
-      // Ventana centrada arriba en una pantalla hipotética de 1000 px.
-      final Rect zone = IslandShape.peekActivationZone(
-        windowLeft: 300,
-        windowTop: 0,
-        windowWidth: WindowService.islandSize.width,
+      expect(top.dx, 300);
+      expect(top.dy, closeTo(-84, 0.01));
+      expect(
+        top.dy + (windowSize.height + capsule.height) / 2,
+        closeTo(IslandShape.defaultPeekHeight, 0.01),
       );
 
-      expect(zone.left, 160);
-      expect(zone.right, 840);
-      expect(zone.top, -4);
-      expect(zone.bottom, IslandShape.defaultPeekHeight + 36 - 4);
-      expect(zone.contains(const Offset(500, 10)), isTrue);
-      expect(zone.contains(const Offset(500, 120)), isFalse);
-      expect(zone.contains(const Offset(50, 10)), isFalse);
+      final Offset bottom = IslandShape.peekPosition(
+        normalTopLeft: normal,
+        windowSize: windowSize,
+        capsuleSize: capsule,
+        displayBounds: display,
+        edge: IslandPeekEdge.bottom,
+      );
+      expect(bottom.dx, 300);
+      expect(
+        bottom.dy + (windowSize.height - capsule.height) / 2,
+        closeTo(display.bottom - IslandShape.defaultPeekHeight, 0.01),
+      );
+
+      final Offset left = IslandShape.peekPosition(
+        normalTopLeft: normal,
+        windowSize: windowSize,
+        capsuleSize: capsule,
+        displayBounds: display,
+        edge: IslandPeekEdge.left,
+      );
+      expect(left.dy, 0);
+      expect(
+        left.dx + (windowSize.width + capsule.width) / 2,
+        closeTo(IslandShape.defaultPeekHeight, 0.01),
+      );
+
+      final Offset right = IslandShape.peekPosition(
+        normalTopLeft: normal,
+        windowSize: windowSize,
+        capsuleSize: capsule,
+        displayBounds: display,
+        edge: IslandPeekEdge.right,
+      );
+      expect(right.dy, 0);
+      expect(
+        right.dx + (windowSize.width - capsule.width) / 2,
+        closeTo(display.right - IslandShape.defaultPeekHeight, 0.01),
+      );
     });
+
+    test(
+      'la zona de cada borde cubre la franja sin abarcar toda la pantalla',
+      () {
+        const Offset normal = Offset(300, 0);
+        const Rect display = Rect.fromLTWH(0, 0, 1000, 800);
+        final Size windowSize = WindowService.islandSize;
+
+        final Rect top = IslandShape.peekActivationZone(
+          normalTopLeft: normal,
+          windowSize: windowSize,
+          displayBounds: display,
+          edge: IslandPeekEdge.top,
+        );
+        expect(top.left, 160);
+        expect(top.right, 840);
+        expect(top.top, -4);
+        expect(top.bottom, 44);
+
+        final Rect bottom = IslandShape.peekActivationZone(
+          normalTopLeft: normal,
+          windowSize: windowSize,
+          displayBounds: display,
+          edge: IslandPeekEdge.bottom,
+        );
+        expect(bottom.left, 160);
+        expect(bottom.right, 840);
+        expect(bottom.top, 756);
+        expect(bottom.bottom, 804);
+
+        final Rect left = IslandShape.peekActivationZone(
+          normalTopLeft: normal,
+          windowSize: windowSize,
+          displayBounds: display,
+          edge: IslandPeekEdge.left,
+        );
+        expect(left.left, -4);
+        expect(left.right, 44);
+        expect(left.top, -140);
+        expect(left.bottom, 268);
+
+        final Rect right = IslandShape.peekActivationZone(
+          normalTopLeft: normal,
+          windowSize: windowSize,
+          displayBounds: display,
+          edge: IslandPeekEdge.right,
+        );
+        expect(right.left, 956);
+        expect(right.right, 1004);
+        expect(right.top, -140);
+        expect(right.bottom, 268);
+
+        expect(top.contains(const Offset(500, 10)), isTrue);
+        expect(top.contains(const Offset(500, 120)), isFalse);
+        expect(left.contains(const Offset(10, 20)), isTrue);
+        expect(right.contains(const Offset(990, 20)), isTrue);
+        expect(bottom.contains(const Offset(500, 790)), isTrue);
+        expect(left.contains(const Offset(500, 20)), isFalse);
+      },
+    );
   });
 }

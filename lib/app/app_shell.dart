@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models/update_info.dart';
 import '../core/providers/app_providers.dart';
+import '../core/providers/compact_style_provider.dart';
 import '../core/providers/update_prompt_provider.dart';
 import '../core/services/window_service.dart';
 import '../core/theme/compact_style_config.dart';
@@ -184,6 +185,9 @@ class _AppShellState extends ConsumerState<AppShell>
       });
     }
 
+    final IslandPeekEdge peekEdge = ref
+        .watch(compactStyleProvider(CompactSurface.island))
+        .islandPeekEdge;
     final ValueNotifier<WindowUiState> notifier = ref.watch(
       windowStateProvider,
     );
@@ -214,6 +218,8 @@ class _AppShellState extends ConsumerState<AppShell>
               child: IslandWindow(
                 onRestore: window.restoreNormal,
                 onHide: window.peekIsland,
+                peekEdge: peekEdge,
+                onPeekEdgeChanged: window.setIslandPeekEdge,
                 onCapsuleGeometryChanged: window.setIslandCapsule,
               ),
             );

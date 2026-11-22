@@ -97,6 +97,9 @@ class CompactStyleController
     styleOf(surface).copyWith(autoHideSeconds: value.clamp(2, 60)),
   );
 
+  Future<void> setIslandPeekEdge(CompactSurface surface, IslandPeekEdge edge) =>
+      update(surface, styleOf(surface).copyWith(islandPeekEdge: edge));
+
   static CompactStyleConfig _read(
     SettingsService settings,
     CompactSurface surface,

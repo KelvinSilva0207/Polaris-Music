@@ -13,6 +13,7 @@ import 'package:window_manager/legacy.dart';
 
 import '../constants/app_constants.dart';
 import '../debug/memory_probe.dart';
+import '../theme/compact_style_config.dart';
 import '../utils/logger.dart';
 import 'island_shape.dart';
 
@@ -91,6 +92,8 @@ class WindowService with WindowListener {
   bool _peekArmed = false;
   double _islandNormalLeft = 0;
   double _islandNormalTop = 0;
+  Rect _islandDisplayBounds = Rect.zero;
+  IslandPeekEdge _islandPeekEdge = IslandPeekEdge.top;
   Timer? _islandPeekPoll;
 
   /// Fondo nativo de la ventana. Lo fija el tema activo desde `PolarisApp` para
@@ -110,6 +113,7 @@ class WindowService with WindowListener {
   bool get maximized => _maximized;
   bool get backgrounded => _backgrounded;
   bool get islandPeeked => _islandPeeked;
+  IslandPeekEdge get islandPeekEdge => _islandPeekEdge;
 
   /// Ventana nativa subyacente. Se guarda una sola referencia: `nativeapi`
   /// asocia un finalizador a cada `Window`, así que conviene no crear una
@@ -139,8 +143,9 @@ class WindowService with WindowListener {
   /// Franja visible cuando la isla se aparta al borde superior.
   static const double islandPeekHeight = IslandShape.defaultPeekHeight;
   static const Duration islandPeekPollInterval = Duration(milliseconds: 90);
-  static const double islandPeekHorizontalPadding = 140;
-  static const double islandPeekVerticalPadding = 36;
+  static const double islandPeekHorizontalPadding =
+      IslandShape.peekAlongPadding;
+  static const double islandPeekVerticalPadding = IslandShape.peekDepthPadding;
 
   Future<void> initialize() async {
     if (!isSupported || _initialized) return;
@@ -334,34 +339,41 @@ class WindowService with WindowListener {
     await _applyIslandShape();
   }
 
-  /// Apartar la isla hacia el borde superior dejando asomar una franja.
+  /// Apartar la isla hacia el borde elegido dejando asomar una franja.
   ///
   /// A diferencia de [hide], la ventana sigue visible y reproduciendo: la
   /// región nativa se desplaza con ella, así que solo se ve (y recibe ratón)
-  /// la parte inferior de la cápsula. Un sondeo ligero del cursor detecta
-  /// cuándo el usuario se acerca al borde para devolverla.
+  /// la franja de la cápsula. Un sondeo ligero del cursor detecta cuándo el
+  /// usuario se acerca a ese borde para devolverla desde el mismo lado.
   Future<void> peekIsland() async {
     if (!isSupported || _mode != WindowMode.island || _islandPeeked) return;
     final Rect bounds = await windowManager.getBounds();
     _islandNormalLeft = bounds.left;
     _islandNormalTop = bounds.top;
-    final double top = IslandShape.peekTop(
-      windowTop: bounds.top,
-      windowHeight: islandSize.height,
-      capsuleHeight: _capsuleSize.height,
-      visibleHeight: islandPeekHeight,
-    );
-    await windowManager.setPosition(Offset(bounds.left, top), animate: true);
+    _islandDisplayBounds = _displayWorkAreaFor(bounds);
+    await _moveIslandToPeekEdge();
     _islandPeeked = true;
     // Si el cursor está aún sobre el botón que acaba de pulsar, no debe
     // reabrirse: primero tiene que salir de la zona del borde.
     _peekArmed = false;
     _publish();
     _startPeekWatcher();
-    AppLog.i(_tag, 'Isla apartada al borde superior');
+    AppLog.i(_tag, 'Isla apartada al borde ${_islandPeekEdge.name}');
   }
 
-  /// Devuelve la isla a su posición flotante sobre el centro superior.
+  /// Cambia el borde de la franja en caliente, también si ya está apartada.
+  Future<void> setIslandPeekEdge(IslandPeekEdge edge) async {
+    if (_islandPeekEdge == edge) return;
+    _islandPeekEdge = edge;
+    if (!_islandPeeked) return;
+    await _moveIslandToPeekEdge();
+    _peekArmed = false;
+    _startPeekWatcher();
+    AppLog.i(_tag, 'Borde de la isla cambiado a ${edge.name}');
+  }
+
+  /// Devuelve la isla a su posición flotante sobre el centro superior. La
+  /// animación parte de la franja, así que parece salir del borde elegido.
   Future<void> unpeekIsland() async {
     if (!isSupported || !_islandPeeked) return;
     _islandPeeked = false;
@@ -369,7 +381,43 @@ class WindowService with WindowListener {
     _stopPeekWatcher();
     await windowManager.setAlignment(Alignment.topCenter, animate: true);
     _publish();
-    AppLog.i(_tag, 'Isla restaurada desde el borde');
+    AppLog.i(_tag, 'Isla restaurada desde el borde ${_islandPeekEdge.name}');
+  }
+
+  Future<void> _moveIslandToPeekEdge() async {
+    final Offset target = IslandShape.peekPosition(
+      normalTopLeft: Offset(_islandNormalLeft, _islandNormalTop),
+      windowSize: islandSize,
+      capsuleSize: _capsuleSize,
+      displayBounds: _islandDisplayBounds,
+      edge: _islandPeekEdge,
+      visibleHeight: islandPeekHeight,
+    );
+    await windowManager.setPosition(target, animate: true);
+  }
+
+  /// Área de trabajo de la pantalla en la que está la ventana. Usamos el área
+  /// útil (no el rectángulo completo) para que una franja inferior no quede
+  /// debajo de la barra de tareas de Windows.
+  Rect _displayWorkAreaFor(Rect bounds) {
+    final Offset center = bounds.center;
+    final native.DisplayManager manager = native.DisplayManager.instance;
+    for (final native.Display display in manager.getAll()) {
+      final native.Rectangle area = display.workArea;
+      final Rect workArea = Rect.fromLTWH(
+        area.x,
+        area.y,
+        area.width,
+        area.height,
+      );
+      if (workArea.contains(center)) return workArea;
+    }
+    final native.Display? primary = manager.getPrimary();
+    if (primary != null) {
+      final native.Rectangle area = primary.workArea;
+      return Rect.fromLTWH(area.x, area.y, area.width, area.height);
+    }
+    return bounds;
   }
 
   void _resetIslandPeek() {
@@ -389,12 +437,13 @@ class WindowService with WindowListener {
             .getCursorPosition();
         final Offset cursor = Offset(raw.x, raw.y);
         final Rect zone = IslandShape.peekActivationZone(
-          windowLeft: _islandNormalLeft,
-          windowTop: _islandNormalTop,
-          windowWidth: islandSize.width,
+          normalTopLeft: Offset(_islandNormalLeft, _islandNormalTop),
+          windowSize: islandSize,
+          displayBounds: _islandDisplayBounds,
+          edge: _islandPeekEdge,
           visibleHeight: islandPeekHeight,
-          horizontalPadding: islandPeekHorizontalPadding,
-          verticalPadding: islandPeekVerticalPadding,
+          alongPadding: islandPeekHorizontalPadding,
+          depthPadding: islandPeekVerticalPadding,
         );
         final bool inside = zone.contains(cursor);
         if (!inside) {

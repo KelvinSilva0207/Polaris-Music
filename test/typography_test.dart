@@ -120,6 +120,23 @@ void main() {
       expect(restored.resolve(PolarisTokens.fallback).fontFamily, isNull);
     });
 
+    test('el borde de la franja de la isla sobrevive al JSON', () {
+      final CompactStyleConfig style = CompactStyleConfig.island.copyWith(
+        islandPeekEdge: IslandPeekEdge.left,
+      );
+      final CompactStyleConfig restored = CompactStyleConfig.fromJson(
+        jsonDecode(jsonEncode(style.toJson())) as Map<String, Object?>,
+        surface: CompactSurface.island,
+      );
+      expect(restored.islandPeekEdge, IslandPeekEdge.left);
+
+      final CompactStyleConfig backwards = CompactStyleConfig.fromJson(
+        <String, Object?>{'autoHide': true},
+        surface: CompactSurface.island,
+      );
+      expect(backwards.islandPeekEdge, IslandPeekEdge.top);
+    });
+
     test(
       'colores de barra y forma de carátula por superficie sobreviven al JSON',
       () {

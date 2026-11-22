@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import '../theme/compact_style_config.dart';
+
 /// Geometría de la región de la ventana cuando la app se convierte en isla.
 ///
 /// Windows recorta tanto el dibujo como el área que recibe clics a la región
@@ -16,36 +18,107 @@ abstract final class IslandShape {
   /// mantiene la región ligera (36 puntos para la cápsula completa).
   static const int segmentsPerCorner = 8;
 
-  /// Altura de la franja de la cápsula que queda visible al apartar la isla
-  /// hacia el borde superior de la pantalla.
+  /// Altura/ancho de la franja de la cápsula que queda visible al apartar la
+  /// isla hacia cualquiera de los bordes de la pantalla.
   static const double defaultPeekHeight = 12;
 
-  /// Posición Y que debe adoptar la ventana para que solo asome la parte
-  /// inferior de la cápsula. La cápsula está centrada dentro de la ventana,
-  /// así que su borde inferior queda en `(windowHeight + capsuleHeight) / 2`.
-  static double peekTop({
-    required double windowTop,
-    required double windowHeight,
-    required double capsuleHeight,
-    double visibleHeight = defaultPeekHeight,
-  }) => windowTop - ((windowHeight + capsuleHeight) / 2 - visibleHeight);
+  /// Margen longitudinal de la zona de detección (a lo largo del borde).
+  static const double peekAlongPadding = 140;
 
-  /// Zona del borde superior que detecta al usuario acercándose para devolver
-  /// la isla. Es más ancha que la ventana para que no haga falta apuntar justo
-  /// a la franja visible.
-  static Rect peekActivationZone({
-    required double windowLeft,
-    required double windowTop,
-    required double windowWidth,
+  /// Profundidad de la zona de detección hacia el interior de la pantalla.
+  static const double peekDepthPadding = 36;
+
+  /// Pequeño margen fuera de la pantalla para no perder el primer píxel.
+  static const double peekEdgeInset = 4;
+
+  /// Posición que debe adoptar la ventana para que solo asoma [visibleHeight]
+  /// de la cápsula por el borde elegido. La cápsula está centrada en la
+  /// ventana, así que el offset depende de ese centro, no del tamaño total.
+  static Offset peekPosition({
+    required Offset normalTopLeft,
+    required Size windowSize,
+    required Size capsuleSize,
+    required Rect displayBounds,
+    required IslandPeekEdge edge,
     double visibleHeight = defaultPeekHeight,
-    double horizontalPadding = 140,
-    double verticalPadding = 36,
-  }) => Rect.fromLTWH(
-    windowLeft - horizontalPadding,
-    windowTop - 4,
-    windowWidth + horizontalPadding * 2,
-    visibleHeight + verticalPadding,
-  );
+  }) {
+    final double halfWindowWidth = windowSize.width / 2;
+    final double halfWindowHeight = windowSize.height / 2;
+    final double halfCapsuleWidth = capsuleSize.width / 2;
+    final double halfCapsuleHeight = capsuleSize.height / 2;
+    return switch (edge) {
+      // La cápsula se va arriba: su borde inferior queda a `visibleHeight`.
+      IslandPeekEdge.top => Offset(
+        normalTopLeft.dx,
+        displayBounds.top +
+            visibleHeight -
+            halfWindowHeight -
+            halfCapsuleHeight,
+      ),
+      // Abajo: su borde superior queda a `visibleHeight` del borde inferior.
+      IslandPeekEdge.bottom => Offset(
+        normalTopLeft.dx,
+        displayBounds.bottom -
+            visibleHeight -
+            halfWindowHeight +
+            halfCapsuleHeight,
+      ),
+      // Izquierda: su borde derecho queda a `visibleHeight` del borde izquierdo.
+      IslandPeekEdge.left => Offset(
+        displayBounds.left + visibleHeight - halfWindowWidth - halfCapsuleWidth,
+        normalTopLeft.dy,
+      ),
+      // Derecha: su borde izquierdo queda a `visibleHeight` del borde derecho.
+      IslandPeekEdge.right => Offset(
+        displayBounds.right -
+            visibleHeight -
+            halfWindowWidth +
+            halfCapsuleWidth,
+        normalTopLeft.dy,
+      ),
+    };
+  }
+
+  /// Zona del borde elegido que detecta al usuario acercándose para devolver
+  /// la isla. Es más ancha que la ventana para que no haga falta apuntar justo
+  /// a la franja visible, pero no cubre toda la pantalla.
+  static Rect peekActivationZone({
+    required Offset normalTopLeft,
+    required Size windowSize,
+    required Rect displayBounds,
+    required IslandPeekEdge edge,
+    double visibleHeight = defaultPeekHeight,
+    double alongPadding = peekAlongPadding,
+    double depthPadding = peekDepthPadding,
+  }) {
+    const double inset = peekEdgeInset;
+    return switch (edge) {
+      IslandPeekEdge.top => Rect.fromLTWH(
+        normalTopLeft.dx - alongPadding,
+        displayBounds.top - inset,
+        windowSize.width + alongPadding * 2,
+        visibleHeight + depthPadding,
+      ),
+      IslandPeekEdge.bottom => Rect.fromLTWH(
+        normalTopLeft.dx - alongPadding,
+        displayBounds.bottom - visibleHeight - depthPadding + inset,
+        windowSize.width + alongPadding * 2,
+        visibleHeight + depthPadding,
+      ),
+      IslandPeekEdge.left => Rect.fromLTWH(
+        displayBounds.left - inset,
+        normalTopLeft.dy - alongPadding,
+        visibleHeight + depthPadding,
+        windowSize.height + alongPadding * 2,
+      ),
+      IslandPeekEdge.right => Rect.fromLTWH(
+        displayBounds.right - visibleHeight - depthPadding + inset,
+        normalTopLeft.dy - alongPadding,
+        visibleHeight + depthPadding,
+        windowSize.height + alongPadding * 2,
+      ),
+    };
+  }
 
   /// Devuelve los vértices, en píxeles lógicos y relativos al área cliente,
   /// de la región que debe adoptar la ventana de la isla.

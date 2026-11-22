@@ -254,13 +254,47 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
               contentPadding: EdgeInsets.zero,
               title: Text('Apartar la isla al borde sin interacción'),
               subtitle: Text(
-                'Se desliza hacia arriba y vuelve al acercar el ratón al borde',
+                'Se desliza al borde elegido y vuelve desde ese mismo lado',
               ),
               value: style.autoHide,
               onChanged: (bool value) =>
                   _controller.setAutoHide(_surface, value),
             ),
-            if (style.autoHide)
+            if (style.autoHide) ...<Widget>[
+              _Label(
+                title: 'Lado de la franja',
+                subtitle: 'La isla aparecerá desde ese mismo borde',
+              ),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<IslandPeekEdge>(
+                initialValue: style.islandPeekEdge,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: IslandPeekEdge.values
+                    .map(
+                      (IslandPeekEdge value) =>
+                          DropdownMenuItem<IslandPeekEdge>(
+                            value: value,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                Icon(value.icon, size: 16),
+                                const SizedBox(width: 8),
+                                Text(value.label),
+                              ],
+                            ),
+                          ),
+                    )
+                    .toList(growable: false),
+                onChanged: (IslandPeekEdge? value) {
+                  if (value != null) {
+                    _controller.setIslandPeekEdge(_surface, value);
+                  }
+                },
+              ),
+              const SizedBox(height: 14),
               _Slider(
                 title: 'Espera',
                 value: style.autoHideSeconds.toDouble(),
@@ -270,6 +304,7 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
                 onChanged: (double value) =>
                     _controller.setAutoHideSeconds(_surface, value.round()),
               ),
+            ],
           ],
         ],
       ),

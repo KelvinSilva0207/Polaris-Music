@@ -37,11 +37,15 @@ class IslandWindow extends ConsumerStatefulWidget {
     super.key,
     required this.onRestore,
     required this.onHide,
+    required this.peekEdge,
+    required this.onPeekEdgeChanged,
     this.onCapsuleGeometryChanged,
   });
 
   final VoidCallback onRestore;
   final VoidCallback onHide;
+  final IslandPeekEdge peekEdge;
+  final Future<void> Function(IslandPeekEdge) onPeekEdgeChanged;
 
   /// Notifica el tamaño y radio reales de la píldora para que la ventana
   /// recorte su región al contorno visible y deje pasar los clics de alrededor.
@@ -68,7 +72,16 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     // el notifier, al volver del borde seguía en opacity 0 e ignoraba hover.
     _window = ref.read(windowStateProvider);
     _window!.addListener(_onWindowChanged);
+    unawaited(widget.onPeekEdgeChanged(widget.peekEdge));
     _scheduleAutoHide();
+  }
+
+  @override
+  void didUpdateWidget(covariant IslandWindow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.peekEdge != widget.peekEdge) {
+      unawaited(widget.onPeekEdgeChanged(widget.peekEdge));
+    }
   }
 
   void _onWindowChanged() {
