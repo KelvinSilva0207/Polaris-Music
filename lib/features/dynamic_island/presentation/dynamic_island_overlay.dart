@@ -64,15 +64,23 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
   @override
   void initState() {
     super.initState();
-    // `window.hide()` no cambia el modo: la isla sigue montada. Sin escuchar
-    // el notifier, al mostrarla de nuevo seguía en opacity 0 e ignoraba hover.
+    // Apartar la isla no cambia el modo: la isla sigue montada. Sin escuchar
+    // el notifier, al volver del borde seguía en opacity 0 e ignoraba hover.
     _window = ref.read(windowStateProvider);
     _window!.addListener(_onWindowChanged);
     _scheduleAutoHide();
   }
 
   void _onWindowChanged() {
-    if (!_window!.value.visible) return;
+    final WindowUiState current = _window!.value;
+    if (!current.visible) return;
+    if (current.islandPeeked) {
+      // La ventana no se oculta: solo se aparta. Cancelamos el temporizador
+      // para no encadenar otro apartado mientras asoma por el borde.
+      _hideTimer?.cancel();
+      if (_dismissing && mounted) setState(() => _dismissing = false);
+      return;
+    }
     if (_dismissing) {
       _dismissTimer?.cancel();
       if (mounted) setState(() => _dismissing = false);
@@ -88,7 +96,7 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     super.dispose();
   }
 
-  /// Contrae la cápsula antes de cerrar la ventana para que el cierre se lea
+  /// Contrae la cápsula antes de apartarla al borde para que el cambio se lea
   /// como una transición y no como una desaparición brusca.
   void _requestHide() {
     if (_dismissing || !mounted) return;
@@ -101,23 +109,37 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     );
     if (delay == Duration.zero) {
       widget.onHide();
+      if (mounted) setState(() => _dismissing = false);
       return;
     }
     _dismissTimer = Timer(delay, () {
-      if (mounted) widget.onHide();
+      if (!mounted) return;
+      widget.onHide();
+      // La isla sigue visible: devolvemos la opacidad para que se vea la
+      // franja asomando en el borde superior.
+      setState(() => _dismissing = false);
     });
   }
 
   void _scheduleAutoHide() {
     _hideTimer?.cancel();
-    if (!mounted || _hovering || _dismissing) return;
+    if (!mounted ||
+        _hovering ||
+        _dismissing ||
+        _window?.value.islandPeeked == true) {
+      return;
+    }
     final CompactStyleConfig style = ref.read(
       compactStyleProvider(CompactSurface.island),
     );
     if (!style.autoHide) return;
     final int seconds = style.autoHideSeconds.clamp(2, 60).toInt();
     _hideTimer = Timer(Duration(seconds: seconds), () {
-      if (!mounted || _hovering || _dismissing || _persistentlyExpanded) {
+      if (!mounted ||
+          _hovering ||
+          _dismissing ||
+          _window?.value.islandPeeked == true ||
+          _persistentlyExpanded) {
         return;
       }
       _requestHide();
@@ -132,7 +154,11 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
   }
 
   void _setHovering(bool value) {
-    if (_dismissing || _hovering == value) return;
+    if (_dismissing ||
+        _window?.value.islandPeeked == true ||
+        _hovering == value) {
+      return;
+    }
     setState(() => _hovering = value);
     if (value) {
       _hideTimer?.cancel();
@@ -418,7 +444,7 @@ class _Capsule extends StatelessWidget {
                             )
                           : _Action(
                               key: const ValueKey<String>('hide'),
-                              tooltip: 'Ocultar isla',
+                              tooltip: 'Esconder isla en el borde',
                               icon: Icons.visibility_off_rounded,
                               color: context.inkAlpha(0.54),
                               onTap: onHide,
@@ -583,7 +609,7 @@ class _Controls extends StatelessWidget {
           onTap: onRestore,
         ),
         _Action(
-          tooltip: 'Ocultar isla',
+          tooltip: 'Esconder isla en el borde',
           icon: Icons.visibility_off_rounded,
           color: context.inkAlpha(0.54),
           onTap: onHide,

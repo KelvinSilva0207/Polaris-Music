@@ -29,6 +29,7 @@ class WindowUiState {
     this.maximized = false,
     this.visible = true,
     this.backgrounded = false,
+    this.islandPeeked = false,
   });
 
   final WindowMode mode;
@@ -41,6 +42,10 @@ class WindowUiState {
   /// reducir animaciones y timers de UI. Nunca afecta a la reproducción.
   final bool backgrounded;
 
+  /// `true` cuando la isla se ha apartado al borde superior y solo asoma una
+  /// franja. La ventana sigue visible: no es lo mismo que [visible] a false.
+  final bool islandPeeked;
+
   WindowUiState copyWith({
     WindowMode? mode,
     bool? alwaysOnTop,
@@ -48,6 +53,7 @@ class WindowUiState {
     bool? maximized,
     bool? visible,
     bool? backgrounded,
+    bool? islandPeeked,
   }) => WindowUiState(
     mode: mode ?? this.mode,
     alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
@@ -55,6 +61,7 @@ class WindowUiState {
     maximized: maximized ?? this.maximized,
     visible: visible ?? this.visible,
     backgrounded: backgrounded ?? this.backgrounded,
+    islandPeeked: islandPeeked ?? this.islandPeeked,
   );
 }
 
@@ -80,6 +87,11 @@ class WindowService with WindowListener {
   native.Window? _nativeWindow;
   Size _capsuleSize = islandCompactCapsule;
   double _capsuleRadius = islandDefaultRadius;
+  bool _islandPeeked = false;
+  bool _peekArmed = false;
+  double _islandNormalLeft = 0;
+  double _islandNormalTop = 0;
+  Timer? _islandPeekPoll;
 
   /// Fondo nativo de la ventana. Lo fija el tema activo desde `PolarisApp` para
   /// que los bordes visibles durante el resize no muestren un negro fijo.
@@ -97,6 +109,7 @@ class WindowService with WindowListener {
   bool get sideHidden => _sideHidden;
   bool get maximized => _maximized;
   bool get backgrounded => _backgrounded;
+  bool get islandPeeked => _islandPeeked;
 
   /// Ventana nativa subyacente. Se guarda una sola referencia: `nativeapi`
   /// asocia un finalizador a cada `Window`, así que conviene no crear una
@@ -122,6 +135,12 @@ class WindowService with WindowListener {
   static const Size islandCompactCapsule = Size(196, 64);
   static const Size islandExpandedCapsule = Size(376, 104);
   static const double islandDefaultRadius = 38;
+
+  /// Franja visible cuando la isla se aparta al borde superior.
+  static const double islandPeekHeight = IslandShape.defaultPeekHeight;
+  static const Duration islandPeekPollInterval = Duration(milliseconds: 90);
+  static const double islandPeekHorizontalPadding = 140;
+  static const double islandPeekVerticalPadding = 36;
 
   Future<void> initialize() async {
     if (!isSupported || _initialized) return;
@@ -161,6 +180,7 @@ class WindowService with WindowListener {
       maximized: _maximized,
       visible: state.value.visible,
       backgrounded: _backgrounded,
+      islandPeeked: _islandPeeked,
     );
   }
 
@@ -216,6 +236,9 @@ class WindowService with WindowListener {
   }
 
   Future<void> _applyMode(WindowMode mode) async {
+    // Cualquier cambio de modo recoloca la ventana: un estado "apartada" que
+    // viniera de la isla dejaría de coincidir con su posición real.
+    _resetIslandPeek();
     if (_mode == WindowMode.normal && mode != WindowMode.normal) {
       _savedBounds = await windowManager.getBounds();
     }
@@ -309,6 +332,86 @@ class WindowService with WindowListener {
     _capsuleSize = capsuleSize;
     _capsuleRadius = radius;
     await _applyIslandShape();
+  }
+
+  /// Apartar la isla hacia el borde superior dejando asomar una franja.
+  ///
+  /// A diferencia de [hide], la ventana sigue visible y reproduciendo: la
+  /// región nativa se desplaza con ella, así que solo se ve (y recibe ratón)
+  /// la parte inferior de la cápsula. Un sondeo ligero del cursor detecta
+  /// cuándo el usuario se acerca al borde para devolverla.
+  Future<void> peekIsland() async {
+    if (!isSupported || _mode != WindowMode.island || _islandPeeked) return;
+    final Rect bounds = await windowManager.getBounds();
+    _islandNormalLeft = bounds.left;
+    _islandNormalTop = bounds.top;
+    final double top = IslandShape.peekTop(
+      windowTop: bounds.top,
+      windowHeight: islandSize.height,
+      capsuleHeight: _capsuleSize.height,
+      visibleHeight: islandPeekHeight,
+    );
+    await windowManager.setPosition(Offset(bounds.left, top), animate: true);
+    _islandPeeked = true;
+    // Si el cursor está aún sobre el botón que acaba de pulsar, no debe
+    // reabrirse: primero tiene que salir de la zona del borde.
+    _peekArmed = false;
+    _publish();
+    _startPeekWatcher();
+    AppLog.i(_tag, 'Isla apartada al borde superior');
+  }
+
+  /// Devuelve la isla a su posición flotante sobre el centro superior.
+  Future<void> unpeekIsland() async {
+    if (!isSupported || !_islandPeeked) return;
+    _islandPeeked = false;
+    _peekArmed = false;
+    _stopPeekWatcher();
+    await windowManager.setAlignment(Alignment.topCenter, animate: true);
+    _publish();
+    AppLog.i(_tag, 'Isla restaurada desde el borde');
+  }
+
+  void _resetIslandPeek() {
+    if (!_islandPeeked && _islandPeekPoll == null) return;
+    _islandPeeked = false;
+    _peekArmed = false;
+    _stopPeekWatcher();
+    _publish();
+  }
+
+  void _startPeekWatcher() {
+    _stopPeekWatcher();
+    _islandPeekPoll = Timer.periodic(islandPeekPollInterval, (Timer _) {
+      if (!isSupported || !_islandPeeked) return;
+      try {
+        final native.Point raw = native.DisplayManager.instance
+            .getCursorPosition();
+        final Offset cursor = Offset(raw.x, raw.y);
+        final Rect zone = IslandShape.peekActivationZone(
+          windowLeft: _islandNormalLeft,
+          windowTop: _islandNormalTop,
+          windowWidth: islandSize.width,
+          visibleHeight: islandPeekHeight,
+          horizontalPadding: islandPeekHorizontalPadding,
+          verticalPadding: islandPeekVerticalPadding,
+        );
+        final bool inside = zone.contains(cursor);
+        if (!inside) {
+          _peekArmed = true;
+          return;
+        }
+        if (_peekArmed) unawaited(unpeekIsland());
+      } catch (error, stack) {
+        AppLog.w(_tag, 'No se pudo leer el cursor para la isla', error, stack);
+        _stopPeekWatcher();
+      }
+    });
+  }
+
+  void _stopPeekWatcher() {
+    _islandPeekPoll?.cancel();
+    _islandPeekPoll = null;
   }
 
   Future<void> _applyIslandShape() async {
@@ -530,6 +633,7 @@ class WindowService with WindowListener {
 
   Future<void> dispose() async {
     if (!isSupported) return;
+    _stopPeekWatcher();
     windowManager.removeListener(this);
     state.dispose();
   }

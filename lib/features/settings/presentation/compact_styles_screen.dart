@@ -252,8 +252,10 @@ class _CompactStylesScreenState extends ConsumerState<CompactStylesScreen> {
             _SectionTitle(title: 'Ocultado automático'),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text('Ocultar la isla cuando no haya interacción'),
-              subtitle: Text('Vuelve a aparecer al cambiar de modo de ventana'),
+              title: Text('Apartar la isla al borde sin interacción'),
+              subtitle: Text(
+                'Se desliza hacia arriba y vuelve al acercar el ratón al borde',
+              ),
               value: style.autoHide,
               onChanged: (bool value) =>
                   _controller.setAutoHide(_surface, value),

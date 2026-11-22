@@ -16,6 +16,37 @@ abstract final class IslandShape {
   /// mantiene la región ligera (36 puntos para la cápsula completa).
   static const int segmentsPerCorner = 8;
 
+  /// Altura de la franja de la cápsula que queda visible al apartar la isla
+  /// hacia el borde superior de la pantalla.
+  static const double defaultPeekHeight = 12;
+
+  /// Posición Y que debe adoptar la ventana para que solo asome la parte
+  /// inferior de la cápsula. La cápsula está centrada dentro de la ventana,
+  /// así que su borde inferior queda en `(windowHeight + capsuleHeight) / 2`.
+  static double peekTop({
+    required double windowTop,
+    required double windowHeight,
+    required double capsuleHeight,
+    double visibleHeight = defaultPeekHeight,
+  }) => windowTop - ((windowHeight + capsuleHeight) / 2 - visibleHeight);
+
+  /// Zona del borde superior que detecta al usuario acercándose para devolver
+  /// la isla. Es más ancha que la ventana para que no haga falta apuntar justo
+  /// a la franja visible.
+  static Rect peekActivationZone({
+    required double windowLeft,
+    required double windowTop,
+    required double windowWidth,
+    double visibleHeight = defaultPeekHeight,
+    double horizontalPadding = 140,
+    double verticalPadding = 36,
+  }) => Rect.fromLTWH(
+    windowLeft - horizontalPadding,
+    windowTop - 4,
+    windowWidth + horizontalPadding * 2,
+    visibleHeight + verticalPadding,
+  );
+
   /// Devuelve los vértices, en píxeles lógicos y relativos al área cliente,
   /// de la región que debe adoptar la ventana de la isla.
   static List<Offset> points({

@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polaris_music/core/services/island_shape.dart';
 import 'package:polaris_music/core/services/window_service.dart';
@@ -68,6 +70,39 @@ void main() {
         expect(point.dx, inInclusiveRange(84, 316));
         expect(point.dy, inInclusiveRange(14, 114));
       }
+    });
+
+    test('al apartarse solo asoma la franja inferior de la cápsula', () {
+      final double top = IslandShape.peekTop(
+        windowTop: 0,
+        windowHeight: WindowService.islandSize.height,
+        capsuleHeight: WindowService.islandCompactCapsule.height,
+      );
+      final double capsuleBottom =
+          top +
+          (WindowService.islandSize.height +
+                  WindowService.islandCompactCapsule.height) /
+              2;
+
+      expect(top, closeTo(-84, 0.01));
+      expect(capsuleBottom, closeTo(IslandShape.defaultPeekHeight, 0.01));
+    });
+
+    test('la zona del borde cubre la isla sin abarcar toda la pantalla', () {
+      // Ventana centrada arriba en una pantalla hipotética de 1000 px.
+      final Rect zone = IslandShape.peekActivationZone(
+        windowLeft: 300,
+        windowTop: 0,
+        windowWidth: WindowService.islandSize.width,
+      );
+
+      expect(zone.left, 160);
+      expect(zone.right, 840);
+      expect(zone.top, -4);
+      expect(zone.bottom, IslandShape.defaultPeekHeight + 36 - 4);
+      expect(zone.contains(const Offset(500, 10)), isTrue);
+      expect(zone.contains(const Offset(500, 120)), isFalse);
+      expect(zone.contains(const Offset(50, 10)), isFalse);
     });
   });
 }

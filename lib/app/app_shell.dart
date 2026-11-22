@@ -213,7 +213,7 @@ class _AppShellState extends ConsumerState<AppShell>
               surface: CompactSurface.island,
               child: IslandWindow(
                 onRestore: window.restoreNormal,
-                onHide: window.hide,
+                onHide: window.peekIsland,
                 onCapsuleGeometryChanged: window.setIslandCapsule,
               ),
             );

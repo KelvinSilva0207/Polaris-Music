@@ -327,7 +327,8 @@ class _LiquidNavItem extends StatelessWidget {
   }
 }
 
-/// Dibuja una cápsula con el borde delantero estirado y el trasero rezagado.
+/// Dibuja el brillo del ítem activo como un halo sin bordes, desplazado en la
+/// dirección del viaje para mantener la sensación de gota al cambiar de sección.
 class _LiquidIndicatorPainter extends CustomPainter {
   _LiquidIndicatorPainter({
     required Listenable repaint,
@@ -389,39 +390,38 @@ class _LiquidIndicatorPainter extends CustomPainter {
         math.sin(math.pi * p) *
         math.min<double>(travel * 0.42, 12 + 24 * intensity);
     final double lead = stretch * (end >= start ? 1 : -1);
-    final Path blob = _blobPath(
-      Offset(x, centerY),
-      pillWidth,
-      pillHeight,
-      lead,
-    );
 
-    // Halo por capas en vez de un trazo: no queda ningún borde rígido alrededor
-    // del ítem activo y el acento se funde con Glass, Liquid, Mate o claro.
-    // El tamaño de las capas se limita al hueco real de la barra para que no se
-    // corten ni en móvil ni en la variante superior de escritorio.
+    // Indicador sin recuadro: un halo elíptico con degradado radial que se
+    // desvanece a transparente. No hay trazos ni capas con bordes definidos,
+    // así que el ítem activo no queda encerrado en ninguna píldora.
+    // El acento del tema tiñe el brillo (Glass/Liquid/Mate/Claro/RGB) y el
+    // centro se desplaza con `lead` para conservar la sensación líquida.
+    // El tamaño se limita al hueco real de la barra para no cortarse en móvil
+    // ni en la variante superior de escritorio.
     final double roomY = (centerY * 2) / height;
     final double roomX = (width / centers.length) / baseWidth;
     final double spread = math.max<double>(
       1,
-      math.min<double>(1.32, math.min(roomX, roomY)),
+      math.min<double>(1.3, math.min(roomX, roomY)),
     );
-    final double innerSpread = 1 + (spread - 1) * 0.5;
-    final Offset center = Offset(x, centerY);
-    canvas.drawPath(
-      _blobPath(center, pillWidth * spread, pillHeight * spread, lead),
-      Paint()..color = glow.withValues(alpha: glow.a * 0.35),
+    final Offset center = Offset(x + lead * 0.22, centerY);
+    final Rect glowRect = Rect.fromCenter(
+      center: center,
+      width: pillWidth * spread * 2.1 + lead.abs() * 0.5,
+      height: pillHeight * spread * 2.3,
     );
-    canvas.drawPath(
-      _blobPath(
-        center,
-        pillWidth * innerSpread,
-        pillHeight * innerSpread,
-        lead,
-      ),
-      Paint()..color = glow.withValues(alpha: glow.a * 0.7),
+    canvas.drawOval(
+      glowRect,
+      Paint()
+        ..shader = RadialGradient(
+          colors: <Color>[
+            accent.withValues(alpha: fill.a + glow.a * 0.35),
+            accent.withValues(alpha: glow.a * 0.22),
+            accent.withValues(alpha: 0),
+          ],
+          stops: const <double>[0, 0.45, 1],
+        ).createShader(glowRect),
     );
-    canvas.drawPath(blob, Paint()..color = fill);
 
     // Brillo breve en el borde delantero: refuerza la dirección del viaje.
     if (lead.abs() > 2) {
@@ -432,52 +432,6 @@ class _LiquidIndicatorPainter extends CustomPainter {
         Paint()..color = accent.withValues(alpha: 0.55),
       );
     }
-  }
-
-  Path _blobPath(Offset center, double w, double h, double lead) {
-    final double left = center.dx - w / 2;
-    final double right = center.dx + w / 2;
-    final double top = center.dy - h / 2;
-    final double bottom = center.dy + h / 2;
-    final double radius = h / 2;
-
-    return Path()
-      ..moveTo(left + radius, top)
-      ..lineTo(right - radius, top)
-      ..cubicTo(
-        right + lead * 0.65,
-        top,
-        right + lead,
-        center.dy - h * 0.22,
-        right + lead,
-        center.dy,
-      )
-      ..cubicTo(
-        right + lead,
-        center.dy + h * 0.22,
-        right + lead * 0.65,
-        bottom,
-        right - radius,
-        bottom,
-      )
-      ..lineTo(left + radius, bottom)
-      ..cubicTo(
-        left + lead * 0.35,
-        bottom,
-        left + lead,
-        center.dy + h * 0.22,
-        left + lead,
-        center.dy,
-      )
-      ..cubicTo(
-        left + lead,
-        center.dy - h * 0.22,
-        left + lead * 0.35,
-        top,
-        left + radius,
-        top,
-      )
-      ..close();
   }
 
   @override
