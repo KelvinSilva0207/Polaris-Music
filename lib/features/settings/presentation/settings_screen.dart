@@ -43,6 +43,35 @@ import '../../../shared/widgets/polaris_logo.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import 'customization_screen.dart';
 
+/// Áreas en las que se agrupan los ajustes para no mostrar 17 bloques a la vez.
+enum _SettingsArea {
+  appearance('Apariencia', Icons.palette_outlined),
+  audio('Audio', Icons.graphic_eq_rounded),
+  content('Biblioteca', Icons.library_music_outlined),
+  accounts('Cuentas', Icons.person_outline_rounded),
+  system('Sistema', Icons.tune_rounded),
+  about('Acerca de', Icons.info_outline_rounded);
+
+  const _SettingsArea(this.label, this.icon);
+
+  final String label;
+  final IconData icon;
+}
+
+/// Índices de `_buildSections` que pertenecen a cada área.
+///
+/// La lista de secciones mantiene siempre 17 entradas (las condicionales
+/// devuelven `SizedBox.shrink()`) para que estos índices no cambien según la
+/// plataforma.
+const Map<_SettingsArea, List<int>> _areaSections = <_SettingsArea, List<int>>{
+  _SettingsArea.appearance: <int>[0, 6],
+  _SettingsArea.audio: <int>[1, 4, 5],
+  _SettingsArea.content: <int>[2, 3],
+  _SettingsArea.accounts: <int>[8, 13],
+  _SettingsArea.system: <int>[7, 9, 10, 11],
+  _SettingsArea.about: <int>[12, 14, 15, 16],
+};
+
 /// Ajustes de Polaris Music: apariencia, audio, ventana, respaldos y más.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key, required this.onNavigate});
@@ -54,6 +83,8 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  _SettingsArea _area = _SettingsArea.appearance;
+
   @override
   Widget build(BuildContext context) {
     final bool replayGain = ref.watch(
@@ -99,7 +130,458 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         settings.pauseOnHeadphonesDisconnect;
     final bool pauseOnVolumeZero = settings.pauseOnVolumeZero;
 
+    // Las secciones se construyen una sola vez; el selector de áreas decide
+    // cuáles se insertan en el árbol para no saturar la pantalla.
+    final List<Widget> sections = <Widget>[
+      _Section(
+        title: 'Apariencia',
+        icon: Icons.palette_outlined,
+        children: <Widget>[
+          _SettingCard(
+            icon: Icons.palette_outlined,
+            title: 'Apariencia',
+            subtitle: 'Temas, colores, acabados, movimiento, tipografía y diseños compactos',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => const CustomizationScreen(),
+              ),
+            ),
+          ),
+        ],
+      ),
+      _Section(
+        title: 'Reproducción',
+        icon: Icons.graphic_eq_rounded,
+        children: <Widget>[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('ReplayGain'),
+            subtitle: Text(
+              'Normaliza el volumen usando las etiquetas de la pista',
+            ),
+            value: replayGain,
+            onChanged: (bool value) => ref
+                .read(playerControllerProvider.notifier)
+                .setReplayGainEnabled(value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Modo puro / sin filtros'),
+            subtitle: Text(
+              'Bypass temporal del ecualizador, el sub-armónico y el '
+              'limitador. Tu curva se conserva intacta al volver a activarlos.',
+            ),
+            value: pureAudio,
+            onChanged: (bool value) =>
+                ref.read(equalizerControllerProvider.notifier).setPure(value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Pausar al desconectar auriculares'),
+            subtitle: Text(
+              'Detecta la desconexión o el cambio de salida de audio',
+            ),
+            value: pauseOnHeadphonesDisconnect,
+            onChanged: (bool value) => settings.setBool(
+              AppConstants.keyPauseOnHeadphonesDisconnect,
+              value,
+            ),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Pausar si el volumen llega a cero'),
+            subtitle: Text(
+              'Tanto el deslizador de la app como el volumen multimedia',
+            ),
+            value: pauseOnVolumeZero,
+            onChanged: (bool value) =>
+                settings.setBool(AppConstants.keyPauseOnVolumeZero, value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Reproducción sin pausas (gapless)'),
+            subtitle: Text(
+              'mpv encadena pistas sin hueco. Se desactiva al usar crossfade.',
+            ),
+            value: gapless,
+            onChanged: (bool value) => ref
+                .read(playerControllerProvider.notifier)
+                .setGaplessEnabled(value),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Crossfade entre pistas'),
+            subtitle: Text(
+              'Dos decks mpv: funde pistas y desactiva el gapless estricto.',
+            ),
+            value: crossfade,
+            onChanged: (bool value) => ref
+                .read(playerControllerProvider.notifier)
+                .setCrossfade(enabled: value),
+          ),
+          if (crossfade)
+            Row(
+              children: <Widget>[
+                const SizedBox(width: 4),
+                Text('Duración', style: TextStyle(fontSize: 12)),
+                Expanded(
+                  child: Slider(
+                    value: crossfadeMs.toDouble().clamp(0, 12000),
+                    min: 0,
+                    max: 12000,
+                    divisions: 24,
+                    onChanged: (double value) => ref
+                        .read(playerControllerProvider.notifier)
+                        .setCrossfade(enabled: true, ms: value.round()),
+                  ),
+                ),
+                SizedBox(
+                  width: 54,
+                  child: Text(
+                    '${(crossfadeMs / 1000).toStringAsFixed(1)} s',
+                    textAlign: TextAlign.end,
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Omitir silencios largos'),
+            subtitle: Text(
+              'Recorta el inicio y el final de cada pista (offsets de mpv)',
+            ),
+            value: silenceTrim,
+            onChanged: (bool value) => ref
+                .read(playerControllerProvider.notifier)
+                .setSilenceTrim(enabled: value),
+          ),
+          if (silenceTrim) ...<Widget>[
+            _TrimSlider(
+              label: 'Inicio',
+              value: trimStartMs,
+              onChanged: (int ms) => ref
+                  .read(playerControllerProvider.notifier)
+                  .setSilenceTrim(enabled: true, startMs: ms),
+            ),
+            _TrimSlider(
+              label: 'Final',
+              value: trimEndMs,
+              onChanged: (int ms) => ref
+                  .read(playerControllerProvider.notifier)
+                  .setSilenceTrim(enabled: true, endMs: ms),
+            ),
+          ],
+        ],
+      ),
+      _Section(
+        title: 'Biblioteca',
+        icon: Icons.library_music_outlined,
+        children: <Widget>[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Escanear al iniciar'),
+            subtitle: Text(
+              'Reindexa las carpetas configuradas al abrir la app',
+            ),
+            value: scanOnStartup,
+            onChanged: (bool value) async {
+              await ref
+                  .read(settingsServiceProvider)
+                  .setBool(AppConstants.keyScanOnStartup, value);
+              setState(() {});
+            },
+          ),
+          const SizedBox(height: 6),
+          _SettingCard(
+            icon: Icons.library_music_outlined,
+            title: 'Administrar biblioteca',
+            subtitle: 'Escanear, gestionar carpetas y revisar duplicados',
+            onTap: () => widget.onNavigate(AppSection.library),
+          ),
+        ],
+      ),
+      _Section(
+        title: 'Inicio y estadísticas',
+        icon: Icons.dashboard_customize_outlined,
+        children: <Widget>[
+          Text(
+            'Polaris abre directamente en el reproductor. El resumen de '
+            'bienvenida y las estadísticas de escucha están aquí para no '
+            'ocupar la navegación principal.',
+            style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: <Widget>[
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext context) => Scaffold(
+                      appBar: AppBar(title: Text('Resumen')),
+                      body: HomeScreen(onNavigate: widget.onNavigate),
+                    ),
+                  ),
+                ),
+                icon: Icon(Icons.auto_awesome_outlined, size: 18),
+                label: Text('Resumen y bienvenida'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (BuildContext context) =>
+                        const Scaffold(body: StatsScreen()),
+                  ),
+                ),
+                icon: Icon(Icons.insights_rounded, size: 18),
+                label: Text('Estadísticas'),
+              ),
+            ],
+          ),
+        ],
+      ),
+      _Section(
+        title: 'Ecualizador',
+        icon: Icons.graphic_eq_rounded,
+        children: <Widget>[
+          Text(
+            'Diez bandas de estudio, preamplificador y curvas guardadas. '
+            'Con filtros activos se aplica preamp automático y un limitador '
+            'suave para evitar recortes; el modo puro los deja a todos fuera.',
+            style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => Scaffold(
+                  appBar: AppBar(title: Text('Ecualizador')),
+                  body: const EqualizerScreen(),
+                ),
+              ),
+            ),
+            icon: Icon(Icons.equalizer_rounded, size: 18),
+            label: Text('Abrir ecualizador'),
+          ),
+        ],
+      ),
+      if (Platform.isWindows)
+        const _HotkeysSection()
+      else
+        const SizedBox.shrink(),
+      _Section(
+        title: 'Isla dinámica',
+        icon: Icons.picture_in_picture_alt_rounded,
+        children: <Widget>[
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('Minimizar a isla flotante'),
+            subtitle: Text(
+              'Al minimizar, la ventana se transforma en una isla siempre '
+              'encima con carátula y controles rápidos',
+            ),
+            value: islandEnabled,
+            onChanged: (bool value) => ref
+                .read(dynamicIslandControllerProvider.notifier)
+                .setEnabled(value),
+          ),
+        ],
+      ),
+      if (window.isSupported)
+        ValueListenableBuilder<WindowUiState>(
+          valueListenable: ref.watch(windowStateProvider),
+          builder: (BuildContext context, WindowUiState state, Widget? _) {
+            return _Section(
+              title: 'Ventana',
+              icon: Icons.desktop_windows_outlined,
+              children: <Widget>[
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Siempre encima'),
+                  subtitle: Text('Mantiene la ventana sobre otras apps'),
+                  value: state.alwaysOnTop,
+                  onChanged: window.setAlwaysOnTop,
+                ),
+                const SizedBox(height: 6),
+                const _SettingLabel(
+                  title: 'Modo de ventana',
+                  subtitle: 'Normal, isla, mini barra o teléfono flotante',
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: <Widget>[
+                    _ModeButton(
+                      icon: Icons.crop_square_rounded,
+                      label: 'Normal',
+                      selected: state.mode == WindowMode.normal,
+                      onPressed: () => window.setMode(WindowMode.normal),
+                    ),
+                    _ModeButton(
+                      icon: Icons.picture_in_picture_alt_rounded,
+                      label: 'Isla',
+                      selected: state.mode == WindowMode.island,
+                      onPressed: () => window.showIsland(),
+                    ),
+                    _ModeButton(
+                      icon: Icons.view_agenda_outlined,
+                      label: 'Mini barra',
+                      selected: state.mode == WindowMode.mini,
+                      onPressed: () => window.setMode(WindowMode.mini),
+                    ),
+                    _ModeButton(
+                      icon: Icons.phone_android_rounded,
+                      label: 'Teléfono',
+                      selected: state.mode == WindowMode.phone,
+                      onPressed: () => window.setMode(WindowMode.phone),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: window.toggleSideHidden,
+                  icon: Icon(
+                    state.sideHidden
+                        ? Icons.keyboard_double_arrow_right_rounded
+                        : Icons.keyboard_double_arrow_left_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    state.sideHidden
+                        ? 'Mostrar ventana'
+                        : 'Ocultar al borde (estilo AIMP)',
+                  ),
+                ),
+              ],
+            );
+          },
+        )
+      else
+        const SizedBox.shrink(),
+      const _ProfilesSection(),
+      const _PermissionsSection(),
+      const _StorageSection(),
+      if (Platform.isAndroid)
+        _Section(
+          title: 'Cierre de la aplicación',
+          icon: Icons.power_settings_new_rounded,
+          children: <Widget>[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.power_off_rounded),
+              title: Text('Cerrar aplicación completamente'),
+              subtitle: Text(
+                'Detiene el audio, quita la notificación y finaliza Polaris.',
+              ),
+              onTap: _confirmFullExit,
+            ),
+          ],
+        )
+      else
+        const SizedBox.shrink(),
+      const _UpdateSection(),
+      const _ScrobbleSection(),
+      _Section(
+        title: 'Restablecer ajustes',
+        icon: Icons.restart_alt_rounded,
+        children: <Widget>[
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.restore_rounded),
+            title: const Text('Restablecer ajustes por defecto'),
+            subtitle: const Text(
+              'Tema, animaciones, estilos, ecualizador, atajos y carpetas '
+              'vuelven a su estado inicial. Biblioteca y cuentas se conservan.',
+            ),
+            onTap: _confirmResetSettings,
+          ),
+        ],
+      ),
+      _Section(
+        title: 'Diagnóstico',
+        icon: Icons.bug_report_outlined,
+        children: <Widget>[
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.copy_all_rounded),
+            title: Text('Copiar informe de diagnóstico'),
+            subtitle: Text(
+              'Versión, permiso de instalación y huella de la firma',
+            ),
+            onTap: () async {
+              final String report = await buildDiagnosticsReport(
+                sl<AppUpdaterService>(),
+              );
+              await Clipboard.setData(ClipboardData(text: report));
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Diagnóstico copiado al portapapeles'),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+      _Section(
+        title: 'Acerca de',
+        icon: Icons.info_outline_rounded,
+        children: <Widget>[
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.code_rounded),
+            title: Text('Créditos y tecnologías'),
+            subtitle: Text('Flutter, media_kit, Drift y más'),
+            trailing: Icon(Icons.chevron_right_rounded),
+            onTap: () => _showCredits(context),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const PolarisLogo(size: 26),
+            title: Text('Repositorio en GitHub'),
+            subtitle: Text(
+              '${AppConstants.githubOwner}/${AppConstants.githubRepo}',
+            ),
+            trailing: Icon(Icons.chevron_right_rounded),
+            onTap: () => ref
+                .read(updateServiceProvider)
+                .openReleasePage(UpdateInfo.upToDate),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.replay_rounded),
+            title: Text('Repetir introducción'),
+            subtitle: Text('Vuelve a ver la bienvenida y los permisos'),
+            trailing: Icon(Icons.chevron_right_rounded),
+            onTap: () async {
+              await ref
+                  .read(settingsServiceProvider)
+                  .setBool(AppConstants.keyOnboardingDone, false);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'La introducción se mostrará la próxima vez que abras '
+                      'Polaris.',
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    ];
+
+    final List<int> indices = _areaSections[_area]!;
     return ListView(
+      // KEY por área: al cambiar, la lista se reconstruye y el scroll vuelve
+      // arriba en lugar de quedarse a media altura del área anterior.
+      key: ValueKey<_SettingsArea>(_area),
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
       children: <Widget>[
         Text(
@@ -112,463 +594,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           'Personaliza Polaris a tu manera',
           style: TextStyle(color: context.inkAlpha(0.54)),
         ),
-        const SizedBox(height: 22),
-        _Section(
-          title: 'Apariencia',
-          icon: Icons.palette_outlined,
-          children: <Widget>[
-            _SettingCard(
-              icon: Icons.palette_outlined,
-              title: 'Apariencia',
-              subtitle: 'Temas, colores, acabados, movimiento, tipografía y diseños compactos',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (BuildContext context) =>
-                      const CustomizationScreen(),
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Reproducción',
-          icon: Icons.graphic_eq_rounded,
-          children: <Widget>[
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('ReplayGain'),
-              subtitle: Text(
-                'Normaliza el volumen usando las etiquetas de la pista',
-              ),
-              value: replayGain,
-              onChanged: (bool value) => ref
-                  .read(playerControllerProvider.notifier)
-                  .setReplayGainEnabled(value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Modo puro / sin filtros'),
-              subtitle: Text(
-                'Bypass temporal del ecualizador, el sub-armónico y el '
-                'limitador. Tu curva se conserva intacta al volver a activarlos.',
-              ),
-              value: pureAudio,
-              onChanged: (bool value) =>
-                  ref.read(equalizerControllerProvider.notifier).setPure(value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Pausar al desconectar auriculares'),
-              subtitle: Text(
-                'Detecta la desconexión o el cambio de salida de audio',
-              ),
-              value: pauseOnHeadphonesDisconnect,
-              onChanged: (bool value) => settings.setBool(
-                AppConstants.keyPauseOnHeadphonesDisconnect,
-                value,
-              ),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Pausar si el volumen llega a cero'),
-              subtitle: Text(
-                'Tanto el deslizador de la app como el volumen multimedia',
-              ),
-              value: pauseOnVolumeZero,
-              onChanged: (bool value) =>
-                  settings.setBool(AppConstants.keyPauseOnVolumeZero, value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Reproducción sin pausas (gapless)'),
-              subtitle: Text(
-                'mpv encadena pistas sin hueco. Se desactiva al usar crossfade.',
-              ),
-              value: gapless,
-              onChanged: (bool value) => ref
-                  .read(playerControllerProvider.notifier)
-                  .setGaplessEnabled(value),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Crossfade entre pistas'),
-              subtitle: Text(
-                'Dos decks mpv: funde pistas y desactiva el gapless estricto.',
-              ),
-              value: crossfade,
-              onChanged: (bool value) => ref
-                  .read(playerControllerProvider.notifier)
-                  .setCrossfade(enabled: value),
-            ),
-            if (crossfade)
-              Row(
-                children: <Widget>[
-                  const SizedBox(width: 4),
-                  Text('Duración', style: TextStyle(fontSize: 12)),
-                  Expanded(
-                    child: Slider(
-                      value: crossfadeMs.toDouble().clamp(0, 12000),
-                      min: 0,
-                      max: 12000,
-                      divisions: 24,
-                      onChanged: (double value) => ref
-                          .read(playerControllerProvider.notifier)
-                          .setCrossfade(enabled: true, ms: value.round()),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 54,
-                    child: Text(
-                      '${(crossfadeMs / 1000).toStringAsFixed(1)} s',
-                      textAlign: TextAlign.end,
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Omitir silencios largos'),
-              subtitle: Text(
-                'Recorta el inicio y el final de cada pista (offsets de mpv)',
-              ),
-              value: silenceTrim,
-              onChanged: (bool value) => ref
-                  .read(playerControllerProvider.notifier)
-                  .setSilenceTrim(enabled: value),
-            ),
-            if (silenceTrim) ...<Widget>[
-              _TrimSlider(
-                label: 'Inicio',
-                value: trimStartMs,
-                onChanged: (int ms) => ref
-                    .read(playerControllerProvider.notifier)
-                    .setSilenceTrim(enabled: true, startMs: ms),
-              ),
-              _TrimSlider(
-                label: 'Final',
-                value: trimEndMs,
-                onChanged: (int ms) => ref
-                    .read(playerControllerProvider.notifier)
-                    .setSilenceTrim(enabled: true, endMs: ms),
-              ),
-            ],
-          ],
-        ),
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Biblioteca',
-          icon: Icons.library_music_outlined,
-          children: <Widget>[
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Escanear al iniciar'),
-              subtitle: Text(
-                'Reindexa las carpetas configuradas al abrir la app',
-              ),
-              value: scanOnStartup,
-              onChanged: (bool value) async {
-                await ref
-                    .read(settingsServiceProvider)
-                    .setBool(AppConstants.keyScanOnStartup, value);
-                setState(() {});
-              },
-            ),
-            const SizedBox(height: 6),
-            _SettingCard(
-              icon: Icons.library_music_outlined,
-              title: 'Administrar biblioteca',
-              subtitle: 'Escanear, gestionar carpetas y revisar duplicados',
-              onTap: () => widget.onNavigate(AppSection.library),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Inicio y estadísticas',
-          icon: Icons.dashboard_customize_outlined,
-          children: <Widget>[
-            Text(
-              'Polaris abre directamente en el reproductor. El resumen de '
-              'bienvenida y las estadísticas de escucha están aquí para no '
-              'ocupar la navegación principal.',
-              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: <Widget>[
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (BuildContext context) => Scaffold(
-                        appBar: AppBar(title: Text('Resumen')),
-                        body: HomeScreen(onNavigate: widget.onNavigate),
-                      ),
-                    ),
-                  ),
-                  icon: Icon(Icons.auto_awesome_outlined, size: 18),
-                  label: Text('Resumen y bienvenida'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (BuildContext context) =>
-                          const Scaffold(body: StatsScreen()),
-                    ),
-                  ),
-                  icon: Icon(Icons.insights_rounded, size: 18),
-                  label: Text('Estadísticas'),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Ecualizador',
-          icon: Icons.graphic_eq_rounded,
-          children: <Widget>[
-            Text(
-              'Diez bandas de estudio, preamplificador y curvas guardadas. '
-              'Con filtros activos se aplica preamp automático y un limitador '
-              'suave para evitar recortes; el modo puro los deja a todos fuera.',
-              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
-            ),
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (BuildContext context) => Scaffold(
-                    appBar: AppBar(title: Text('Ecualizador')),
-                    body: const EqualizerScreen(),
-                  ),
-                ),
-              ),
-              icon: Icon(Icons.equalizer_rounded, size: 18),
-              label: Text('Abrir ecualizador'),
-            ),
-          ],
-        ),
-        if (Platform.isWindows) ...<Widget>[
-          const SizedBox(height: 16),
-          const _HotkeysSection(),
-        ],
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Isla dinámica',
-          icon: Icons.picture_in_picture_alt_rounded,
-          children: <Widget>[
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text('Minimizar a isla flotante'),
-              subtitle: Text(
-                'Al minimizar, la ventana se transforma en una isla siempre '
-                'encima con carátula y controles rápidos',
-              ),
-              value: islandEnabled,
-              onChanged: (bool value) => ref
-                  .read(dynamicIslandControllerProvider.notifier)
-                  .setEnabled(value),
-            ),
-          ],
-        ),
-        if (window.isSupported) ...<Widget>[
-          const SizedBox(height: 16),
-          ValueListenableBuilder<WindowUiState>(
-            valueListenable: ref.watch(windowStateProvider),
-            builder: (BuildContext context, WindowUiState state, Widget? _) {
-              return _Section(
-                title: 'Ventana',
-                icon: Icons.desktop_windows_outlined,
-                children: <Widget>[
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('Siempre encima'),
-                    subtitle: Text('Mantiene la ventana sobre otras apps'),
-                    value: state.alwaysOnTop,
-                    onChanged: window.setAlwaysOnTop,
-                  ),
-                  const SizedBox(height: 6),
-                  const _SettingLabel(
-                    title: 'Modo de ventana',
-                    subtitle: 'Normal, isla, mini barra o teléfono flotante',
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: <Widget>[
-                      _ModeButton(
-                        icon: Icons.crop_square_rounded,
-                        label: 'Normal',
-                        selected: state.mode == WindowMode.normal,
-                        onPressed: () => window.setMode(WindowMode.normal),
-                      ),
-                      _ModeButton(
-                        icon: Icons.picture_in_picture_alt_rounded,
-                        label: 'Isla',
-                        selected: state.mode == WindowMode.island,
-                        onPressed: () => window.showIsland(),
-                      ),
-                      _ModeButton(
-                        icon: Icons.view_agenda_outlined,
-                        label: 'Mini barra',
-                        selected: state.mode == WindowMode.mini,
-                        onPressed: () => window.setMode(WindowMode.mini),
-                      ),
-                      _ModeButton(
-                        icon: Icons.phone_android_rounded,
-                        label: 'Teléfono',
-                        selected: state.mode == WindowMode.phone,
-                        onPressed: () => window.setMode(WindowMode.phone),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: window.toggleSideHidden,
-                    icon: Icon(
-                      state.sideHidden
-                          ? Icons.keyboard_double_arrow_right_rounded
-                          : Icons.keyboard_double_arrow_left_rounded,
-                      size: 18,
-                    ),
-                    label: Text(
-                      state.sideHidden
-                          ? 'Mostrar ventana'
-                          : 'Ocultar al borde (estilo AIMP)',
-                    ),
-                  ),
-                ],
-              );
-            },
+        const SizedBox(height: 20),
+        Text(
+          'Áreas',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: context.inkAlpha(0.48),
           ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: <Widget>[
+            for (final _SettingsArea area in _SettingsArea.values)
+              _ModeButton(
+                icon: area.icon,
+                label: area.label,
+                selected: area == _area,
+                onPressed: () => setState(() => _area = area),
+              ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        for (final int index in indices) ...<Widget>[
+          if (index != indices.first) const SizedBox(height: 16),
+          sections[index],
         ],
-        const SizedBox(height: 16),
-        const _ProfilesSection(),
-        const SizedBox(height: 16),
-        const _PermissionsSection(),
-        const SizedBox(height: 16),
-        const _StorageSection(),
-        if (Platform.isAndroid) ...<Widget>[
-          const SizedBox(height: 16),
-          _Section(
-            title: 'Cierre de la aplicación',
-            icon: Icons.power_settings_new_rounded,
-            children: <Widget>[
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(Icons.power_off_rounded),
-                title: Text('Cerrar aplicación completamente'),
-                subtitle: Text(
-                  'Detiene el audio, quita la notificación y finaliza Polaris.',
-                ),
-                onTap: _confirmFullExit,
-              ),
-            ],
-          ),
-        ],
-        const SizedBox(height: 16),
-        const _UpdateSection(),
-        const SizedBox(height: 16),
-        const _ScrobbleSection(),
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Restablecer ajustes',
-          icon: Icons.restart_alt_rounded,
-          children: <Widget>[
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.restore_rounded),
-              title: const Text('Restablecer ajustes por defecto'),
-              subtitle: const Text(
-                'Tema, animaciones, estilos, ecualizador, atajos y carpetas '
-                'vuelven a su estado inicial. Biblioteca y cuentas se conservan.',
-              ),
-              onTap: _confirmResetSettings,
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Diagnóstico',
-          icon: Icons.bug_report_outlined,
-          children: <Widget>[
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.copy_all_rounded),
-              title: Text('Copiar informe de diagnóstico'),
-              subtitle: Text(
-                'Versión, permiso de instalación y huella de la firma',
-              ),
-              onTap: () async {
-                final String report = await buildDiagnosticsReport(
-                  sl<AppUpdaterService>(),
-                );
-                await Clipboard.setData(ClipboardData(text: report));
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Diagnóstico copiado al portapapeles'),
-                    ),
-                  );
-                }
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        _Section(
-          title: 'Acerca de',
-          icon: Icons.info_outline_rounded,
-          children: <Widget>[
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.code_rounded),
-              title: Text('Créditos y tecnologías'),
-              subtitle: Text('Flutter, media_kit, Drift y más'),
-              trailing: Icon(Icons.chevron_right_rounded),
-              onTap: () => _showCredits(context),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const PolarisLogo(size: 26),
-              title: Text('Repositorio en GitHub'),
-              subtitle: Text(
-                '${AppConstants.githubOwner}/${AppConstants.githubRepo}',
-              ),
-              trailing: Icon(Icons.chevron_right_rounded),
-              onTap: () => ref
-                  .read(updateServiceProvider)
-                  .openReleasePage(UpdateInfo.upToDate),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.replay_rounded),
-              title: Text('Repetir introducción'),
-              subtitle: Text('Vuelve a ver la bienvenida y los permisos'),
-              trailing: Icon(Icons.chevron_right_rounded),
-              onTap: () async {
-                await ref
-                    .read(settingsServiceProvider)
-                    .setBool(AppConstants.keyOnboardingDone, false);
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'La introducción se mostrará la próxima vez que abras '
-                        'Polaris.',
-                      ),
-                    ),
-                  );
-                }
-              },
-            ),
-          ],
-        ),
       ],
     );
   }
