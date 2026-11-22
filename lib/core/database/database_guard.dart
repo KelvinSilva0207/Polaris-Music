@@ -1,9 +1,9 @@
 import 'dart:io';
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../constants/app_constants.dart';
+import '../constants/app_paths.dart';
 import '../utils/logger.dart';
 
 /// Resultado de la comprobación previa a abrir la base de datos.
@@ -44,13 +44,39 @@ class DatabaseGuard {
 
   static const String _tag = 'DatabaseGuard';
   static const String databaseName = 'polaris_music';
-  static const String fileName = '$databaseName.sqlite';
+  static const String fileName = AppConstants.databaseFileName;
   static const String backupExtension = '.bak';
 
   /// Ruta que usa `driftDatabase(name: 'polaris_music')` en nativo.
-  static Future<File> databaseFile() async {
-    final Directory documents = await getApplicationDocumentsDirectory();
-    return File(p.join(documents.path, fileName));
+  ///
+  /// Desde esta versión la base de datos vive en la raíz interna estándar
+  /// (`%LOCALAPPDATA%\Polaris Music` en Windows), no en Documentos.
+  static Future<File> databaseFile() => AppPaths.databaseFile();
+
+  /// Traslada una base de datos de v1.0.9 desde Documentos si aún no existe en
+  /// la nueva ubicación. Solo se copia cuando pasa `quick_check`: una copia
+  /// corrupta se deja donde está para no perder el original.
+  static Future<void> migrateLegacyOnWindows() async {
+    if (!Platform.isWindows) return;
+    try {
+      final File target = await databaseFile();
+      if (target.existsSync()) return;
+      final File? legacy = await AppPaths.legacyDatabaseFile();
+      if (legacy == null || !legacy.existsSync()) return;
+      if (_check(legacy) != null) {
+        AppLog.w(_tag, 'La base de datos antigua está dañada; no se migra');
+        return;
+      }
+      await _copyWithSidecars(legacy, target);
+      AppLog.i(_tag, 'Base de datos migrada a ${target.path}');
+    } catch (error, stack) {
+      AppLog.w(
+        _tag,
+        'No se pudo migrar la base de datos antigua',
+        error,
+        stack,
+      );
+    }
   }
 
   /// Copia de seguridad junto al archivo original (`polaris_music.sqlite.bak`).
@@ -67,6 +93,7 @@ class DatabaseGuard {
   static Future<DatabaseGuardOutcome> prepare({
     required int targetSchemaVersion,
   }) async {
+    await migrateLegacyOnWindows();
     final File db = await databaseFile();
     if (!db.existsSync()) {
       AppLog.i(_tag, 'No hay base de datos previa; se creará una nueva');

@@ -25,9 +25,13 @@ class EqualizerState {
     this.loaded = false,
     this.activeDeviceName,
     this.usingDeviceProfile = false,
+    this.pure = false,
   });
 
   final bool enabled;
+
+  /// Bypass temporal de todo el DSP; la [config] no se toca.
+  final bool pure;
   final EqualizerConfig config;
   final List<EqualizerPreset> presets;
   final String selectedPreset;
@@ -55,8 +59,10 @@ class EqualizerState {
     bool? loaded,
     Object? activeDeviceName = _unset,
     bool? usingDeviceProfile,
+    bool? pure,
   }) => EqualizerState(
     enabled: enabled ?? this.enabled,
+    pure: pure ?? this.pure,
     config: config ?? this.config,
     presets: presets ?? this.presets,
     selectedPreset: selectedPreset ?? this.selectedPreset,
@@ -73,8 +79,9 @@ class EqualizerState {
 /// Controlador del ecualizador.
 ///
 /// Los ajustes se persisten en Drift y se envían a libmpv como una cadena
-/// `lavfi` (preamp + bandas o filtros paramétricos + sub-armónico). En
-/// plataformas sin libmpv nativo el DSP se omite y la UI lo indica.
+/// `lavfi` (preamp + bandas o filtros paramétricos + sub-armónico + anti-clip).
+/// [EqualizerState.pure] bypassa esa cadena sin borrar la curva. En plataformas
+/// sin libmpv nativo el DSP se omite y la UI lo indica.
 class EqualizerController extends StateNotifier<EqualizerState> {
   EqualizerController(this._dao, this._settings, this._engine, [this._profiles])
     : super(const EqualizerState());
@@ -127,6 +134,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
     _globalConfig = config;
     state = state.copyWith(
       enabled: _settings.boolOr(AppConstants.keyEqEnabled, fallback: false),
+      pure: _settings.pureAudio,
       config: config,
       presets: presets,
       selectedPreset: presetName,
@@ -201,6 +209,19 @@ class EqualizerController extends StateNotifier<EqualizerState> {
   }
 
   Future<void> toggleEnabled() => setEnabled(!state.enabled);
+
+  /// Activa/desactiva el bypass sin alterar la curva ni el sub-armónico.
+  ///
+  /// Es la única fuente de verdad del modo puro: persistimos la preferencia y
+  /// recalculamos `af` para que el silencio de filtros sea inmediato.
+  Future<void> setPure(bool value) async {
+    if (state.pure == value) return;
+    state = state.copyWith(pure: value);
+    await _settings.setPureAudio(value);
+    await _applyDsp();
+  }
+
+  Future<void> togglePure() => setPure(!state.pure);
 
   Future<void> setMode(EqMode mode) async {
     await _update(state.config.copyWith(mode: mode));
@@ -393,6 +414,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
         mode: state.config.mode,
         filters: state.config.filters,
         sub: state.config.sub,
+        pure: state.pure,
       ),
     );
   }

@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/theme/motion_config.dart';
 import '../../core/theme/theme_tokens.dart';
@@ -20,6 +23,7 @@ class TactileIconButton extends StatefulWidget {
     this.iconSize = 24,
     this.echoColor,
     this.enabled = true,
+    this.haptic = false,
   });
 
   final IconData icon;
@@ -29,6 +33,9 @@ class TactileIconButton extends StatefulWidget {
   final double iconSize;
   final Color? echoColor;
   final bool enabled;
+
+  /// Vibración mínima en controles de transporte; desactivada en ajustes.
+  final bool haptic;
 
   @override
   State<TactileIconButton> createState() => _TactileIconButtonState();
@@ -87,6 +94,7 @@ class _TactileIconButtonState extends State<TactileIconButton>
     if (context.motionAllowed(MotionCategory.gestures)) {
       _controller.forward(from: 0);
     }
+    if (widget.haptic) unawaited(HapticFeedback.lightImpact());
     widget.onPressed();
   }
 
@@ -94,13 +102,19 @@ class _TactileIconButtonState extends State<TactileIconButton>
   Widget build(BuildContext context) {
     final Color accent = widget.echoColor ?? context.accent;
     final double intensity = context.motion.intensity;
-    final Widget button = IconButton(
-      tooltip: widget.tooltip,
-      iconSize: widget.iconSize,
-      onPressed: widget.enabled ? _handlePressed : null,
-      icon: Icon(
-        widget.icon,
-        color: widget.color ?? (widget.enabled ? null : context.inkAlpha(0.24)),
+    final Widget button = Semantics(
+      label: widget.tooltip,
+      button: true,
+      enabled: widget.enabled,
+      child: IconButton(
+        tooltip: widget.tooltip,
+        iconSize: widget.iconSize,
+        onPressed: widget.enabled ? _handlePressed : null,
+        icon: Icon(
+          widget.icon,
+          color:
+              widget.color ?? (widget.enabled ? null : context.inkAlpha(0.24)),
+        ),
       ),
     );
 

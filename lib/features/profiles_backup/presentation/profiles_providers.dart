@@ -27,8 +27,8 @@ class BackupActions {
 
   final ProfilesService _service;
 
-  Future<String> export({bool compress = true}) =>
-      _service.exportBackup(compress: compress);
+  Future<String> export({bool compress = true, Directory? directory}) =>
+      _service.exportBackup(compress: compress, directory: directory);
 
   Future<BackupSummary> import(File file, {bool merge = true}) =>
       _service.importBackup(file, merge: merge);

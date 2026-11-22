@@ -16,6 +16,16 @@ class PlaylistDao extends DatabaseAccessor<AppDatabase>
         PlaylistsCompanion.insert(name: name, description: Value(description)),
       );
 
+  /// Lista inteligente: la regla se guarda en `description` y se evalúa en
+  /// memoria contra la biblioteca, sin duplicar filas de pistas.
+  Future<int> createSmart(String name, String rule) => into(playlists).insert(
+    PlaylistsCompanion.insert(
+      name: name,
+      description: Value(rule),
+      isSmart: const Value(true),
+    ),
+  );
+
   Future<void> rename(int id, String name) =>
       (update(playlists)..where((p) => p.id.equals(id))).write(
         PlaylistsCompanion(name: Value(name), updatedAt: Value(DateTime.now())),

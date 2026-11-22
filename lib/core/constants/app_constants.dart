@@ -14,6 +14,9 @@ class AppConstants {
   static const String githubReleasesPage =
       'https://github.com/$githubOwner/$githubRepo/releases';
 
+  /// Nombre del archivo SQLite usado por Drift.
+  static const String databaseFileName = 'polaris_music.sqlite';
+
   /// Extensiones que el escáner intenta indexar.
   ///
   /// media_kit/libmpv reproduce prácticamente todo lo que decodifique FFmpeg;
@@ -146,6 +149,16 @@ class AppConstants {
 
   static const String eqCustomLayout = 'custom';
 
+  /// Tasa a la que se evalúan los biquads de la curva y la rama sub-armónica.
+  /// Un único valor evita que el dibujo y el DSP divergean.
+  static const double dspSampleRate = 48000;
+
+  /// Margen extra reservado por el anti-clip sobre el pico estimado de la curva.
+  static const double antiClipHeadroomDb = 1.0;
+
+  /// Tope de atenuación automática: el limitador final absorbe el resto.
+  static const double antiClipMaxAttenuationDb = 24.0;
+
   /// Límites del modo paramétrico y del sintetizador sub-armónico.
   static const int eqMaxParametricFilters = 8;
   static const double eqMinFrequency = 20;
@@ -164,6 +177,9 @@ class AppConstants {
   /// Claves de preferencias (tabla `settings`).
   static const String keyOnboardingDone = 'onboarding.done';
   static const String keyReplayGain = 'audio.replay_gain';
+
+  /// Bypass temporal de todo el DSP: EQ, sub-armónico, preamp y limitador.
+  static const String keyPureAudio = 'audio.pure';
   static const String keyGapless = 'audio.gapless';
   static const String keyCrossfade = 'audio.crossfade';
   static const String keyCrossfadeMs = 'audio.crossfade_ms';
@@ -179,6 +195,7 @@ class AppConstants {
   static const String keyLastTrackId = 'player.last_track_id';
   static const String keyPlaybackSession = 'player.session';
   static const String keySleepTimerDefault = 'player.sleep_timer_min';
+  static const String keySleepFadeSeconds = 'player.sleep_fade_seconds';
   static const String keyEqEnabled = 'eq.enabled';
   static const String keyEqPreset = 'eq.preset';
   static const String keyEqCustomBands = 'eq.custom_bands';
@@ -203,6 +220,14 @@ class AppConstants {
   static const String keyIslandEnabled = 'island.enabled';
   static const String keyScanOnStartup = 'library.scan_on_startup';
   static const String keyLastScanAt = 'library.last_scan_at';
+  static const String keyRecentSearches = 'library.recent_searches';
+  static const String keyKaraokeEnabled = 'lyrics.karaoke';
+  static const String keyScrobbleConfig = 'scrobbling.config';
+
+  /// Carpetas visibles elegidas por el usuario. Vacío = carpeta estándar.
+  static const String keyDocumentsFolder = 'storage.documents_folder';
+  static const String keyMusicFolder = 'storage.music_folder';
+  static const String keyDownloadsFolder = 'storage.downloads_folder';
 
   /// Atajos globales del escritorio (formato `ctrl+alt+space`).
   static const String keyHotkeyPlayPause = 'hotkey.play_pause';
@@ -212,6 +237,61 @@ class AppConstants {
   static const String defaultHotkeyPlayPause = 'ctrl+alt+space';
   static const String defaultHotkeyNext = 'ctrl+alt+right';
   static const String defaultHotkeyPrevious = 'ctrl+alt+left';
+
+  /// Preferencias que «Restablecer ajustes» devuelve a su valor inicial.
+  ///
+  /// Se excluyen deliberadamente la introducción, la sesión de reproducción,
+  /// las credenciales de scrobbling, los tokens online, las fuentes importadas
+  /// y los perfiles de tema guardados: son datos del usuario, no configuración
+  /// de prueba. Las carpetas vuelven a las rutas estándar, pero sus archivos
+  /// no se eliminan.
+  static const List<String> resettablePreferenceKeys = <String>[
+    keyReplayGain,
+    keyPureAudio,
+    keyGapless,
+    keyCrossfade,
+    keyCrossfadeMs,
+    keySilenceTrim,
+    keySilenceTrimStartMs,
+    keySilenceTrimEndMs,
+    keyNormalizeVolume,
+    keyVolume,
+    keyPauseOnHeadphonesDisconnect,
+    keyPauseOnVolumeZero,
+    keySleepTimerDefault,
+    keySleepFadeSeconds,
+    keyEqEnabled,
+    keyEqPreset,
+    keyEqCustomBands,
+    keyEqCustomPreamp,
+    keyEqConfig,
+    keyPerDeviceProfiles,
+    keyAlwaysOnTop,
+    keyMiniMode,
+    keyTrayEnabled,
+    keyAccentColor,
+    keyThemeConfig,
+    keyMotionConfig,
+    keyCompactIslandStyle,
+    keyCompactMiniStyle,
+    keyCompactPhoneStyle,
+    keyCompactPlayerStyle,
+    keyTypography,
+    keyIslandEnabled,
+    keyScanOnStartup,
+    keyLastScanAt,
+    keyRecentSearches,
+    keyKaraokeEnabled,
+    keyDocumentsFolder,
+    keyMusicFolder,
+    keyDownloadsFolder,
+    keyHotkeyPlayPause,
+    keyHotkeyNext,
+    keyHotkeyPrevious,
+  ];
+
+  /// Los perfiles EQ por dispositivo viven en scopes `device:<salida>`.
+  static const String resettableScopePrefix = 'device:';
 
   /// Logo oficial usado en la interfaz.
   static const String logoAsset = 'assets/icons/polaris_music_logo.png';

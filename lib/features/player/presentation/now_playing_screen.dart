@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart' hide RepeatMode;
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/app_navigation.dart';
@@ -14,6 +15,8 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/compact_style_provider.dart';
 import '../../../core/providers/motion_provider.dart';
 import '../../../core/providers/theme_provider.dart';
+import '../../../core/services/brightness_service.dart';
+import '../../../core/services/settings_service.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme_config.dart';
 import '../../../core/theme/color_math.dart';
@@ -29,6 +32,7 @@ import '../../../shared/widgets/polaris_surface.dart';
 import '../../../shared/widgets/tactile_icon_button.dart';
 import '../../../shared/widgets/track_properties_modal.dart';
 import '../../dynamic_island/presentation/island_providers.dart';
+import '../../equalizer/presentation/equalizer_providers.dart';
 import '../../equalizer/presentation/equalizer_screen.dart';
 import '../../lyrics/presentation/expanded_lyrics_view.dart';
 import '../domain/player_controller.dart';
@@ -69,6 +73,20 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
 
   /// Alterna la carátula y las letras dentro del mismo hueco del reproductor.
   void _toggleLyrics() => setState(() => _showLyrics = !_showLyrics);
+
+  /// En móvil la cola no ocupa espacio: se abre como hoja bajo demanda.
+  void _openQueueSheet(Color accent) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) => _QueueSheet(
+        controller: ref.read(playerControllerProvider.notifier),
+        accent: accent,
+        onClose: () => Navigator.of(sheetContext).pop(),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -248,15 +266,8 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
             final double maxHeight = constraints.maxHeight.isFinite
                 ? constraints.maxHeight
                 : 900;
-            final double available = math.max(0, maxHeight - 30);
-            final double panelShare = constraints.maxWidth < 620 ? 0.34 : 0.44;
-            // La cola toma una porción del alto libre. En pantallas bajas se
-            // reduce hasta 120 px en lugar de ocultarse o recortarse; arriba
-            // crece con la ventana sin un techo que deje huecos artificiales.
-            final double panelHeight = math.min(
-              440,
-              math.max(120, available * panelShare),
-            );
+            // En pantallas estrechas la cola vive en una hoja bajo demanda: el
+            // reproductor recupera ese alto para carátula y controles.
             final double stageSize = _showLyrics
                 ? math.max(240, maxHeight * 0.55)
                 : math.min(
@@ -314,30 +325,11 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                         config: effectiveConfig,
                         accent: accent,
                         controller: controller,
+                        onOpenQueue: () => _openQueueSheet(accent),
                       ),
                     ),
                   ),
                 ),
-                if (!_showLyrics) ...<Widget>[
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: panelHeight,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-                      child: _MediaPanel(
-                        track: track,
-                        controller: controller,
-                        accent: accent,
-                        tab: _panelTab,
-                        onTabChanged: (int value) =>
-                            setState(() => _panelTab = value),
-                        height: null,
-                        onOpenLyrics: _toggleLyrics,
-                        lyricsVisible: _showLyrics,
-                      ),
-                    ),
-                  ),
-                ],
               ],
             );
           },
@@ -358,12 +350,16 @@ class _PlayerColumn extends ConsumerWidget {
     required this.config,
     required this.accent,
     required this.controller,
+    this.onOpenQueue,
   });
 
   final Track track;
   final AppThemeConfig config;
   final Color accent;
   final PlayerController controller;
+
+  /// Solo se entrega en pantallas estrechas, donde la cola no tiene panel fijo.
+  final VoidCallback? onOpenQueue;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -400,6 +396,10 @@ class _PlayerColumn extends ConsumerWidget {
             playerControllerProvider.select((PlayerUiState s) => s.playing),
           ),
         ),
+        if (onOpenQueue != null) ...<Widget>[
+          const SizedBox(height: 10),
+          _QueueButton(accent: accent, onPressed: onOpenQueue!),
+        ],
         if (sleepActive) _SleepBadge(controller: controller),
         if (error != null)
           Padding(
@@ -435,6 +435,183 @@ class _PlayerColumn extends ConsumerWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// Acceso explícito a la cola en pantallas donde no hay panel fijo.
+class _QueueButton extends ConsumerWidget {
+  const _QueueButton({required this.accent, required this.onPressed});
+
+  final Color accent;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final int count = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.playback.activeQueue.length,
+      ),
+    );
+    return Semantics(
+      button: true,
+      label: 'Cola / Lista de reproducción, $count pistas',
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: accent.withValues(alpha: 0.28)),
+          color: accent.withValues(alpha: 0.08),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: onPressed,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+              child: Row(
+                children: <Widget>[
+                  Icon(Icons.queue_music_rounded, color: accent, size: 21),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Text(
+                          'Cola / Lista de reproducción',
+                          style: TextStyle(
+                            color: context.ink,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          count == 1
+                              ? '1 pista en la cola'
+                              : '$count pistas en la cola',
+                          style: TextStyle(
+                            color: context.inkAlpha(0.54),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: context.inkAlpha(0.50),
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Hoja deslizante con la cola completa, usada solo en móvil.
+class _QueueSheet extends ConsumerWidget {
+  const _QueueSheet({
+    required this.controller,
+    required this.accent,
+    required this.onClose,
+  });
+
+  final PlayerController controller;
+  final Color accent;
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final List<Track> queue = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.playback.activeQueue,
+      ),
+    );
+    final int index = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.index),
+    );
+    final bool playing = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playing),
+    );
+    final Color ink = context.onPanel;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom:
+            MediaQuery.viewInsetsOf(context).bottom +
+            MediaQuery.paddingOf(context).bottom,
+      ),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.78,
+        ),
+        child: PolarisSurface(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+          borderRadius: 24,
+          glowColor: accent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: ink.withValues(alpha: 0.28),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: <Widget>[
+                  Icon(Icons.queue_music_rounded, color: accent, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Cola / Lista de reproducción',
+                      style: TextStyle(
+                        color: ink,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Vaciar cola',
+                    color: ink.withValues(alpha: 0.70),
+                    onPressed: queue.isEmpty ? null : controller.clearQueue,
+                    icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+                  ),
+                  IconButton(
+                    tooltip: 'Cerrar',
+                    color: ink.withValues(alpha: 0.70),
+                    onPressed: onClose,
+                    icon: const Icon(Icons.close_rounded, size: 20),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Flexible(
+                child: _QueueList(
+                  queue: queue,
+                  index: index,
+                  playing: playing,
+                  controller: controller,
+                  accent: accent,
+                  padBottom: 4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -507,6 +684,10 @@ class _TrackHeader extends ConsumerWidget {
                 context: context,
                 track: track,
                 accent: accent,
+                // Lectura única al abrir el diálogo: sin streams ni polling.
+                technicalInfo: ref
+                    .read(audioEngineProvider)
+                    .readTechnicalInfo(),
               ),
               iconSize: 20,
               tooltip: 'Propiedades de la pista',
@@ -833,6 +1014,7 @@ class _TransportControls extends ConsumerWidget {
           tooltip: 'Anterior',
           iconSize: 32,
           echoColor: accent,
+          haptic: true,
           onPressed: controller.previous,
           icon: Icons.skip_previous_rounded,
         ),
@@ -846,6 +1028,7 @@ class _TransportControls extends ConsumerWidget {
           tooltip: 'Siguiente',
           iconSize: 32,
           echoColor: accent,
+          haptic: true,
           onPressed: controller.next,
           icon: Icons.skip_next_rounded,
         ),
@@ -909,7 +1092,10 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
           onTapDown: (_) => _setPressed(true),
           onTapUp: (_) => _setPressed(false),
           onTapCancel: () => _setPressed(false),
-          onTap: widget.onPressed,
+          onTap: () {
+            unawaited(HapticFeedback.lightImpact());
+            widget.onPressed();
+          },
           child: AnimatedContainer(
             duration: context.motion.duration(
               const Duration(milliseconds: 240),
@@ -1112,10 +1298,87 @@ class _SpeedMenu extends StatelessWidget {
   }
 }
 
+class _SleepPreference {
+  const _SleepPreference(this.minutes, this.fadeSeconds);
+
+  final int minutes;
+  final int fadeSeconds;
+}
+
 class _SleepMenu extends ConsumerWidget {
   const _SleepMenu({required this.controller});
 
   final PlayerController controller;
+
+  Future<_SleepPreference?> _askCustomSleep(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final SettingsService settings = ref.read(settingsServiceProvider);
+    final TextEditingController minutes = TextEditingController(
+      text: '${settings.sleepTimerDefaultMinutes}',
+    );
+    final TextEditingController fade = TextEditingController(
+      text: '${settings.sleepFadeSeconds}',
+    );
+    try {
+      return await showDialog<_SleepPreference>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: Text('Temporizador personalizado'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              TextField(
+                controller: minutes,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: InputDecoration(
+                  labelText: 'Minutos',
+                  helperText: 'Entre 1 y 480',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: fade,
+                keyboardType: TextInputType.number,
+                inputFormatters: <TextInputFormatter>[
+                  FilteringTextInputFormatter.digitsOnly,
+                ],
+                decoration: InputDecoration(
+                  labelText: 'Fundido final (segundos)',
+                  helperText: 'Entre 1 y 30',
+                ),
+              ),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final int value = int.tryParse(minutes.text.trim()) ?? 0;
+                final int seconds = int.tryParse(fade.text.trim()) ?? 0;
+                if (value < 1 || seconds < 1) return;
+                Navigator.of(context).pop(
+                  _SleepPreference(value.clamp(1, 480), seconds.clamp(1, 30)),
+                );
+              },
+              child: Text('Aplicar'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      minutes.dispose();
+      fade.dispose();
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1136,6 +1399,22 @@ class _SleepMenu extends ConsumerWidget {
             controller.startSleepTimer(const Duration(minutes: 45));
           case '60':
             controller.startSleepTimer(const Duration(minutes: 60));
+          case 'custom':
+            unawaited(() async {
+              final _SleepPreference? pref = await _askCustomSleep(
+                context,
+                ref,
+              );
+              if (pref == null || !context.mounted) return;
+              await controller.setSleepPreferences(
+                minutes: pref.minutes,
+                fadeSeconds: pref.fadeSeconds,
+              );
+              controller.startSleepTimer(
+                Duration(minutes: pref.minutes),
+                fade: Duration(seconds: pref.fadeSeconds),
+              );
+            }());
           case 'track':
             controller.sleepAtEndOfTrack();
           case 'cancel':
@@ -1147,6 +1426,7 @@ class _SleepMenu extends ConsumerWidget {
         PopupMenuItem<String>(value: '30', child: Text('30 minutos')),
         PopupMenuItem<String>(value: '45', child: Text('45 minutos')),
         PopupMenuItem<String>(value: '60', child: Text('60 minutos')),
+        PopupMenuItem<String>(value: 'custom', child: Text('Personalizado…')),
         PopupMenuDivider(),
         PopupMenuItem<String>(
           value: 'track',
@@ -1213,17 +1493,17 @@ class _SleepBadge extends ConsumerWidget {
 /// Las letras se abren desde la pestaña del panel inferior para no duplicar
 /// el mismo botón dos veces en la pantalla. Las barras solo se mueven mientras
 /// reproduce y el perfil de movimiento lo permite.
-class _QuickActions extends StatefulWidget {
+class _QuickActions extends ConsumerStatefulWidget {
   const _QuickActions({required this.accent, required this.playing});
 
   final Color accent;
   final bool playing;
 
   @override
-  State<_QuickActions> createState() => _QuickActionsState();
+  ConsumerState<_QuickActions> createState() => _QuickActionsState();
 }
 
-class _QuickActionsState extends State<_QuickActions>
+class _QuickActionsState extends ConsumerState<_QuickActions>
     with SingleTickerProviderStateMixin {
   late final AnimationController _bars = AnimationController(
     vsync: this,
@@ -1272,9 +1552,17 @@ class _QuickActionsState extends State<_QuickActions>
   @override
   Widget build(BuildContext context) {
     final Color accent = widget.accent;
+    final bool pure = ref.watch(
+      equalizerControllerProvider.select((s) => s.pure),
+    );
     final ButtonStyle style = OutlinedButton.styleFrom(
       foregroundColor: accent,
       side: BorderSide(color: accent.withValues(alpha: 0.35)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    );
+    final ButtonStyle pureStyle = OutlinedButton.styleFrom(
+      foregroundColor: accent,
+      side: BorderSide(color: accent.withValues(alpha: 0.9), width: 1.4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
     );
     return Wrap(
@@ -1312,6 +1600,21 @@ class _QuickActionsState extends State<_QuickActions>
           ),
           label: Text('Ecualizador'),
           style: style,
+        ),
+        Tooltip(
+          message: pure
+              ? 'Bypass activo: sin ecualizador, sub-armónico ni limitador.'
+              : 'Deja pasar el audio sin filtros; tu curva se conserva.',
+          child: OutlinedButton.icon(
+            onPressed: () =>
+                ref.read(equalizerControllerProvider.notifier).togglePure(),
+            icon: Icon(
+              pure ? Icons.filter_alt_off : Icons.filter_alt_outlined,
+              size: 18,
+            ),
+            label: Text(pure ? 'Puro activo' : 'Modo puro'),
+            style: pure ? pureStyle : style,
+          ),
         ),
       ],
     );
@@ -1547,18 +1850,31 @@ class _QueueList extends StatelessWidget {
       );
     }
 
-    return ListView.builder(
+    return ReorderableListView.builder(
       padding: EdgeInsets.only(bottom: padBottom),
       itemCount: queue.length,
-      // Altura fija y ventana de cache: medir filas con altura variable y sin
-      // cacheExtent provoca tirones al desplazar colas largas.
-      itemExtent: 72,
+      buildDefaultDragHandles: false,
+      onReorderItem: (int from, int to) {
+        unawaited(HapticFeedback.selectionClick());
+        controller.moveInQueue(from, to);
+      },
       scrollCacheExtent: const ScrollCacheExtent.pixels(300),
+      proxyDecorator: (Widget child, int index, Animation<double> animation) {
+        return AnimatedBuilder(
+          animation: animation,
+          builder: (BuildContext context, Widget? widget) => Material(
+            elevation: 4,
+            borderRadius: BorderRadius.circular(12),
+            color: context.tokens.panelOverlay.withValues(alpha: 0.96),
+            child: widget,
+          ),
+          child: child,
+        );
+      },
       itemBuilder: (BuildContext context, int i) {
         final Track track = queue[i];
         final bool current = i == index;
         final Widget tile = ListTile(
-          key: ValueKey<int>(track.id),
           dense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 6),
           shape: RoundedRectangleBorder(
@@ -1604,6 +1920,20 @@ class _QueueList extends StatelessWidget {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
+              Semantics(
+                label: 'Arrastrar para reordenar ${track.title}',
+                child: ReorderableDragStartListener(
+                  index: i,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      Icons.drag_indicator_rounded,
+                      size: 18,
+                      color: ink.withValues(alpha: 0.45),
+                    ),
+                  ),
+                ),
+              ),
               Text(
                 Formatters.duration(track.duration),
                 style: TextStyle(
@@ -1623,6 +1953,7 @@ class _QueueList extends StatelessWidget {
         );
 
         return RepaintBoundary(
+          key: ValueKey<int>(track.id),
           child: AnimatedContainer(
             duration: context.motion.duration(
               const Duration(milliseconds: 260),
@@ -1908,6 +2239,10 @@ class _ArtworkStage extends ConsumerWidget {
       windowStateProvider,
     );
     final bool paused = windowNotifier.value.backgrounded;
+    final PlayerController controller = ref.read(
+      playerControllerProvider.notifier,
+    );
+    final BrightnessService brightness = ref.read(brightnessServiceProvider);
     final Widget artwork = ValueListenableBuilder<WindowUiState>(
       valueListenable: windowNotifier,
       builder: (BuildContext context, WindowUiState state, Widget? _) {
@@ -1949,6 +2284,15 @@ class _ArtworkStage extends ConsumerWidget {
         onNext: onNext,
         onLyrics: onLyrics,
         onMinimize: onMinimize,
+        onVolumeDelta: (double fraction) {
+          final double next = (controller.volumePercent + fraction * 100)
+              .clamp(0, 100)
+              .toDouble();
+          unawaited(controller.setVolume(next));
+        },
+        onBrightnessDelta: brightness.isAvailable
+            ? (double fraction) => unawaited(brightness.adjust(fraction))
+            : null,
         accent: accent,
         seekEnabled: ring,
         playing: playing,

@@ -283,85 +283,96 @@ class _AppShellState extends ConsumerState<AppShell>
                         if (Platform.isWindows) const WindowTitleBar(),
                         Expanded(
                           child: Consumer(
-                            builder:
-                                (
-                                  BuildContext context,
-                                  WidgetRef ref,
-                                  Widget? _,
-                                ) {
-                                  final AppSection section = ref.watch(
-                                    appSectionProvider,
-                                  );
-                                  return Column(
-                                    children: <Widget>[
-                                      Expanded(
-                                        child: Padding(
-                                          // La barra va abajo en todas las
-                                          // plataformas; el hueco se reserva
-                                          // con `navClearance`.
-                                          padding: EdgeInsets.zero,
-                                          // Mantiene las cuatro secciones
-                                          // montadas (como el IndexedStack) pero
-                                          // desliza/desvanece según la dirección
-                                          // del cambio de índice. Cada hijo lleva
-                                          // su propio TickerMode para detener el
-                                          // vinilo y los pulsos de la pestaña
-                                          // oculta sin congelar la transición.
-                                          child: DirectionalSectionStack(
-                                            index: section.index,
-                                            duration: context.motion.duration(
-                                              const Duration(milliseconds: 340),
-                                            ),
-                                            distance: 0.10,
-                                            children: _screens,
-                                          ),
-                                        ),
-                                      ),
-                                      AnimatedSwitcher(
+                            builder: (BuildContext context, WidgetRef ref, Widget? _) {
+                              final AppSection section = ref.watch(
+                                appSectionProvider,
+                              );
+                              return Column(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: Padding(
+                                      // La barra va abajo en todas las
+                                      // plataformas; el hueco se reserva
+                                      // con `navClearance`.
+                                      padding: EdgeInsets.zero,
+                                      // Mantiene las cuatro secciones
+                                      // montadas (como el IndexedStack) pero
+                                      // desliza/desvanece según la dirección
+                                      // del cambio de índice. Cada hijo lleva
+                                      // su propio TickerMode para detener el
+                                      // vinilo y los pulsos de la pestaña
+                                      // oculta sin congelar la transición.
+                                      child: DirectionalSectionStack(
+                                        index: section.index,
                                         duration: context.motion.duration(
-                                          const Duration(milliseconds: 320),
+                                          const Duration(milliseconds: 340),
                                         ),
-                                        switchInCurve: Curves.easeOutBack,
-                                        switchOutCurve: Curves.easeInCubic,
-                                        transitionBuilder:
-                                            (
-                                              Widget child,
-                                              Animation<double> animation,
-                                            ) {
-                                              return SlideTransition(
-                                                position: Tween<Offset>(
-                                                  begin: const Offset(0, 0.4),
-                                                  end: Offset.zero,
-                                                ).animate(animation),
-                                                child: FadeTransition(
-                                                  opacity: animation,
-                                                  child: child,
-                                                ),
-                                              );
-                                            },
-                                        child: section != AppSection.player
-                                            ? SizedBox(
-                                                key: const ValueKey<String>(
-                                                  'mini',
-                                                ),
-                                                child: CompactThemeScope(
-                                                  surface: CompactSurface.mini,
-                                                  child: MiniPlayerBar(
-                                                    onOpen: () => _goToSection(
-                                                      AppSection.player,
-                                                    ),
-                                                  ),
-                                                ),
-                                              )
-                                            : const SizedBox.shrink(
-                                                key: ValueKey<String>(
-                                                  'no-mini',
+                                        distance: 0.10,
+                                        children: _screens,
+                                      ),
+                                    ),
+                                  ),
+                                  AnimatedSwitcher(
+                                    duration: context.motion.duration(
+                                      const Duration(milliseconds: 320),
+                                    ),
+                                    switchInCurve: Curves.easeOutBack,
+                                    switchOutCurve: Curves.easeInCubic,
+                                    // El mini que sale es un panel decorado;
+                                    // pintarlo durante la transición deja
+                                    // un rectángulo justo encima de la barra.
+                                    layoutBuilder:
+                                        (
+                                          Widget? currentChild,
+                                          List<Widget> previousChildren,
+                                        ) => Stack(
+                                          alignment: Alignment.center,
+                                          children: <Widget>[
+                                            Offstage(
+                                              offstage: true,
+                                              child: Stack(
+                                                alignment: Alignment.center,
+                                                children: previousChildren,
+                                              ),
+                                            ),
+                                            ?currentChild,
+                                          ],
+                                        ),
+                                    transitionBuilder:
+                                        (
+                                          Widget child,
+                                          Animation<double> animation,
+                                        ) {
+                                          return SlideTransition(
+                                            position: Tween<Offset>(
+                                              begin: const Offset(0, 0.4),
+                                              end: Offset.zero,
+                                            ).animate(animation),
+                                            child: FadeTransition(
+                                              opacity: animation,
+                                              child: child,
+                                            ),
+                                          );
+                                        },
+                                    child: section != AppSection.player
+                                        ? SizedBox(
+                                            key: const ValueKey<String>('mini'),
+                                            child: CompactThemeScope(
+                                              surface: CompactSurface.mini,
+                                              child: MiniPlayerBar(
+                                                onOpen: () => _goToSection(
+                                                  AppSection.player,
                                                 ),
                                               ),
-                                      ),
-                                    ],
-                                  );
-                                },
+                                            ),
+                                          )
+                                        : const SizedBox.shrink(
+                                            key: ValueKey<String>('no-mini'),
+                                          ),
+                                  ),
+                                ],
+                              );
+                            },
                           ),
                         ),
                       ],

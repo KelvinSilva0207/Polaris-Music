@@ -2,6 +2,7 @@ import 'package:get_it/get_it.dart';
 
 import '../../features/library/data/library_repository.dart';
 import '../../features/library/data/metadata_editor_service.dart';
+import '../../features/library/data/playlist_service.dart';
 import '../../features/lyrics/data/lyrics_service.dart';
 import '../../features/online_music/data/audius_source.dart';
 import '../../features/online_music/data/download_manager.dart';
@@ -23,17 +24,21 @@ import '../database/database_guard.dart';
 import '../services/app_updater_service.dart';
 import '../services/audio_engine_service.dart';
 import '../services/backup_service.dart';
+import '../services/brightness_service.dart';
 import '../services/font_service.dart';
 import '../services/global_hotkey_service.dart';
 import '../services/media_session_service.dart';
 import '../services/permission_service.dart';
 import '../services/playback_session_service.dart';
 import '../services/playback_stats_recorder.dart';
+import '../services/scrobble_service.dart';
 import '../services/settings_service.dart';
+import '../services/storage_paths_service.dart';
 import '../services/audio_device_profile_service.dart';
 import '../services/system_audio_service.dart';
 import '../services/tray_service.dart';
 import '../services/update_service.dart';
+import '../services/widget_bridge_service.dart';
 import '../services/window_service.dart';
 import '../utils/logger.dart';
 
@@ -87,6 +92,8 @@ class ServiceLocator {
     final SettingsService settings = SettingsService(database.settingsDao);
     await settings.load();
     sl.registerSingleton<SettingsService>(settings);
+    final StoragePathsService storagePaths = StoragePathsService(settings);
+    sl.registerSingleton<StoragePathsService>(storagePaths);
     sl.registerSingleton<PlaybackSessionService>(
       PlaybackSessionService(settings),
     );
@@ -142,9 +149,17 @@ class ServiceLocator {
     await hotkeys.initialize();
     sl.registerSingleton<GlobalHotkeyService>(hotkeys);
 
+    sl.registerSingleton<BrightnessService>(BrightnessService());
+    sl.registerSingleton<WidgetBridgeService>(WidgetBridgeService());
+
+    final ScrobbleService scrobbler = ScrobbleService(settings: settings);
+    sl.registerSingleton<ScrobbleService>(scrobbler);
+
     final PlaybackStatsRecorder statsRecorder = PlaybackStatsRecorder(
       engine: engine,
       database: database,
+      scrobbler: scrobbler,
+      widgetBridge: sl<WidgetBridgeService>(),
     )..start();
     sl.registerSingleton<PlaybackStatsRecorder>(statsRecorder);
 
@@ -160,13 +175,18 @@ class ServiceLocator {
     window.hideOnClose = tray.isInitialized;
 
     sl.registerSingleton<PermissionService>(PermissionService());
-    final AppUpdaterService updater = AppUpdaterService();
+    final AppUpdaterService updater = AppUpdaterService(
+      updatesDirectory: storagePaths.updates,
+    );
     sl.registerSingleton<AppUpdaterService>(updater);
     sl.registerSingleton<UpdateService>(updater);
     sl.registerSingleton<BackupService>(
       BackupService(database, settingsService: settings),
     );
     sl.registerSingleton<LibraryRepository>(LibraryRepository(database));
+    sl.registerSingleton<PlaylistService>(
+      PlaylistService(database, sl<LibraryRepository>()),
+    );
     // Reparación puntual de carátulas borradas por escaneos anteriores; no
     // lee imágenes y funciona incluso si el escaneo automático está desactivado.
     // Un fallo aquí nunca debe impedir que la interfaz arranque.
@@ -229,6 +249,7 @@ class ServiceLocator {
         repository: sl<OnlineMusicRepository>(),
         registerDownloaded: sl<LibraryRepository>().registerDownloaded,
         hasDownloaded: sl<LibraryRepository>().hasExternalId,
+        musicDirectory: sl<StoragePathsService>().music,
       ),
     );
 

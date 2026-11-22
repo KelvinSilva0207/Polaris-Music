@@ -120,7 +120,10 @@ class PlayerController extends StateNotifier<PlayerUiState> {
          PlayerUiState(
            playback: engine.state,
            replayGainEnabled: _settings.replayGainEnabled,
-           gaplessEnabled: _settings.gaplessEnabled,
+           // Crossfade usa dos decks: no puede convivir con gapless estricto.
+           gaplessEnabled: _settings.crossfadeEnabled
+               ? false
+               : _settings.gaplessEnabled,
            crossfadeEnabled: _settings.crossfadeEnabled,
            crossfadeMs: _settings.crossfadeMs,
            silenceTrimEnabled: _settings.silenceTrimEnabled,
@@ -351,6 +354,9 @@ class PlayerController extends StateNotifier<PlayerUiState> {
 
   Future<void> removeFromQueue(int index) => _engine.removeAt(index);
 
+  /// Reordena la cola visible (índices del orden activo).
+  Future<void> moveInQueue(int from, int to) => _engine.moveInQueue(from, to);
+
   Future<void> clearQueue() async {
     await _engine.clearQueue();
     // Cola vacía intencional: no debe reaparecer al reiniciar.
@@ -378,6 +384,9 @@ class PlayerController extends StateNotifier<PlayerUiState> {
   }
 
   Future<void> seekFraction(double value) => _engine.seekToProgress(value);
+
+  /// Volumen efectivo del motor (0–100) para gestos relativos.
+  double get volumePercent => _engine.state.volume;
 
   Future<void> setVolume(double percent) async {
     await _engine.setVolume(percent);
@@ -504,9 +513,13 @@ class PlayerController extends StateNotifier<PlayerUiState> {
     state = state.copyWith(replayGainEnabled: value);
   }
 
+  /// Gapless estricto y crossfade son excluyentes: mpv encadena pistas sin
+  /// hueco, mientras que el fundido usa un segundo deck y necesita solapamiento.
   Future<void> setGaplessEnabled(bool value) async {
-    // El gapless real lo hace mpv al reproducir la lista; el ajuste documenta
-    // la intención y desactiva el modo de lista cuando el usuario lo pide.
+    if (value && state.crossfadeEnabled) {
+      await _writeCrossfade(enabled: false, ms: state.crossfadeMs);
+      state = state.copyWith(crossfadeEnabled: false);
+    }
     await _settings.setBool(AppConstants.keyGapless, value);
     state = state.copyWith(gaplessEnabled: value);
   }
@@ -514,13 +527,21 @@ class PlayerController extends StateNotifier<PlayerUiState> {
   /// Crossfade real entre pistas mediante dos decks de libmpv.
   Future<void> setCrossfade({required bool enabled, int? ms}) async {
     final int duration = (ms ?? state.crossfadeMs).clamp(0, 12000);
-    await _settings.setBool(AppConstants.keyCrossfade, enabled);
-    await _settings.setInt(AppConstants.keyCrossfadeMs, duration);
+    if (enabled && state.gaplessEnabled) {
+      await _settings.setBool(AppConstants.keyGapless, false);
+      state = state.copyWith(gaplessEnabled: false);
+    }
+    await _writeCrossfade(enabled: enabled, ms: duration);
     state = state.copyWith(crossfadeEnabled: enabled, crossfadeMs: duration);
-    await _engine.configureCrossfade(enabled: enabled, ms: duration);
+  }
+
+  Future<void> _writeCrossfade({required bool enabled, required int ms}) async {
+    await _settings.setBool(AppConstants.keyCrossfade, enabled);
+    await _settings.setInt(AppConstants.keyCrossfadeMs, ms);
+    await _engine.configureCrossfade(enabled: enabled, ms: ms);
     AppLog.i(
       _tag,
-      'Crossfade ${enabled ? 'activado' : 'desactivado'} ($duration ms)',
+      'Crossfade ${enabled ? 'activado' : 'desactivado'} ($ms ms)',
     );
   }
 
@@ -551,13 +572,28 @@ class PlayerController extends StateNotifier<PlayerUiState> {
   // Temporizador de sueño
   // ---------------------------------------------------------------------------
 
-  static const Duration _maxSleepFade = Duration(seconds: 5);
+  /// Preferencias del temporizador: minutos recordados y duración del fundido.
+  Future<void> setSleepPreferences({
+    required int minutes,
+    required int fadeSeconds,
+  }) async {
+    await _settings.setInt(
+      AppConstants.keySleepTimerDefault,
+      minutes.clamp(1, 480),
+    );
+    await _settings.setInt(
+      AppConstants.keySleepFadeSeconds,
+      fadeSeconds.clamp(1, 30),
+    );
+  }
 
-  void startSleepTimer(Duration duration) {
+  void startSleepTimer(Duration duration, {Duration? fade}) {
     if (duration <= Duration.zero) return;
     _clearSleep();
+    final Duration requested =
+        fade ?? Duration(seconds: _settings.sleepFadeSeconds);
     _sleepDeadline = DateTime.now().add(duration);
-    _sleepFadeDuration = duration < _maxSleepFade ? duration : _maxSleepFade;
+    _sleepFadeDuration = duration < requested ? duration : requested;
     _sleepTrackId = state.playback.currentTrack?.id;
     state = state.copyWith(sleepRemaining: duration, sleepEndsAtTrack: false);
     _sleepTimeout = Timer(duration, () => unawaited(_finishSleep()));
@@ -571,9 +607,8 @@ class PlayerController extends StateNotifier<PlayerUiState> {
     _clearSleep();
     final Duration trackDuration =
         state.playback.currentTrack?.duration ?? Duration.zero;
-    _sleepFadeDuration = trackDuration < _maxSleepFade
-        ? trackDuration
-        : _maxSleepFade;
+    final Duration requested = Duration(seconds: _settings.sleepFadeSeconds);
+    _sleepFadeDuration = trackDuration < requested ? trackDuration : requested;
     _sleepTrackId = state.playback.currentTrack?.id;
     state = state.copyWith(sleepRemaining: null, sleepEndsAtTrack: true);
     _sleepTicker = Timer.periodic(

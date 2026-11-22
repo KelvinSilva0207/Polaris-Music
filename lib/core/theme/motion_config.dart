@@ -1,3 +1,4 @@
+import 'package:flutter/animation.dart';
 import 'package:flutter/foundation.dart';
 
 /// Perfiles listos para usar de Animaciones y Movimiento.
@@ -243,4 +244,36 @@ extension MotionConfigX on MotionConfig {
   /// Igual a [duration] pero con la categoría [MotionCategory.transitions].
   Duration get transitionDuration =>
       duration(const Duration(milliseconds: 300));
+
+  /// Curva de entrada para cambios de sección, vista y modo.
+  ///
+  /// El rebote crece con el perfil: Bajo es funcional, Medio introduce un
+  /// pequeño _overshoot_ y Alto/Fluido usan un muelle completo. Se aplica solo
+  /// al desplazamiento/escala; la opacidad mantiene una curva monótona.
+  Curve get sectionInCurve => switch (profile) {
+    MotionProfile.bajo => Curves.easeOutCubic,
+    MotionProfile.medio || MotionProfile.balanced => Curves.easeOutBack,
+    MotionProfile.alto || MotionProfile.fluid => Curves.elasticOut,
+    MotionProfile.minimal => Curves.linear,
+    MotionProfile.custom =>
+      intensity >= 0.8 ? Curves.elasticOut : Curves.easeOutBack,
+  };
+
+  /// Curva de salida: se retira con más decisión que la entrada para que el
+  /// contenido nuevo no parezca empujar un fantasma.
+  Curve get sectionOutCurve => switch (profile) {
+    MotionProfile.bajo => Curves.easeInCubic,
+    MotionProfile.medio || MotionProfile.balanced => Curves.easeInBack,
+    MotionProfile.alto || MotionProfile.fluid => Curves.easeInBack,
+    MotionProfile.minimal => Curves.linear,
+    MotionProfile.custom =>
+      intensity >= 0.8 ? Curves.easeInBack : Curves.easeInCubic,
+  };
+
+  /// Curva del indicador de la barra de navegación y de los resortes de iconos.
+  Curve get indicatorCurve => sectionInCurve;
+
+  /// Multiplicador del recorrido de las transiciones. El perfil Bajo mantiene
+  /// el desplazamiento perceptible pero corto; Alto lo amplifica.
+  double get travelScale => 0.55 + 0.45 * intensity.clamp(0.0, 1.0);
 }

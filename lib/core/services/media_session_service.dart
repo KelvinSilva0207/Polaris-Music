@@ -229,6 +229,10 @@ class PolarisAudioHandler extends BaseAudioHandler
     _subscription = _engine.states.listen(_onState);
   }
 
+  /// Raíz navegable de Android Auto: cola actual + búsqueda por voz.
+  static const String browseRoot = AudioService.browsableRootId;
+  static const String browseQueue = 'polaris.queue';
+
   final AudioEngineService _engine;
   StreamSubscription<PlaybackSnapshot>? _subscription;
 
@@ -312,6 +316,78 @@ class PolarisAudioHandler extends BaseAudioHandler
     artUri: track.artworkPath == null ? null : Uri.file(track.artworkPath!),
     playable: true,
   );
+
+  /// Árbol de navegación para Android Auto y otros clientes de MediaBrowser.
+  @override
+  Future<List<MediaItem>> getChildren(
+    String parentMediaId, [
+    Map<String, dynamic>? options,
+  ]) async {
+    switch (parentMediaId) {
+      case browseRoot:
+        return <MediaItem>[
+          const MediaItem(
+            id: browseQueue,
+            title: 'Cola de reproducción',
+            playable: false,
+          ),
+          if (_lastTrack != null) _toMediaItem(_lastTrack!),
+        ];
+      case browseQueue:
+        return (_lastQueue ?? const <Track>[])
+            .map(_toMediaItem)
+            .toList(growable: false);
+      default:
+        return const <MediaItem>[];
+    }
+  }
+
+  @override
+  Future<MediaItem?> getMediaItem(String mediaId) async {
+    final int? id = int.tryParse(mediaId);
+    if (id == null) return null;
+    for (final Track track in _lastQueue ?? const <Track>[]) {
+      if (track.id == id) return _toMediaItem(track);
+    }
+    return null;
+  }
+
+  /// Búsqueda por voz dentro de la cola cargada (sin acceder a la base de datos
+  /// desde el aislamiento de audio_service).
+  @override
+  Future<List<MediaItem>> search(
+    String query, [
+    Map<String, dynamic>? extras,
+  ]) async {
+    final String clean = query.trim().toLowerCase();
+    if (clean.isEmpty) return const <MediaItem>[];
+    return (_lastQueue ?? const <Track>[])
+        .where(
+          (Track track) =>
+              track.title.toLowerCase().contains(clean) ||
+              track.artist.toLowerCase().contains(clean) ||
+              track.album.toLowerCase().contains(clean),
+        )
+        .map(_toMediaItem)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<void> playFromMediaId(
+    String mediaId, [
+    Map<String, dynamic>? extras,
+  ]) async {
+    if (mediaId == browseRoot || mediaId == browseQueue) {
+      await _engine.play();
+      return;
+    }
+    final int? id = int.tryParse(mediaId);
+    if (id == null) return;
+    final int index = (_lastQueue ?? const <Track>[]).indexWhere(
+      (Track track) => track.id == id,
+    );
+    if (index >= 0) await _engine.playIndex(index);
+  }
 
   @override
   Future<void> play() => _engine.play();

@@ -44,8 +44,9 @@
         </activity>
 
         <!--
-            FileProvider para el instalador de Android: el APK se copia a
-            cacheDir/updates y se comparte con un URI temporal.
+            FileProvider para el instalador de Android: el APK se descarga en
+            las descargas propias de la app y se comparte con un URI temporal;
+            si el usuario elige otra carpeta se copia a cacheDir/updates.
         -->
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -56,6 +57,11 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Android Auto: la app se anuncia como fuente multimedia navegable. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
 
         <!-- audio_service: servicio en primer plano para la reproducción. -->
         <service
@@ -72,6 +78,22 @@
             <intent-filter>
                 <action android:name="android.intent.action.MEDIA_BUTTON" />
             </intent-filter>
+        </receiver>
+
+        <!-- Widget de inicio: carátula, título y transporte esencial. -->
+        <receiver
+            android:name=".PolarisWidgetProvider"
+            android:exported="true"
+            android:label="Polaris Music">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.polaris.polaris_music.widget.PLAY" />
+                <action android:name="com.polaris.polaris_music.widget.NEXT" />
+                <action android:name="com.polaris.polaris_music.widget.PREVIOUS" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/polaris_widget_info" />
         </receiver>
 
         <!-- Necesario para que Flutter genere GeneratedPluginRegistrant.java. -->

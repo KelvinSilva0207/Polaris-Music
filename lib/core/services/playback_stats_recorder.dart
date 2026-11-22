@@ -7,6 +7,8 @@ import '../models/playback_state.dart';
 import '../models/track.dart';
 import '../utils/logger.dart';
 import 'audio_engine_service.dart';
+import 'scrobble_service.dart';
+import 'widget_bridge_service.dart';
 
 /// Escucha el motor y persiste historial + contadores de reproducción.
 ///
@@ -19,20 +21,29 @@ class PlaybackStatsRecorder {
   PlaybackStatsRecorder({
     required AudioEngineService engine,
     required AppDatabase database,
+    ScrobbleService? scrobbler,
+    WidgetBridgeService? widgetBridge,
   }) : _engine = engine,
        _historyDao = database.historyDao,
-       _trackDao = database.trackDao;
+       _trackDao = database.trackDao,
+       _scrobbler = scrobbler,
+       _widgetBridge = widgetBridge;
 
   static const String _tag = 'StatsRecorder';
 
   final AudioEngineService _engine;
   final HistoryDao _historyDao;
   final TrackDao _trackDao;
+  final ScrobbleService? _scrobbler;
+  final WidgetBridgeService? _widgetBridge;
 
   StreamSubscription<PlaybackSnapshot>? _subscription;
   Track? _track;
   int? _historyId;
   Duration _lastPosition = Duration.zero;
+  DateTime _startedAt = DateTime.now();
+  bool _lastWidgetPlaying = false;
+  int? _widgetTrackId;
 
   void start() {
     _subscription ??= _engine.states.listen(_onState);
@@ -41,6 +52,17 @@ class PlaybackStatsRecorder {
   void _onState(PlaybackSnapshot snapshot) {
     final Track? track = snapshot.currentTrack;
     if (track == null) return;
+
+    // El widget se actualiza también con pistas de streaming y al pausar.
+    final WidgetBridgeService? widgetBridge = _widgetBridge;
+    if (widgetBridge != null && widgetBridge.isAvailable) {
+      final bool wasPlaying = _lastWidgetPlaying;
+      _lastWidgetPlaying = snapshot.playing;
+      if (wasPlaying != snapshot.playing || _widgetTrackId != track.id) {
+        _widgetTrackId = track.id;
+        unawaited(widgetBridge.update(track, playing: snapshot.playing));
+      }
+    }
 
     if (!track.isPersisted) {
       // El streaming no se persiste: se cierra la escucha local anterior y no
@@ -66,6 +88,7 @@ class PlaybackStatsRecorder {
   Future<void> _begin(Track track) async {
     _track = track;
     _lastPosition = Duration.zero;
+    _startedAt = DateTime.now();
     try {
       _historyId = await _historyDao.startPlay(track.id);
     } catch (error, stack) {
@@ -77,6 +100,7 @@ class PlaybackStatsRecorder {
     final int? historyId = _historyId;
     final Track? track = _track;
     final Duration position = _lastPosition;
+    final DateTime startedAt = _startedAt;
     _historyId = null;
     _track = null;
 
@@ -100,9 +124,21 @@ class PlaybackStatsRecorder {
       );
       if (counts) {
         await _trackDao.registerPlay(track.id, completed: completed);
+        await _scrobble(track, startedAt);
       }
     } catch (error, stack) {
       AppLog.w(_tag, 'No se pudo cerrar historial', error, stack);
+    }
+  }
+
+  /// El scrobbling es best-effort: un fallo de red nunca afecta al historial.
+  Future<void> _scrobble(Track track, DateTime startedAt) async {
+    final ScrobbleService? scrobbler = _scrobbler;
+    if (scrobbler == null || !scrobbler.isReady) return;
+    try {
+      await scrobbler.scrobble(track, listenedAt: startedAt);
+    } catch (error, stack) {
+      AppLog.w(_tag, 'No se pudo enviar el scrobble', error, stack);
     }
   }
 

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/models/track.dart';
+import '../../core/models/track_technical_info.dart';
 import '../../core/theme/theme_tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/utils/metadata_text.dart';
@@ -27,12 +28,16 @@ class TrackPropertiesModal {
     required BuildContext context,
     required Track track,
     required Color accent,
+    Future<TrackTechnicalInfo>? technicalInfo,
   }) {
     return showDialog<void>(
       context: context,
       barrierColor: context.tokens.shadowColor.withValues(alpha: 0.62),
-      builder: (BuildContext dialogContext) =>
-          _TrackPropertiesDialog(track: track, accent: accent),
+      builder: (BuildContext dialogContext) => _TrackPropertiesDialog(
+        track: track,
+        accent: accent,
+        technicalInfo: technicalInfo,
+      ),
     );
   }
 }
@@ -63,23 +68,43 @@ Future<AudioMetadata?> _readMetadataSafely(String path) async {
 }
 
 class _TrackPropertiesDialog extends StatefulWidget {
-  const _TrackPropertiesDialog({required this.track, required this.accent});
+  const _TrackPropertiesDialog({
+    required this.track,
+    required this.accent,
+    this.technicalInfo,
+  });
 
   final Track track;
   final Color accent;
+
+  /// Propiedades en vivo de mpv. Opcional para quien abra el diálogo desde la
+  /// biblioteca, donde solo hay datos indexados.
+  final Future<TrackTechnicalInfo>? technicalInfo;
 
   @override
   State<_TrackPropertiesDialog> createState() => _TrackPropertiesDialogState();
 }
 
 class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
-  late final Future<AudioMetadata?> _metadata;
+  late final Future<_TrackDetails> _details;
   int _fileSize = 0;
 
   @override
   void initState() {
     super.initState();
-    _metadata = _readMetadataSafely(widget.track.path);
+    final Future<AudioMetadata?> metadata = _readMetadataSafely(
+      widget.track.path,
+    );
+    final Future<TrackTechnicalInfo> technical =
+        widget.technicalInfo ??
+        Future<TrackTechnicalInfo>.value(const TrackTechnicalInfo());
+    _details = Future.wait<Object?>(<Future<Object?>>[metadata, technical])
+        .then(
+          (List<Object?> values) => _TrackDetails(
+            values[0] as AudioMetadata?,
+            values[1] as TrackTechnicalInfo,
+          ),
+        );
     _fileSize = widget.track.fileSize;
     if (_fileSize <= 0 && widget.track.path.isNotEmpty) {
       final File file = File(widget.track.path);
@@ -107,207 +132,245 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
               Flexible(
-                child: FutureBuilder<AudioMetadata?>(
-                  future: _metadata,
-                  builder:
-                      (
-                        BuildContext context,
-                        AsyncSnapshot<AudioMetadata?> snapshot,
-                      ) {
-                        final AudioMetadata? metadata = snapshot.data;
-                        return SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                child: FutureBuilder<_TrackDetails>(
+                  future: _details,
+                  builder: (BuildContext context, AsyncSnapshot<_TrackDetails> snapshot) {
+                    final _TrackDetails details =
+                        snapshot.data ??
+                        const _TrackDetails(null, TrackTechnicalInfo());
+                    final AudioMetadata? metadata = details.metadata;
+                    final TrackTechnicalInfo live = details.technical;
+                    return SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          _Header(
+                            track: widget.track,
+                            accent: widget.accent,
+                            metadata: metadata,
+                            onClose: () => Navigator.of(context).pop(),
+                          ),
+                          const SizedBox(height: 18),
+                          _Section(
+                            title: 'Archivo',
+                            icon: Icons.folder_open_rounded,
+                            accent: widget.accent,
                             children: <Widget>[
-                              _Header(
-                                track: widget.track,
-                                accent: widget.accent,
-                                metadata: metadata,
-                                onClose: () => Navigator.of(context).pop(),
+                              _PropertyRow(
+                                label: 'Nombre',
+                                value: widget.track.path.isEmpty
+                                    ? '${widget.track.title}.${widget.track.format.toLowerCase()}'
+                                    : p.basename(widget.track.path),
+                                icon: Icons.description_rounded,
                               ),
-                              const SizedBox(height: 18),
-                              _Section(
-                                title: 'Información del archivo',
+                              _PropertyRow(
+                                label: 'Ruta',
+                                value: widget.track.isOnline
+                                    ? 'Streaming · ${widget.track.sourceLabel ?? 'fuente externa'}'
+                                    : (widget.track.path.isEmpty
+                                          ? 'Sin archivo local'
+                                          : widget.track.path),
+                                icon: Icons.route_rounded,
+                                copyable:
+                                    !widget.track.isOnline &&
+                                    widget.track.path.isNotEmpty,
+                              ),
+                              _PropertyRow(
+                                label: 'Tamaño',
+                                value: formatFileSize(
+                                  live.sizeBytes ?? _fileSize,
+                                ),
+                                icon: Icons.storage_rounded,
+                              ),
+                            ],
+                          ),
+                          _Section(
+                            title: 'Inspector técnico',
+                            icon: Icons.graphic_eq_rounded,
+                            accent: widget.accent,
+                            children: <Widget>[
+                              _PropertyRow(
+                                label: 'Códec',
+                                value: _codecLabel(live),
+                                icon: Icons.audiotrack_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Contenedor',
+                                value: _firstNonEmpty(<String?>[
+                                  live.container?.toUpperCase(),
+                                  _formatLabel(widget.track),
+                                ]),
                                 icon: Icons.folder_open_rounded,
-                                accent: widget.accent,
-                                children: <Widget>[
-                                  _PropertyRow(
-                                    label: 'Nombre',
-                                    value: widget.track.path.isEmpty
-                                        ? '${widget.track.title}.${widget.track.format.toLowerCase()}'
-                                        : p.basename(widget.track.path),
-                                    icon: Icons.description_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Ruta',
-                                    value: widget.track.path.isEmpty
-                                        ? 'Streaming: no hay archivo local'
-                                        : widget.track.path,
-                                    icon: Icons.route_rounded,
-                                    copyable: widget.track.path.isNotEmpty,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Tamaño',
-                                    value: formatFileSize(_fileSize),
-                                    icon: Icons.storage_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Formato',
-                                    value: _formatLabel(widget.track),
-                                    icon: Icons.audiotrack_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Duración',
-                                    value: Formatters.duration(
+                              ),
+                              _PropertyRow(
+                                label: 'Bitrate',
+                                value: _bitrateLabel(
+                                  live.bitrateBps ??
+                                      metadata?.bitrate ??
+                                      widget.track.bitrate ??
+                                      0,
+                                ),
+                                icon: Icons.speed_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Muestreo',
+                                value: _sampleRateLabel(
+                                  live.sampleRateHz ??
+                                      metadata?.sampleRate ??
+                                      widget.track.sampleRate ??
+                                      0,
+                                ),
+                                icon: Icons.tune_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Profundidad',
+                                value: _bitDepthLabel(metadata),
+                                icon: Icons.layers_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Canales',
+                                value: _channelsLabel(live.channels),
+                                icon: Icons.surround_sound_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Duración',
+                                value: Formatters.duration(
+                                  live.duration ??
                                       metadata?.duration ??
-                                          widget.track.duration,
+                                      widget.track.duration,
+                                ),
+                                icon: Icons.access_time_rounded,
+                              ),
+                              if (live.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(
+                                    top: 4,
+                                    left: 22,
+                                  ),
+                                  child: Text(
+                                    'El reproductor no expone datos en vivo; '
+                                    'se muestran los valores indexados.',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      color: context.inkAlpha(0.42),
                                     ),
-                                    icon: Icons.access_time_rounded,
                                   ),
-                                ],
-                              ),
-                              _Section(
-                                title: 'Calidad de audio',
-                                icon: Icons.graphic_eq_rounded,
-                                accent: widget.accent,
-                                children: <Widget>[
-                                  _PropertyRow(
-                                    label: 'Bitrate',
-                                    value: _bitrateLabel(metadata),
-                                    icon: Icons.speed_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Muestreo',
-                                    value: _sampleRateLabel(metadata),
-                                    icon: Icons.tune_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Profundidad',
-                                    value: _bitDepthLabel(metadata),
-                                    icon: Icons.layers_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Canales',
-                                    value: 'Estéreo (estimado)',
-                                    icon: Icons.surround_sound_rounded,
-                                  ),
-                                ],
-                              ),
-                              _Section(
-                                title: 'Metadatos',
-                                icon: Icons.music_note_rounded,
-                                accent: widget.accent,
-                                children: <Widget>[
-                                  _PropertyRow(
-                                    label: 'Título',
-                                    value: _firstNonEmpty(<String?>[
-                                      metadata == null
-                                          ? null
-                                          : MetadataText.clean(
-                                              metadata.title ?? '',
-                                              '',
-                                            ),
-                                      widget.track.title,
-                                    ]),
-                                    icon: Icons.title_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Artista',
-                                    value: _firstNonEmpty(<String?>[
-                                      metadata == null
-                                          ? null
-                                          : MetadataText.clean(
-                                              metadata.artist ?? '',
-                                              '',
-                                            ),
-                                      widget.track.artist,
-                                    ]),
-                                    icon: Icons.person_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Álbum',
-                                    value: _firstNonEmpty(<String?>[
-                                      metadata == null
-                                          ? null
-                                          : MetadataText.clean(
-                                              metadata.album ?? '',
-                                              '',
-                                            ),
-                                      widget.track.album,
-                                    ]),
-                                    icon: Icons.album_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Género',
-                                    value: _genreLabel(metadata),
-                                    icon: Icons.category_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Año',
-                                    value: _yearLabel(metadata),
-                                    icon: Icons.calendar_today_rounded,
-                                  ),
-                                  _ArtworkRow(
-                                    accent: widget.accent,
-                                    trackArtwork: widget.track.artworkPath,
-                                    picture: _firstPicture(metadata),
-                                    onOpen: _openArtwork,
-                                  ),
-                                ],
-                              ),
-                              _Section(
-                                title: 'Estadísticas de uso',
-                                icon: Icons.analytics_rounded,
-                                accent: widget.accent,
-                                children: <Widget>[
-                                  _PropertyRow(
-                                    label: 'Reproducciones',
-                                    value: '${widget.track.playCount}',
-                                    icon: Icons.play_circle_outline_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Última vez',
-                                    value: _lastPlayedLabel(),
-                                    icon: Icons.schedule_rounded,
-                                  ),
-                                  _PropertyRow(
-                                    label: 'Favorita',
-                                    value: widget.track.isFavorite
-                                        ? 'Sí'
-                                        : 'No',
-                                    icon: widget.track.isFavorite
-                                        ? Icons.favorite_rounded
-                                        : Icons.favorite_border_rounded,
-                                  ),
-                                ],
-                              ),
-                              if (widget.track.isOnline)
-                                _Section(
-                                  title: 'Fuente',
-                                  icon: Icons.cloud_queue_rounded,
-                                  accent: widget.accent,
-                                  children: <Widget>[
-                                    _PropertyRow(
-                                      label: 'Origen',
-                                      value:
-                                          widget.track.sourceLabel ??
-                                          'Streaming online',
-                                      icon: Icons.cloud_rounded,
-                                    ),
-                                    if (widget.track.externalId != null)
-                                      _PropertyRow(
-                                        label: 'ID externo',
-                                        value: widget.track.externalId!,
-                                        icon: Icons.tag_rounded,
-                                        copyable: true,
-                                      ),
-                                  ],
                                 ),
                             ],
                           ),
-                        );
-                      },
+                          _Section(
+                            title: 'Metadatos',
+                            icon: Icons.music_note_rounded,
+                            accent: widget.accent,
+                            children: <Widget>[
+                              _PropertyRow(
+                                label: 'Título',
+                                value: _firstNonEmpty(<String?>[
+                                  metadata == null
+                                      ? null
+                                      : MetadataText.clean(
+                                          metadata.title ?? '',
+                                          '',
+                                        ),
+                                  widget.track.title,
+                                ]),
+                                icon: Icons.title_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Artista',
+                                value: _firstNonEmpty(<String?>[
+                                  metadata == null
+                                      ? null
+                                      : MetadataText.clean(
+                                          metadata.artist ?? '',
+                                          '',
+                                        ),
+                                  widget.track.artist,
+                                ]),
+                                icon: Icons.person_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Álbum',
+                                value: _firstNonEmpty(<String?>[
+                                  metadata == null
+                                      ? null
+                                      : MetadataText.clean(
+                                          metadata.album ?? '',
+                                          '',
+                                        ),
+                                  widget.track.album,
+                                ]),
+                                icon: Icons.album_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Género',
+                                value: _genreLabel(metadata),
+                                icon: Icons.category_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Año',
+                                value: _yearLabel(metadata),
+                                icon: Icons.calendar_today_rounded,
+                              ),
+                              _ArtworkRow(
+                                accent: widget.accent,
+                                trackArtwork: widget.track.artworkPath,
+                                picture: _firstPicture(metadata),
+                                onOpen: _openArtwork,
+                              ),
+                            ],
+                          ),
+                          _Section(
+                            title: 'Estadísticas de uso',
+                            icon: Icons.analytics_rounded,
+                            accent: widget.accent,
+                            children: <Widget>[
+                              _PropertyRow(
+                                label: 'Reproducciones',
+                                value: '${widget.track.playCount}',
+                                icon: Icons.play_circle_outline_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Última vez',
+                                value: _lastPlayedLabel(),
+                                icon: Icons.schedule_rounded,
+                              ),
+                              _PropertyRow(
+                                label: 'Favorita',
+                                value: widget.track.isFavorite ? 'Sí' : 'No',
+                                icon: widget.track.isFavorite
+                                    ? Icons.favorite_rounded
+                                    : Icons.favorite_border_rounded,
+                              ),
+                            ],
+                          ),
+                          if (widget.track.isOnline)
+                            _Section(
+                              title: 'Fuente',
+                              icon: Icons.cloud_queue_rounded,
+                              accent: widget.accent,
+                              children: <Widget>[
+                                _PropertyRow(
+                                  label: 'Origen',
+                                  value:
+                                      widget.track.sourceLabel ??
+                                      'Streaming online',
+                                  icon: Icons.cloud_rounded,
+                                ),
+                                if (widget.track.externalId != null)
+                                  _PropertyRow(
+                                    label: 'ID externo',
+                                    value: widget.track.externalId!,
+                                    icon: Icons.tag_rounded,
+                                    copyable: true,
+                                  ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
               ),
             ],
@@ -329,22 +392,36 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
     return value.toUpperCase();
   }
 
-  String _bitrateLabel(AudioMetadata? metadata) {
-    final int bitrate = metadata?.bitrate ?? widget.track.bitrate ?? 0;
+  String _codecLabel(TrackTechnicalInfo live) {
+    final String? codec = live.codec;
+    if (codec == null || codec.trim().isEmpty) return 'No disponible';
+    return codec.toUpperCase();
+  }
+
+  String _bitrateLabel(int bitrate) {
     if (bitrate <= 0) return 'No disponible';
     // Algunos contenedores informan bits por segundo en vez de kbps.
     final double kbps = bitrate > 10000 ? bitrate / 1000 : bitrate.toDouble();
     return '${kbps.toStringAsFixed(kbps >= 100 ? 0 : 1)} kbps';
   }
 
-  String _sampleRateLabel(AudioMetadata? metadata) {
-    final int rate = metadata?.sampleRate ?? widget.track.sampleRate ?? 0;
+  String _sampleRateLabel(int rate) {
     if (rate <= 0) return 'No disponible';
     if (rate >= 1000) {
       final double khz = rate / 1000;
       return '${khz.toStringAsFixed(1)} kHz';
     }
     return '$rate Hz';
+  }
+
+  String _channelsLabel(int? channels) {
+    if (channels == null || channels <= 0) return 'No disponible';
+    return switch (channels) {
+      1 => 'Mono',
+      2 => 'Estéreo',
+      >= 6 => '$channels canales (multicanal)',
+      _ => '$channels canales',
+    };
   }
 
   String _bitDepthLabel(AudioMetadata? metadata) {
@@ -469,6 +546,15 @@ class _TrackPropertiesDialogState extends State<_TrackPropertiesDialog> {
       ),
     );
   }
+}
+
+/// Resultado combinado de las dos lecturas asíncronas del inspector.
+@immutable
+class _TrackDetails {
+  const _TrackDetails(this.metadata, this.technical);
+
+  final AudioMetadata? metadata;
+  final TrackTechnicalInfo technical;
 }
 
 String _firstNonEmpty(List<String?> values) {

@@ -1,7 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- El updater copia el APK a cacheDir/updates antes de compartirlo. -->
+    <!-- Copia temporal usada por el instalador del sistema. -->
     <cache-path
         name="updates"
         path="updates/" />
+
+    <!--
+        Descargas propias de la app:
+        Android/data/<paquete>/files/Download/Polaris Music/Updates.
+        Permite compartir el APK directamente aunque no se copie a caché.
+    -->
+    <external-files-path
+        name="polaris_downloads"
+        path="Download/" />
+
+    <!--
+        Música y documentos exportados por la app. Solo lectura desde fuera;
+        el instalador no los usa, pero el FileProvider queda preparado para
+        compartirlos si el usuario decide enviarlos.
+    -->
+    <external-files-path
+        name="polaris_music"
+        path="Music/" />
+    <external-files-path
+        name="polaris_documents"
+        path="Documents/" />
 </paths>

@@ -104,7 +104,7 @@ Type: files; Name: "{app}\data\flutter_assets\assets\icons\polaris.png"
 [Files]
 ; Build de Flutter para Windows (exe, DLLs y carpeta data).
 ; Solo se sobrescribe {app}: la base de datos Drift, temas, caché y ajustes
-; viven en %APPDATA%\Polaris Music\polaris_music y no se tocan nunca.
+; viven en %LOCALAPPDATA%\Polaris Music y no se tocan nunca.
 Source: "..\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]

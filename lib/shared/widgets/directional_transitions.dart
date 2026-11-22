@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 
+import '../../core/theme/motion_config.dart';
+import 'motion_scope.dart';
+
 /// Cambio direccional que mantiene **todas** las pantallas montadas.
 ///
 /// Es el sustituto animado del `IndexedStack`: el contenido inactivo queda en
 /// `Offstage` (sin ticks), pero conserva su estado, scroll y controladores.
 /// Solo se pintan la pantalla saliente y la entrante durante la transición.
+///
+/// El recorrido y el rebote se derivan del perfil de movimiento activo. La
+/// opacidad usa una curva monótona aparte: las curvas elásticas pueden pasar de
+/// 1.0 y `FadeTransition` exige valores en 0..1.
 class DirectionalSectionStack extends StatefulWidget {
   const DirectionalSectionStack({
     super.key,
@@ -32,11 +39,19 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
     vsync: this,
     duration: widget.duration,
   );
-  late final CurvedAnimation _incoming = CurvedAnimation(
+  late final CurvedAnimation _incomingMotion = CurvedAnimation(
+    parent: _controller,
+    curve: MotionConfig.defaults.sectionInCurve,
+  );
+  late final CurvedAnimation _incomingFade = CurvedAnimation(
     parent: _controller,
     curve: Curves.easeOutCubic,
   );
-  late final CurvedAnimation _outgoing = CurvedAnimation(
+  late final CurvedAnimation _outgoingMotion = CurvedAnimation(
+    parent: _controller,
+    curve: MotionConfig.defaults.sectionOutCurve,
+  );
+  late final CurvedAnimation _outgoingFade = CurvedAnimation(
     parent: _controller,
     curve: Curves.easeInCubic,
   );
@@ -44,6 +59,9 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
   int _current = 0;
   int? _previous;
   bool _forward = true;
+  bool _allowed = true;
+  double _travel = 0.10;
+  double _intensity = 0.65;
 
   @override
   void initState() {
@@ -62,15 +80,31 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final MotionConfig motion = context.motion;
+    _allowed = context.motionAllowed(MotionCategory.transitions);
+    _intensity = motion.intensity;
+    _travel = widget.distance * motion.travelScale;
+    // La duración ya llega escalada desde el padre; volver a aplicar
+    // `motion.duration` aquí duplicaría el factor de velocidad.
+    _incomingMotion.curve = motion.sectionInCurve;
+    _outgoingMotion.curve = motion.sectionOutCurve;
+  }
+
+  @override
   void didUpdateWidget(covariant DirectionalSectionStack oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.duration != oldWidget.duration) {
       _controller.duration = widget.duration;
+      if (widget.distance != oldWidget.distance) {
+        _travel = widget.distance * context.motion.travelScale;
+      }
     }
     final int next = _bounded(widget.index);
     if (next == _current) return;
 
-    if (widget.duration == Duration.zero) {
+    if (!_allowed || widget.duration == Duration.zero) {
       _controller.stop();
       setState(() {
         _previous = null;
@@ -96,14 +130,16 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
 
   @override
   void dispose() {
-    _incoming.dispose();
-    _outgoing.dispose();
+    _incomingMotion.dispose();
+    _incomingFade.dispose();
+    _outgoingMotion.dispose();
+    _outgoingFade.dispose();
     _controller.dispose();
     super.dispose();
   }
 
   Offset _offset(double progress) =>
-      Offset((_forward ? progress : -progress) * widget.distance, 0);
+      Offset((_forward ? progress : -progress) * _travel, 0);
 
   Widget _decorate(int index, Widget child) {
     if (_previous == null || index != _current && index != _previous) {
@@ -111,12 +147,18 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
     }
 
     if (index == _current) {
-      return SlideTransition(
-        position: Tween<Offset>(
-          begin: _offset(1),
-          end: Offset.zero,
-        ).animate(_incoming),
-        child: FadeTransition(opacity: _incoming, child: child),
+      return ScaleTransition(
+        scale: Tween<double>(
+          begin: 1 - 0.035 * _intensity,
+          end: 1,
+        ).animate(_incomingFade),
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: _offset(1),
+            end: Offset.zero,
+          ).animate(_incomingMotion),
+          child: FadeTransition(opacity: _incomingFade, child: child),
+        ),
       );
     }
 
@@ -124,14 +166,20 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
     // interceptar toques de la sección entrante según el orden del Stack.
     return IgnorePointer(
       ignoring: true,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: Offset.zero,
-          end: _offset(-1),
-        ).animate(_outgoing),
-        child: FadeTransition(
-          opacity: Tween<double>(begin: 1, end: 0).animate(_outgoing),
-          child: child,
+      child: ScaleTransition(
+        scale: Tween<double>(
+          begin: 1,
+          end: 1 - 0.02 * _intensity,
+        ).animate(_outgoingFade),
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset.zero,
+            end: _offset(-1),
+          ).animate(_outgoingMotion),
+          child: FadeTransition(
+            opacity: Tween<double>(begin: 1, end: 0).animate(_outgoingFade),
+            child: child,
+          ),
         ),
       ),
     );
@@ -160,7 +208,11 @@ class _DirectionalSectionStackState extends State<DirectionalSectionStack>
 }
 
 /// Cambio direccional para contenido que sí puede desmontarse (modos de
-/// ventana, mini-reproductor, puerta de onboarding).
+/// ventana, mini-reproductor, puerta de onboarding, vistas de biblioteca).
+///
+/// Se detecta el cambio por la [Key] del hijo, igual que hacía `AnimatedSwitcher`,
+/// pero con un único controlador: eso permite dar al muelle la curva del perfil
+/// activo sin exponer la opacidad a valores fuera de 0..1.
 class DirectionalContentSwitcher extends StatefulWidget {
   const DirectionalContentSwitcher({
     super.key,
@@ -182,58 +234,163 @@ class DirectionalContentSwitcher extends StatefulWidget {
       _DirectionalContentSwitcherState();
 }
 
-class _DirectionalContentSwitcherState
-    extends State<DirectionalContentSwitcher> {
+class _DirectionalContentSwitcherState extends State<DirectionalContentSwitcher>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: widget.duration,
+    value: 1,
+  );
+  late final CurvedAnimation _incomingMotion = CurvedAnimation(
+    parent: _controller,
+    curve: MotionConfig.defaults.sectionInCurve,
+  );
+  late final CurvedAnimation _incomingFade = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeOutCubic,
+  );
+  late final CurvedAnimation _outgoingMotion = CurvedAnimation(
+    parent: _controller,
+    curve: MotionConfig.defaults.sectionOutCurve,
+  );
+  late final CurvedAnimation _outgoingFade = CurvedAnimation(
+    parent: _controller,
+    curve: Curves.easeInCubic,
+  );
+
+  Widget? _current;
+  Widget? _previous;
+  Key? _currentKey;
   bool _forward = true;
+  bool _allowed = true;
+  double _travel = 0.10;
+  double _intensity = 0.65;
+
+  @override
+  void initState() {
+    super.initState();
+    _current = widget.child;
+    _currentKey = widget.child.key;
+    _controller.addStatusListener((AnimationStatus status) {
+      if (status != AnimationStatus.completed &&
+          status != AnimationStatus.dismissed) {
+        return;
+      }
+      if (!mounted || _previous == null) return;
+      setState(() => _previous = null);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final MotionConfig motion = context.motion;
+    _allowed = context.motionAllowed(MotionCategory.transitions);
+    _intensity = motion.intensity;
+    _travel = widget.distance * motion.travelScale;
+    _incomingMotion.curve = motion.sectionInCurve;
+    _outgoingMotion.curve = motion.sectionOutCurve;
+  }
 
   @override
   void didUpdateWidget(covariant DirectionalContentSwitcher oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.duration != oldWidget.duration) {
+      _controller.duration = widget.duration;
+    }
+    if (widget.distance != oldWidget.distance) {
+      _travel = widget.distance * context.motion.travelScale;
+    }
+
+    final bool keyChanged = widget.child.key != _currentKey;
+    if (!keyChanged) {
+      // Misma clave pero contenido nuevo (estado interno, tema, cola...).
+      _current = widget.child;
+      return;
+    }
+
     if (widget.direction != oldWidget.direction) {
       _forward = widget.direction > oldWidget.direction;
     }
+    _previous = _current;
+    _current = widget.child;
+    _currentKey = widget.child.key;
+
+    if (!_allowed || widget.duration == Duration.zero) {
+      _controller.stop();
+      _previous = null;
+      _controller.value = 1;
+      return;
+    }
+    _controller
+      ..stop()
+      ..forward(from: 0);
   }
 
-  Offset get _begin {
-    final double value = _forward ? widget.distance : -widget.distance;
+  @override
+  void dispose() {
+    _incomingMotion.dispose();
+    _incomingFade.dispose();
+    _outgoingMotion.dispose();
+    _outgoingFade.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Offset _offset(double progress) {
+    final double value = (_forward ? progress : -progress) * _travel;
     return widget.axis == Axis.horizontal ? Offset(value, 0) : Offset(0, value);
   }
 
   @override
   Widget build(BuildContext context) {
-    final Widget child = widget.child;
-    if (widget.duration == Duration.zero) return child;
+    final Widget current = _current ?? widget.child;
+    final Widget? previous = _previous;
+    if (previous == null) return current;
 
-    return AnimatedSwitcher(
-      duration: widget.duration,
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      // No descartar `previousChildren`: hacerlo desmontaba la vista anterior
-      // en el mismo frame y rompía el estado de isla/mini al cambiar de modo.
-      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) =>
-          Stack(
-            alignment: Alignment.center,
-            children: <Widget>[
-              IgnorePointer(
-                ignoring: true,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: previousChildren,
+    return Stack(
+      fit: StackFit.expand,
+      children: <Widget>[
+        Positioned.fill(
+          child: IgnorePointer(
+            ignoring: true,
+            child: ScaleTransition(
+              scale: Tween<double>(
+                begin: 1,
+                end: 1 - 0.025 * _intensity,
+              ).animate(_outgoingFade),
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: Offset.zero,
+                  end: _offset(-1),
+                ).animate(_outgoingMotion),
+                child: FadeTransition(
+                  opacity: Tween<double>(
+                    begin: 1,
+                    end: 0,
+                  ).animate(_outgoingFade),
+                  child: previous,
                 ),
               ),
-              ?currentChild,
-            ],
+            ),
           ),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: _begin,
-            end: Offset.zero,
-          ).animate(animation),
-          child: FadeTransition(opacity: animation, child: child),
-        );
-      },
-      child: child,
+        ),
+        Positioned.fill(
+          child: ScaleTransition(
+            scale: Tween<double>(
+              begin: 1 - 0.03 * _intensity,
+              end: 1,
+            ).animate(_incomingFade),
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: _offset(1),
+                end: Offset.zero,
+              ).animate(_incomingMotion),
+              child: FadeTransition(opacity: _incomingFade, child: current),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

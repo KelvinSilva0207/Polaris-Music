@@ -1,12 +1,19 @@
+import 'dart:math' as math;
+
 import '../constants/app_constants.dart';
 import '../models/equalizer_config.dart';
+import 'frequency_response.dart';
 
 /// Construye la cadena de filtros de audio de libmpv para el ecualizador.
 ///
 /// mpv expone FFmpeg mediante el filtro `lavfi`; dentro de él se combinan el
 /// preamplificador (`volume`), las bandas del ecualizador (`equalizer`,
 /// `bass`, `treble`, `lowpass`, `highpass`) y, opcionalmente, una rama
-/// sub-armónica con limitador final. El resultado se asigna a `af`.
+/// sub-armónica. Si hay procesamiento, se añaden compensación de ganancia y un
+/// limitador suave al final. El resultado se asigna a `af`.
+///
+/// [pure] corta la cadena antes de cualquier filtro, incluido el limitador: es
+/// un bypass temporal, no un borrado de la configuración.
 ///
 /// Es una función pura (sin FFI ni Flutter) para poder probarla sin audio.
 class EqualizerDsp {
@@ -20,7 +27,7 @@ class EqualizerDsp {
   /// Se fuerza esta tasa antes y después del cambio de sample rate para no
   /// depender de la frecuencia de la pista: 48 kHz -> 24 kHz (una octava) y
   /// `atempo=2` devuelve la duración original sin recuperar el tono.
-  static const double sampleRate = 48000;
+  static const double sampleRate = AppConstants.dspSampleRate;
 
   /// Devuelve `''` cuando no hay procesamiento que aplicar.
   static String buildFilter({
@@ -31,14 +38,20 @@ class EqualizerDsp {
     EqMode mode = EqMode.graphic,
     List<ParametricFilter> filters = const <ParametricFilter>[],
     SubHarmonicSettings sub = const SubHarmonicSettings(),
+    bool pure = false,
+    bool antiClip = true,
   }) {
-    if (!enabled) return '';
+    // Modo puro: ni el limitador se inserta. La curva sigue viva en el
+    // controlador, así que al salir del modo vuelve exactamente la misma.
+    if (!enabled || pure) return '';
+
+    final List<double> safeGains = gains
+        .map((double gain) => _finiteGain(gain))
+        .toList(growable: false);
+    final List<double> hz = frequencies ?? AppConstants.eqBands;
+    final double clampedPreamp = preampDb.isFinite ? _clampGain(preampDb) : 0;
 
     final List<String> chain = <String>[];
-
-    if (preampDb.isFinite && preampDb.abs() >= _epsilon) {
-      chain.add('volume=${_format(_clampGain(preampDb))}dB');
-    }
 
     if (mode == EqMode.parametric) {
       for (final ParametricFilter filter in filters) {
@@ -47,28 +60,91 @@ class EqualizerDsp {
         if (part != null) chain.add(part);
       }
     } else {
-      final List<double> hz = frequencies ?? AppConstants.eqBands;
-      final int length = gains.length < hz.length ? gains.length : hz.length;
+      final int length = safeGains.length < hz.length
+          ? safeGains.length
+          : hz.length;
       for (int i = 0; i < length; i++) {
-        final double gain = gains[i];
-        if (!gain.isFinite || gain.abs() < _epsilon) continue;
+        final double gain = safeGains[i];
+        if (gain.abs() < _epsilon) continue;
         final String frequency = _formatFrequency(hz[i]);
-        chain.add(
-          'equalizer=f=$frequency:t=q:w=1:g=${_format(_clampGain(gain))}',
-        );
+        chain.add('equalizer=f=$frequency:t=q:w=1:g=${_format(gain)}');
       }
     }
 
+    double subBoostDb = 0;
     if (sub.enabled) {
       final String subGraph = _subGraph(sub);
       if (subGraph.isNotEmpty) {
-        final String prefix = chain.isEmpty ? '' : '${chain.join(',')},';
-        return 'lavfi=[$prefix$subGraph]';
+        chain.add(subGraph);
+        final double mix = sub.mix.clamp(
+          AppConstants.subMinMix,
+          AppConstants.subMaxMix,
+        );
+        // Peor caso: la rama desplazada se suma en fase con la original.
+        subBoostDb = 20 * math.log(1 + mix) / math.ln10;
       }
+    }
+
+    // Solo el preamplificador no cuenta como procesamiento: se aplica tal cual
+    // y no se le añade limitador (coste CPU innecesario).
+    final bool hasProcessing = chain.isNotEmpty;
+    if (!hasProcessing && clampedPreamp.abs() < _epsilon) return '';
+
+    if (hasProcessing && antiClip) {
+      final double autoDb = antiClipGainDb(
+        gains: safeGains,
+        frequencies: hz,
+        preampDb: clampedPreamp,
+        mode: mode,
+        filters: filters,
+        subBoostDb: subBoostDb,
+      );
+      final double totalPreamp = clampedPreamp + autoDb;
+      if (totalPreamp.abs() >= _epsilon) {
+        chain.insert(0, 'volume=${_format(totalPreamp)}dB');
+      }
+      // Un único limitador para toda la cadena (incluida la rama sub-armónica).
+      chain.add('alimiter=limit=0.89:level=0');
+    } else if (clampedPreamp.abs() >= _epsilon) {
+      chain.insert(0, 'volume=${_format(clampedPreamp)}dB');
     }
 
     if (chain.isEmpty) return '';
     return 'lavfi=[${chain.join(',')}]';
+  }
+
+  /// Atenuación (dB, valor ≤ 0) necesaria para dejar [headroom] por debajo de
+  /// 0 dBFS antes del limitador.
+  ///
+  /// Se calcula sobre la respuesta RBJ de los mismos biquads que se envían a
+  /// mpv, más el refuerzo estimado del sub-armónico. Es una operación pura y
+  /// barata: se ejecuta al cambiar un filtro, nunca por muestra de audio.
+  static double antiClipGainDb({
+    required List<double> gains,
+    List<double>? frequencies,
+    double preampDb = 0,
+    EqMode mode = EqMode.graphic,
+    List<ParametricFilter> filters = const <ParametricFilter>[],
+    double subBoostDb = 0,
+    double headroomDb = AppConstants.antiClipHeadroomDb,
+  }) {
+    final EqualizerConfig config = EqualizerConfig(
+      mode: mode,
+      frequencies: frequencies ?? AppConstants.eqBands,
+      bands: gains
+          .map((double gain) => _finiteGain(gain))
+          .toList(growable: false),
+      filters: filters,
+      preampDb: preampDb.isFinite ? _clampGain(preampDb) : 0,
+    );
+    final double peak =
+        FrequencyResponse.peakDb(config, includePreamp: true) + subBoostDb;
+    // Sin pico positivo no hay nada que compensar: el margen solo se aplica
+    // cuando la curva realmente puede empujar la señal por encima de 0 dBFS.
+    final double needed = peak <= 0
+        ? 0
+        : (peak + headroomDb).clamp(0, AppConstants.antiClipMaxAttenuationDb);
+    return -needed.toDouble();
   }
 
   /// Traduce un filtro paramétrico a su equivalente en FFmpeg.
@@ -103,8 +179,8 @@ class EqualizerDsp {
   /// * filtra la segunda por debajo del corte y baja su nivel;
   /// * desplaza esa rama una octava (`asetrate` a la mitad de la tasa) y
   ///   compensa la duración con `atempo=2`, que no altera el tono;
-  /// * mezcla ambas ramas sin normalizar y aplica un limitador de true peak
-  ///   para que el refuerzo nunca recorte ni desactive el filtro por exceso.
+  /// * mezcla ambas ramas sin normalizar. El limitador común se añade al final
+  ///   de toda la cadena en [buildFilter], para no duplicarlo.
   static String _subGraph(SubHarmonicSettings sub) {
     final double crossover = sub.crossoverHz.clamp(
       AppConstants.subMinCrossover,
@@ -123,12 +199,14 @@ class EqualizerDsp {
         '[sb]lowpass=f=$cutoff,volume=$level,'
         'aresample=${sampleRate.round()},asetrate=$halfRate,'
         'atempo=2,aresample=${sampleRate.round()}[so];'
-        '[pm][so]amix=inputs=2:duration=first:normalize=0,'
-        'alimiter=limit=0.89:level=0';
+        '[pm][so]amix=inputs=2:duration=first:normalize=0';
   }
 
   static double _clampGain(double value) =>
       value.clamp(AppConstants.eqMinGain, AppConstants.eqMaxGain);
+
+  static double _finiteGain(double value) =>
+      value.isFinite ? _clampGain(value) : 0;
 
   static String _format(double value) {
     final String text = value.toStringAsFixed(2);

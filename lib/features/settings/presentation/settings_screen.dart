@@ -5,21 +5,30 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../app/app_navigation.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/di/service_locator.dart';
+import '../../../core/models/scrobble_config.dart';
 import '../../../core/models/update_info.dart';
 import '../../../core/providers/app_providers.dart';
+import '../../../core/providers/compact_style_provider.dart';
+import '../../../core/providers/motion_provider.dart';
+import '../../../core/providers/typography_provider.dart';
 import '../../../core/providers/update_prompt_provider.dart';
 import '../../../core/providers/theme_provider.dart';
 import '../../../core/services/app_shutdown.dart';
 import '../../../core/services/app_updater_service.dart';
+import '../../../core/services/audio_device_profile_service.dart';
 import '../../../core/services/backup_service.dart';
 import '../../../core/services/global_hotkey_service.dart';
+import '../../../core/services/scrobble_service.dart';
 import '../../../core/services/settings_service.dart';
+import '../../../core/services/storage_paths_service.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/theme_tokens.dart';
+import '../../../core/utils/diagnostics.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../features/dynamic_island/presentation/island_providers.dart';
 import '../../../features/equalizer/presentation/equalizer_providers.dart';
@@ -49,6 +58,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   Widget build(BuildContext context) {
     final bool replayGain = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.replayGainEnabled),
+    );
+    final bool pureAudio = ref.watch(
+      equalizerControllerProvider.select((s) => s.pure),
     );
     final bool gapless = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.gaplessEnabled),
@@ -136,6 +148,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
+              title: Text('Modo puro / sin filtros'),
+              subtitle: Text(
+                'Bypass temporal del ecualizador, el sub-armónico y el '
+                'limitador. Tu curva se conserva intacta al volver a activarlos.',
+              ),
+              value: pureAudio,
+              onChanged: (bool value) =>
+                  ref.read(equalizerControllerProvider.notifier).setPure(value),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
               title: Text('Pausar al desconectar auriculares'),
               subtitle: Text(
                 'Detecta la desconexión o el cambio de salida de audio',
@@ -160,7 +183,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               contentPadding: EdgeInsets.zero,
               title: Text('Reproducción sin pausas (gapless)'),
               subtitle: Text(
-                'Delegado al motor mpv: une pistas del mismo álbum',
+                'mpv encadena pistas sin hueco. Se desactiva al usar crossfade.',
               ),
               value: gapless,
               onChanged: (bool value) => ref
@@ -171,7 +194,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               contentPadding: EdgeInsets.zero,
               title: Text('Crossfade entre pistas'),
               subtitle: Text(
-                'Dos decks mpv: la pista entrante se funde con la saliente',
+                'Dos decks mpv: funde pistas y desactiva el gapless estricto.',
               ),
               value: crossfade,
               onChanged: (bool value) => ref
@@ -310,7 +333,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           children: <Widget>[
             Text(
               'Diez bandas de estudio, preamplificador y curvas guardadas. '
-              'También disponible desde los controles del reproductor.',
+              'Con filtros activos se aplica preamp automático y un limitador '
+              'suave para evitar recortes; el modo puro los deja a todos fuera.',
               style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
             ),
             const SizedBox(height: 10),
@@ -427,6 +451,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         const _ProfilesSection(),
         const SizedBox(height: 16),
         const _PermissionsSection(),
+        const SizedBox(height: 16),
+        const _StorageSection(),
         if (Platform.isAndroid) ...<Widget>[
           const SizedBox(height: 16),
           _Section(
@@ -447,6 +473,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
         const SizedBox(height: 16),
         const _UpdateSection(),
+        const SizedBox(height: 16),
+        const _ScrobbleSection(),
+        const SizedBox(height: 16),
+        _Section(
+          title: 'Restablecer ajustes',
+          icon: Icons.restart_alt_rounded,
+          children: <Widget>[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.restore_rounded),
+              title: const Text('Restablecer ajustes por defecto'),
+              subtitle: const Text(
+                'Tema, animaciones, estilos, ecualizador, atajos y carpetas '
+                'vuelven a su estado inicial. Biblioteca y cuentas se conservan.',
+              ),
+              onTap: _confirmResetSettings,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _Section(
+          title: 'Diagnóstico',
+          icon: Icons.bug_report_outlined,
+          children: <Widget>[
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.copy_all_rounded),
+              title: Text('Copiar informe de diagnóstico'),
+              subtitle: Text(
+                'Versión, permiso de instalación y huella de la firma',
+              ),
+              onTap: () async {
+                final String report = await buildDiagnosticsReport(
+                  sl<AppUpdaterService>(),
+                );
+                await Clipboard.setData(ClipboardData(text: report));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Diagnóstico copiado al portapapeles'),
+                    ),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
         const SizedBox(height: 16),
         _Section(
           title: 'Acerca de',
@@ -497,6 +570,66 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ],
         ),
       ],
+    );
+  }
+
+  /// Limpia una configuración de prueba sin tocar datos del usuario.
+  ///
+  /// La confirmación explica exactamente qué se restablece y qué se conserva.
+  /// Los controladores que escriben al hacer `dispose` se invalidan antes de
+  /// borrar las claves para que no vuelvan a persistir valores antiguos.
+  Future<void> _confirmResetSettings() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Restablecer ajustes por defecto'),
+        content: const Text(
+          'Se devuelven al estado inicial el tema activo, las animaciones, '
+          'los estilos compactos, el ecualizador, los atajos, las preferencias '
+          'de reproducción y las carpetas elegidas.\n\n'
+          'No se borran tu biblioteca, tus listas, la introducción, la sesión '
+          'de reproducción, los perfiles de tema guardados ni las cuentas '
+          'conectadas. Los archivos de tus carpetas tampoco se eliminan.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Restablecer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    ref.invalidate(equalizerControllerProvider);
+    ref.invalidate(playerControllerProvider);
+    await Future<void>.delayed(Duration.zero);
+
+    final SettingsService settings = ref.read(settingsServiceProvider);
+    await settings.resetPreferences();
+    await settings.resetDeviceScopes();
+    await sl<GlobalHotkeyService>().resetDefaults();
+    await sl<AudioDeviceProfileService>().setEnabled(false);
+    await ref.read(motionControllerProvider.notifier).reload();
+
+    ref.invalidate(themeControllerProvider);
+    ref.invalidate(typographyProvider);
+    ref.invalidate(compactStylesProvider);
+    ref.invalidate(dynamicIslandControllerProvider);
+    ref.invalidate(equalizerControllerProvider);
+    ref.invalidate(playerControllerProvider);
+
+    await ref.read(equalizerControllerProvider.notifier).load();
+    final double volume = ref.read(settingsServiceProvider).volume;
+    await ref.read(audioEngineProvider).setVolume(volume * 100);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Ajustes restablecidos por defecto')),
     );
   }
 
@@ -607,6 +740,221 @@ class _TrimSlider extends StatelessWidget {
       ],
     );
   }
+}
+
+class _ScrobbleSection extends ConsumerWidget {
+  const _ScrobbleSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final SettingsService settings = ref.watch(settingsServiceProvider);
+    final ScrobbleConfig config = settings.scrobbleConfig;
+    final String subtitle;
+    if (config.pendingToken.isNotEmpty) {
+      subtitle = 'Autoriza la app en la web y pulsa «Ya autoricé»';
+    } else if (config.connected) {
+      subtitle = config.username.isEmpty
+          ? 'Cuenta conectada'
+          : 'Conectado como ${config.username}';
+    } else {
+      subtitle = 'Envía las escuchas completadas a Last.fm';
+    }
+
+    return _Section(
+      title: 'Scrobbling',
+      icon: Icons.music_note_outlined,
+      children: <Widget>[
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Enviar escuchas'),
+          subtitle: Text(subtitle),
+          value: config.enabled,
+          onChanged: config.connected
+              ? (bool value) async {
+                  await settings.setScrobbleConfig(
+                    config.copyWith(enabled: value),
+                  );
+                }
+              : null,
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: OutlinedButton.icon(
+            onPressed: () => _configureScrobbling(context, settings),
+            icon: const Icon(Icons.link_rounded, size: 18),
+            label: Text(
+              config.pendingToken.isNotEmpty
+                  ? 'Continuar autorización'
+                  : config.connected
+                  ? 'Cambiar cuenta'
+                  : 'Conectar Last.fm',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Future<void> _configureScrobbling(
+  BuildContext context,
+  SettingsService settings,
+) async {
+  final ScrobbleService scrobbler = sl<ScrobbleService>();
+  final ScrobbleConfig current = settings.scrobbleConfig;
+
+  if (current.pendingToken.isNotEmpty) {
+    final bool? authorized = await _askScrobbleAuthorization(
+      context,
+      scrobbler,
+      current.pendingToken,
+    );
+    if (authorized != true || !context.mounted) return;
+    await _finishScrobbleLogin(context, scrobbler);
+    return;
+  }
+
+  final TextEditingController key = TextEditingController(text: current.apiKey);
+  final TextEditingController secret = TextEditingController(
+    text: current.apiSecret,
+  );
+  final TextEditingController endpoint = TextEditingController(
+    text: current.endpoint,
+  );
+  try {
+    final bool? accepted = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Conectar Last.fm'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const Text(
+                'Usa tu API key de Last.fm. También admite servidores '
+                'compatibles indicando su endpoint.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: key,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'API key',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: secret,
+                autocorrect: false,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'API secret',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: endpoint,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Endpoint (opcional)',
+                  hintText: ScrobbleService.defaultEndpoint,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continuar'),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !context.mounted) return;
+
+    final String token = await scrobbler.beginLogin(
+      apiKey: key.text,
+      apiSecret: secret.text,
+      endpoint: endpoint.text,
+    );
+    if (!context.mounted) return;
+    final bool? authorized = await _askScrobbleAuthorization(
+      context,
+      scrobbler,
+      token,
+    );
+    if (authorized != true || !context.mounted) return;
+    await _finishScrobbleLogin(context, scrobbler);
+  } catch (error) {
+    if (context.mounted) _scrobbleToast(context, 'No se pudo conectar: $error');
+  } finally {
+    key.dispose();
+    secret.dispose();
+    endpoint.dispose();
+  }
+}
+
+Future<bool?> _askScrobbleAuthorization(
+  BuildContext context,
+  ScrobbleService scrobbler,
+  String token,
+) {
+  return showDialog<bool>(
+    context: context,
+    builder: (BuildContext context) => AlertDialog(
+      title: const Text('Autorizar Polaris'),
+      content: const Text(
+        'Se abrirá la página de Last.fm. Autoriza la aplicación y vuelve '
+        'a Polaris para terminar la conexión.',
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancelar'),
+        ),
+        TextButton(
+          onPressed: () async {
+            final Uri url = scrobbler.authorizationUrl(token);
+            if (await canLaunchUrl(url)) {
+              await launchUrl(url, mode: LaunchMode.externalApplication);
+            }
+          },
+          child: const Text('Abrir Last.fm'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Ya autoricé'),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<void> _finishScrobbleLogin(
+  BuildContext context,
+  ScrobbleService scrobbler,
+) async {
+  try {
+    await scrobbler.finishLogin();
+    if (context.mounted) _scrobbleToast(context, 'Last.fm conectado');
+  } catch (error) {
+    if (context.mounted) {
+      _scrobbleToast(context, 'No se pudo conectar: $error');
+    }
+  }
+}
+
+void _scrobbleToast(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
 
 class _Section extends StatelessWidget {
@@ -1145,9 +1493,12 @@ class _ProfilesSection extends ConsumerWidget {
     );
     if (zip == null) return;
     try {
+      final Directory documents = await ref
+          .read(storagePathsServiceProvider)
+          .documents();
       final String path = await ref
           .read(backupActionsProvider)
-          .export(compress: zip);
+          .export(compress: zip, directory: documents);
       if (context.mounted) {
         await showDialog<void>(
           context: context,
@@ -1363,6 +1714,156 @@ class _PermissionsSection extends ConsumerWidget {
   }
 }
 
+/// Muestra y permite abrir/cambiar las carpetas estándar de la app.
+class _StorageSection extends ConsumerWidget {
+  const _StorageSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Las rutas dependen de las preferencias de carpeta; reconstruir al cambiar.
+    ref.watch(settingsValuesProvider);
+    final StoragePathsService storage = ref.watch(storagePathsServiceProvider);
+
+    void message(String text) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(text)));
+      }
+    }
+
+    return FutureBuilder<List<StoragePathInfo>>(
+      future: storage.describe(),
+      builder:
+          (
+            BuildContext context,
+            AsyncSnapshot<List<StoragePathInfo>> snapshot,
+          ) {
+            final List<StoragePathInfo> rows =
+                snapshot.data ?? const <StoragePathInfo>[];
+            return _Section(
+              title: 'Carpetas y archivos',
+              icon: Icons.folder_open_rounded,
+              children: <Widget>[
+                Text(
+                  'Rutas activas. Puedes abrirlas o elegir otra carpeta cuando el '
+                  'sistema lo permita.',
+                  style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
+                ),
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    rows.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: LinearProgressIndicator(),
+                  ),
+                if (snapshot.hasError)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(
+                      'No se pudieron resolver las rutas: ${snapshot.error}',
+                      style: TextStyle(fontSize: 12, color: Colors.redAccent),
+                    ),
+                  ),
+                for (final StoragePathInfo info in rows) ...<Widget>[
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Icon(
+                        info.kind == StorageFolderKind.downloads
+                            ? Icons.system_update_alt_rounded
+                            : info.kind == StorageFolderKind.music
+                            ? Icons.audiotrack_rounded
+                            : info.kind == StorageFolderKind.documents
+                            ? Icons.description_rounded
+                            : Icons.storage_rounded,
+                        size: 20,
+                        color: context.accent,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              info.title,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              info.description,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.inkAlpha(0.54),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            SelectableText(
+                              info.path,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: context.inkAlpha(0.75),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: <Widget>[
+                                OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final bool opened = await storage.open(
+                                      info.kind,
+                                    );
+                                    if (!opened) {
+                                      message('No se pudo abrir la carpeta');
+                                    }
+                                  },
+                                  icon: const Icon(
+                                    Icons.folder_open_rounded,
+                                    size: 16,
+                                  ),
+                                  label: const Text('Abrir'),
+                                ),
+                                if (info.canChange)
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final bool changed = await storage.change(
+                                        info.kind,
+                                      );
+                                      if (changed) {
+                                        message('Carpeta actualizada');
+                                      }
+                                    },
+                                    icon: const Icon(
+                                      Icons.edit_rounded,
+                                      size: 16,
+                                    ),
+                                    label: const Text('Cambiar'),
+                                  ),
+                                if (info.canChange)
+                                  TextButton(
+                                    onPressed: () async {
+                                      await storage.reset(info.kind);
+                                      message('Ruta estándar restaurada');
+                                    },
+                                    child: const Text('Restablecer'),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            );
+          },
+    );
+  }
+}
+
 class _UpdateSection extends ConsumerStatefulWidget {
   const _UpdateSection();
 
@@ -1374,9 +1875,27 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
   double? _progress;
   String? _downloaded;
   bool _installing = false;
+  bool _awaitingInstallOutcome = false;
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(apkInstallOutcomeProvider, (
+      _,
+      AsyncValue<ApkInstallOutcome> next,
+    ) {
+      final ApkInstallOutcome? outcome = next.valueOrNull;
+      if (outcome == null || !_awaitingInstallOutcome) return;
+      _awaitingInstallOutcome = false;
+      if (!mounted) return;
+      final String message = switch (outcome) {
+        ApkInstallOutcome.installed => 'Actualización instalada correctamente.',
+        ApkInstallOutcome.cancelled =>
+          'Instalación cancelada. El APK se conserva para volver a intentarlo.',
+        ApkInstallOutcome.failed => 'El sistema no pudo instalar el APK. Comprueba el archivo e inténtalo de nuevo.',
+      };
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    });
     final AsyncValue<String> current = ref.watch(currentVersionProvider);
     final AsyncValue<UpdateInfo?> latest = ref.watch(latestUpdateProvider);
     final bool canInstallHere = ref
@@ -1567,7 +2086,7 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
               onPressed: () =>
                   ref.read(updateServiceProvider).openDownloadsFolder(),
               icon: Icon(Icons.folder_open_rounded, size: 18),
-              label: Text('Carpeta del instalador'),
+              label: Text('Carpeta de actualizaciones'),
             ),
           ],
         ),
@@ -1606,17 +2125,64 @@ class _UpdateSectionState extends ConsumerState<_UpdateSection> {
   Future<void> _openOrInstall(String path) async {
     if (Platform.isAndroid && path.toLowerCase().endsWith('.apk')) {
       final AppUpdaterService updater = ref.read(appUpdaterServiceProvider);
+      final bool canInstall = await updater.canInstallApk();
+      if (!canInstall) {
+        final bool opened = await updater.openInstallPermissionSettings();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              opened
+                  ? 'Activa «Instalar aplicaciones desconocidas» y vuelve a '
+                        'pulsar «Instalar APK». La descarga se conserva.'
+                  : 'No se pudieron abrir los ajustes de instalación. '
+                        'Activa «Instalar aplicaciones desconocidas» manualmente.',
+            ),
+          ),
+        );
+        return;
+      }
+      _awaitingInstallOutcome = true;
       final ApkInstallResult result = await updater.installApk(path);
       if (!mounted) return;
+      if (result != ApkInstallResult.started) _awaitingInstallOutcome = false;
       switch (result) {
         case ApkInstallResult.permissionRequired:
-          await updater.openInstallPermissionSettings();
+          final bool opened = await updater.openInstallPermissionSettings();
           if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                opened
+                    ? 'Permite instalar aplicaciones desconocidas y vuelve a '
+                          'pulsar «Instalar APK». La descarga se conserva.'
+                    : 'Android revocó el permiso y no se pudieron abrir sus '
+                          'ajustes. Actívalo manualmente para instalar.',
+              ),
+            ),
+          );
+        case ApkInstallResult.wrongPackage:
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                'Permite instalar aplicaciones desconocidas y vuelve a pulsar '
-                '«Instalar APK».',
+                'El APK descargado no corresponde a Polaris Music.',
+              ),
+            ),
+          );
+        case ApkInstallResult.signatureMismatch:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'La copia instalada tiene otra firma. Desinstala una sola vez '
+                'e instala el APK de la release para igualar las firmas.',
+              ),
+            ),
+          );
+        case ApkInstallResult.olderVersion:
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'El APK descargado es más antiguo que la versión instalada.',
               ),
             ),
           );

@@ -61,6 +61,7 @@ class EqualizerScreen extends ConsumerWidget {
             enabled: state.enabled,
             mode: state.mode,
             subEnabled: state.sub.enabled,
+            pure: state.pure,
           )
         else
           const _DspNotice(),
@@ -264,16 +265,22 @@ class _DspStatus extends StatelessWidget {
     required this.enabled,
     required this.mode,
     required this.subEnabled,
+    required this.pure,
   });
 
   final bool enabled;
   final EqMode mode;
   final bool subEnabled;
+  final bool pure;
 
   @override
   Widget build(BuildContext context) {
     final Color accent = context.tokens.accent;
-    final Color color = enabled ? accent : context.inkAlpha(0.54);
+    final Color color = pure
+        ? Colors.amber.shade300
+        : enabled
+        ? accent
+        : context.inkAlpha(0.54);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
@@ -284,7 +291,9 @@ class _DspStatus extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Icon(
-            enabled
+            pure
+                ? Icons.filter_alt_off
+                : enabled
                 ? Icons.graphic_eq_rounded
                 : Icons.power_settings_new_rounded,
             size: 18,
@@ -293,9 +302,13 @@ class _DspStatus extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              enabled
+              pure
+                  ? 'Modo puro: la cadena de filtros está bypassada. Tu curva '
+                        'sigue guardada y vuelve al salir de este modo.'
+                  : enabled
                   ? 'DSP activo: modo ${mode.label} mediante libmpv'
-                        '${subEnabled ? ' + sub-armónico' : ''}.'
+                        '${subEnabled ? ' + sub-armónico' : ''}, con preamp '
+                        'automático y limitador suave.'
                   : 'DSP en espera. Activa el interruptor para escuchar los '
                         'filtros.',
               style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),

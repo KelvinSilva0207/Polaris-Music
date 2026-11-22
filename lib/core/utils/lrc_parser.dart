@@ -3,10 +3,19 @@
 /// Soporta timestamps `[mm:ss]`, `[mm:ss.xx]`, `[mm:ss:xx]`, varias marcas por
 /// línea, metadatos (`[ar:...]`, `[ti:...]`, `[offset:...]`) y líneas vacías.
 class LyricLine {
-  const LyricLine({required this.time, required this.text});
+  const LyricLine({required this.time, required this.text, this.wordTimes});
 
   final Duration time;
   final String text;
+
+  /// Marcas `<mm:ss.xx>` de LRC mejorado, una por palabra. Si no vienen en el
+  /// archivo se reparte el tiempo de la línea entre las palabras.
+  final List<Duration>? wordTimes;
+
+  List<String> get words => text
+      .split(RegExp(r'\s+'))
+      .where((String value) => value.isNotEmpty)
+      .toList(growable: false);
 
   @override
   String toString() => '[$time] $text';
@@ -31,6 +40,21 @@ class LrcDocument {
   static final RegExp _timePattern = RegExp(
     r'\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]',
   );
+  static final RegExp _wordTimePattern = RegExp(
+    r'<(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?>',
+  );
+
+  static Duration _timeOf(RegExpMatch match) {
+    final String? fraction = match.group(3);
+    final int millis = fraction == null
+        ? 0
+        : (double.parse('0.$fraction') * 1000).round();
+    return Duration(
+      minutes: int.parse(match.group(1)!),
+      seconds: int.parse(match.group(2)!),
+      milliseconds: millis,
+    );
+  }
 
   factory LrcDocument.empty() =>
       LrcDocument(lines: const <LyricLine>[], synced: false);
@@ -67,24 +91,21 @@ class LrcDocument {
         continue;
       }
 
-      final String text = line.replaceAll(_timePattern, '').trim();
+      final String cleaned = line.replaceAll(_timePattern, '').trim();
+      final List<Duration> wordTimes = _wordTimePattern
+          .allMatches(cleaned)
+          .map(_timeOf)
+          .toList(growable: false);
+      final String text = cleaned
+          .replaceAll(_wordTimePattern, '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
       for (final RegExpMatch match in matches) {
-        final int minutes = int.parse(match.group(1)!);
-        final int seconds = int.parse(match.group(2)!);
-        final String? fraction = match.group(3);
-        int millis = 0;
-        if (fraction != null) {
-          final double value = double.parse('0.$fraction');
-          millis = (value * 1000).round();
-        }
         lines.add(
           LyricLine(
-            time: Duration(
-              minutes: minutes,
-              seconds: seconds,
-              milliseconds: millis,
-            ),
+            time: _timeOf(match),
             text: text,
+            wordTimes: wordTimes.isEmpty ? null : wordTimes,
           ),
         );
       }
@@ -126,6 +147,24 @@ class LrcDocument {
 
   String get plainText => lines.map((LyricLine l) => l.text).join('\n');
 
+  /// Momento en que termina la línea [index].
+  ///
+  /// La siguiente línea marca el final natural; las marcas por palabra solo
+  /// afinan el resaltado dentro de ese hueco. Si es la última, se aplica un
+  /// margen corto para que la palabra final no se apague de golpe.
+  Duration endTimeFor(
+    int index, {
+    Duration fallback = const Duration(seconds: 3),
+  }) {
+    if (index < 0 || index >= lines.length) return Duration.zero;
+    final LyricLine line = lines[index];
+    final Duration end = index + 1 < lines.length
+        ? lines[index + 1].time
+        : Duration.zero;
+    if (end <= line.time) return line.time + fallback;
+    return end;
+  }
+
   /// Serializa el documento a LRC para guardarlo en Drift o exportarlo.
   String toLrc() {
     final StringBuffer buffer = StringBuffer();
@@ -148,6 +187,57 @@ class LrcDocument {
     return '${minutes.toString().padLeft(2, '0')}:'
         '${seconds.toString().padLeft(2, '0')}.'
         '${hundredths.toString().padLeft(2, '0')}';
+  }
+}
+
+/// Resaltado palabra por palabra para el modo karaoke.
+extension LyricLineKaraoke on LyricLine {
+  /// Índice de la palabra en curso, o `-1` si la línea aún no ha empezado.
+  int wordIndexAt(Duration position, Duration endTime) {
+    final List<String> words = this.words;
+    if (words.isEmpty || position < time) return -1;
+    final List<Duration>? marks = wordTimes;
+    if (marks != null && marks.length == words.length) {
+      int found = 0;
+      for (int i = 0; i < marks.length; i++) {
+        if (marks[i] <= position) found = i;
+      }
+      return found;
+    }
+    final int durationMs = (endTime - time).inMilliseconds;
+    if (durationMs <= 0) return 0;
+    final double ratio = (position - time).inMilliseconds / durationMs;
+    return (ratio * words.length).floor().clamp(0, words.length - 1);
+  }
+
+  /// Avance (0–1) de la palabra activa, para teñirla progresivamente.
+  double wordProgressAt(Duration position, Duration endTime) {
+    final int index = wordIndexAt(position, endTime);
+    if (index < 0) return 0;
+    final List<String> words = this.words;
+    if (index >= words.length) return 1;
+    final List<Duration>? marks = wordTimes;
+    final Duration start = marks != null && marks.length == words.length
+        ? marks[index]
+        : time +
+              Duration(
+                milliseconds:
+                    (((endTime - time).inMilliseconds) * index / words.length)
+                        .round(),
+              );
+    final Duration next = marks != null && marks.length == words.length
+        ? (index + 1 < marks.length ? marks[index + 1] : endTime)
+        : time +
+              Duration(
+                milliseconds:
+                    (((endTime - time).inMilliseconds) *
+                            (index + 1) /
+                            words.length)
+                        .round(),
+              );
+    final int span = (next - start).inMilliseconds;
+    if (span <= 0) return 1;
+    return ((position - start).inMilliseconds / span).clamp(0.0, 1.0);
   }
 }
 

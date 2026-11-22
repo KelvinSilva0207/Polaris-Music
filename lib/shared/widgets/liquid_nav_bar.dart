@@ -48,9 +48,14 @@ class _LiquidNavBarState extends State<LiquidNavBar>
   static const int _count = 4;
 
   late final AnimationController _controller;
+
+  /// Despliegue de la barra flotante al entrar en un modo/panel nuevo.
+  late final AnimationController _reveal;
+  late final CurvedAnimation _revealMotion;
+
   late final CurvedAnimation _position;
-  MotionConfig? _motion;
   bool _allowed = true;
+  bool _revealAllowed = true;
   double _intensity = 1;
   int _from = 0;
   int _to = 0;
@@ -65,21 +70,38 @@ class _LiquidNavBarState extends State<LiquidNavBar>
       duration: const Duration(milliseconds: 520),
     );
     _position = CurvedAnimation(parent: _controller, curve: Curves.easeOutBack);
+    _reveal = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 520),
+      value: 1,
+    );
+    _revealMotion = CurvedAnimation(parent: _reveal, curve: Curves.easeOutBack);
+    _reveal.forward(from: 0);
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _motion = context.motion;
+    final MotionConfig motion = context.motion;
     _allowed = context.motionAllowed(MotionCategory.gestures);
-    _intensity = _motion!.intensity;
-    final Duration duration = _motion!.duration(
+    _revealAllowed = context.motionAllowed(MotionCategory.transitions);
+    _intensity = motion.intensity;
+    final Duration duration = motion.duration(
       const Duration(milliseconds: 520),
       category: MotionCategory.gestures,
     );
     _controller.duration = duration == Duration.zero
         ? const Duration(microseconds: 1)
         : duration;
+    _position.curve = motion.indicatorCurve;
+    final Duration revealDuration = motion.duration(
+      const Duration(milliseconds: 420),
+      category: MotionCategory.transitions,
+    );
+    _reveal.duration = revealDuration == Duration.zero
+        ? const Duration(microseconds: 1)
+        : revealDuration;
+    _revealMotion.curve = motion.indicatorCurve;
   }
 
   @override
@@ -94,6 +116,7 @@ class _LiquidNavBarState extends State<LiquidNavBar>
       _from = _to;
       _controller.value = 1;
     }
+    if (_revealAllowed) _reveal.forward(from: 0);
   }
 
   /// Índice que se está mostrando ahora mismo, incluso a mitad de viaje.
@@ -105,82 +128,107 @@ class _LiquidNavBarState extends State<LiquidNavBar>
   @override
   void dispose() {
     _controller.dispose();
+    _revealMotion.dispose();
+    _reveal.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final PolarisTokens tokens = context.tokens;
-    final Color accent = tokens.accent;
-    final bool top = widget.layout == LiquidNavLayout.top;
+    return AnimatedBuilder(
+      animation: _reveal,
+      builder: (BuildContext context, Widget? child) {
+        final PolarisTokens tokens = context.tokens;
+        final Color accent = tokens.accent;
+        final bool top = widget.layout == LiquidNavLayout.top;
 
-    return Container(
-      width: widget.width,
-      height: top ? 52 : 66,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-      decoration: tokens
-          .panelDecoration(radius: top ? 20 : 26, glow: accent)
-          .copyWith(
-            color: tokens.panelOverlay.withValues(alpha: top ? 0.94 : 0.96),
-          ),
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          final double width = constraints.maxWidth;
-          final double itemWidth = width / _count;
-          final List<double> centers = List<double>.generate(
-            _count,
-            (int i) => itemWidth * (i + 0.5),
-          );
-          final double centerY = constraints.maxHeight / 2;
-          final double baseWidth = top
-              ? math.min<double>(itemWidth - 18, 132)
-              : math.min<double>(itemWidth - 12, 72);
+        // El panel flotante se despliega con un pequeño muelle al aparecer; el
+        // indicador usa su propia animación para perseguir la selección activa.
+        final double reveal = _revealAllowed ? _revealMotion.value : 1;
+        final double lift = (1 - reveal.clamp(0.0, 1.0)) * 16 * _intensity;
 
-          return Stack(
-            fit: StackFit.expand,
-            children: <Widget>[
-              CustomPaint(
-                painter: _LiquidIndicatorPainter(
-                  repaint: _controller,
-                  position: _position,
-                  raw: _controller,
-                  centers: centers,
-                  from: _from,
-                  to: _to,
-                  width: width,
-                  centerY: centerY,
-                  baseWidth: baseWidth,
-                  height: math.min<double>(
-                    constraints.maxHeight - 8,
-                    top ? 38 : 42,
-                  ),
-                  fill: accent.withValues(alpha: top ? 0.18 : 0.22),
-                  border: tokens.panelBorder.withValues(alpha: 0.85),
-                  glow: accent.withValues(alpha: top ? 0.14 : 0.20),
-                  accent: accent,
-                  intensity: _intensity,
-                ),
+        return Container(
+          width: widget.width,
+          height: top ? 52 : 66,
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+          decoration: tokens
+              .panelDecoration(radius: top ? 20 : 26, glow: accent)
+              .copyWith(
+                color: tokens.panelOverlay.withValues(alpha: top ? 0.94 : 0.96),
               ),
-              Row(
-                children: AppSection.values
-                    .map(
-                      (AppSection section) => Expanded(
-                        child: _LiquidNavItem(
-                          section: section,
-                          selected: section == widget.selected,
-                          accent: accent,
-                          compact: widget.compact,
-                          layout: widget.layout,
-                          onTap: () => widget.onChanged(section),
-                        ),
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final double width = constraints.maxWidth;
+              final double itemWidth = width / _count;
+              final List<double> centers = List<double>.generate(
+                _count,
+                (int i) => itemWidth * (i + 0.5),
+              );
+              final double centerY = constraints.maxHeight / 2;
+              final double baseWidth = top
+                  ? math.min<double>(itemWidth - 18, 132)
+                  : math.min<double>(itemWidth - 12, 72);
+
+              return Stack(
+                fit: StackFit.expand,
+                children: <Widget>[
+                  CustomPaint(
+                    painter: _LiquidIndicatorPainter(
+                      repaint: Listenable.merge(<Listenable>[
+                        _controller,
+                        _reveal,
+                      ]),
+                      position: _position,
+                      raw: _controller,
+                      reveal: _revealMotion,
+                      centers: centers,
+                      from: _from,
+                      to: _to,
+                      width: width,
+                      centerY: centerY,
+                      baseWidth: baseWidth,
+                      height: math.min<double>(
+                        constraints.maxHeight - 8,
+                        top ? 38 : 42,
                       ),
-                    )
-                    .toList(growable: false),
-              ),
-            ],
-          );
-        },
-      ),
+                      fill: accent.withValues(alpha: top ? 0.18 : 0.22),
+                      border: tokens.panelBorder.withValues(alpha: 0.85),
+                      glow: accent.withValues(alpha: top ? 0.14 : 0.20),
+                      accent: accent,
+                      intensity: _intensity,
+                      enabled: _revealAllowed,
+                    ),
+                  ),
+                  FractionalTranslation(
+                    translation: Offset(0, top ? -lift / 52 : lift / 66),
+                    child: FadeTransition(
+                      opacity: AlwaysStoppedAnimation<double>(
+                        reveal.clamp(0.0, 1.0).toDouble(),
+                      ),
+                      child: Row(
+                        children: AppSection.values
+                            .map(
+                              (AppSection section) => Expanded(
+                                child: _LiquidNavItem(
+                                  section: section,
+                                  selected: section == widget.selected,
+                                  accent: accent,
+                                  compact: widget.compact,
+                                  layout: widget.layout,
+                                  onTap: () => widget.onChanged(section),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -298,6 +346,8 @@ class _LiquidIndicatorPainter extends CustomPainter {
     required this.glow,
     required this.accent,
     required this.intensity,
+    required this.reveal,
+    required this.enabled,
   }) : super(repaint: repaint);
 
   final Animation<double> position;
@@ -314,6 +364,8 @@ class _LiquidIndicatorPainter extends CustomPainter {
   final Color glow;
   final Color accent;
   final double intensity;
+  final Animation<double> reveal;
+  final bool enabled;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -329,12 +381,23 @@ class _LiquidIndicatorPainter extends CustomPainter {
         .clamp(half + 2, math.max<double>(half + 2, width - half - 2))
         .toDouble();
 
+    // Durante el despliegue la muesca nace estrecha y se expande; al cambiar de
+    // sección se estira en la dirección del viaje como una gota.
+    final double revealValue = enabled ? reveal.value.clamp(0.0, 1.0) : 1;
+    final double revealScale = 0.55 + 0.45 * revealValue;
+    final double pillWidth = baseWidth * revealScale;
+    final double pillHeight = height * (0.72 + 0.28 * revealValue);
     final double travel = (end - start).abs();
     final double stretch =
         math.sin(math.pi * p) *
         math.min<double>(travel * 0.42, 12 + 24 * intensity);
     final double lead = stretch * (end >= start ? 1 : -1);
-    final Path blob = _blobPath(Offset(x, centerY), baseWidth, height, lead);
+    final Path blob = _blobPath(
+      Offset(x, centerY),
+      pillWidth,
+      pillHeight,
+      lead,
+    );
 
     // Resplandor del acento dibujado como trazo ancho y translúcido: evita
     // filtros de desenfoque y sigue siendo barato en móvil.
@@ -356,7 +419,7 @@ class _LiquidIndicatorPainter extends CustomPainter {
 
     // Brillo breve en el borde delantero: refuerza la dirección del viaje.
     if (lead.abs() > 2) {
-      final Offset edge = Offset(x + lead * 0.62, centerY - height * 0.16);
+      final Offset edge = Offset(x + lead * 0.62, centerY - pillHeight * 0.16);
       canvas.drawCircle(
         edge,
         2.6,
@@ -415,6 +478,7 @@ class _LiquidIndicatorPainter extends CustomPainter {
   bool shouldRepaint(covariant _LiquidIndicatorPainter old) =>
       position.isAnimating ||
       raw.isAnimating ||
+      reveal.isAnimating ||
       old.position != position ||
       old.raw != raw ||
       old.centers.length != centers.length ||
@@ -424,5 +488,7 @@ class _LiquidIndicatorPainter extends CustomPainter {
       old.fill != fill ||
       old.border != border ||
       old.glow != glow ||
-      old.intensity != intensity;
+      old.intensity != intensity ||
+      old.reveal != reveal ||
+      old.enabled != enabled;
 }

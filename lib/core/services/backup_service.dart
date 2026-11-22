@@ -283,13 +283,19 @@ class BackupService {
     return Uint8List.fromList(ZipEncoder().encode(archive));
   }
 
-  /// Exporta a un archivo dentro de `AppPaths.backups()`.
+  /// Exporta a un archivo en [directory] o, por defecto, en `AppPaths.backups()`.
   ///
   /// Si [compress] es `true` genera un ZIP con el JSON dentro; si no, un `.json`
   /// legible. Devuelve la ruta creada.
-  Future<String> exportToFile({bool compress = true}) async {
+  Future<String> exportToFile({
+    bool compress = true,
+    Directory? directory,
+  }) async {
     final Map<String, dynamic> data = await buildBackup();
-    final Directory dir = await AppPaths.backups();
+    final Directory dir = directory ?? await AppPaths.backups();
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
     final String stamp = DateTime.now()
         .toIso8601String()
         .replaceAll(':', '-')

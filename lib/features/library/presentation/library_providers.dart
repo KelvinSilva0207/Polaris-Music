@@ -9,6 +9,7 @@ import '../../../core/models/track.dart';
 import '../data/library_repository.dart';
 import '../data/library_scanner.dart';
 import '../data/metadata_editor_service.dart';
+import '../data/playlist_service.dart';
 import '../domain/folder_tree.dart';
 import '../domain/library_folder.dart';
 import '../domain/library_sort.dart';
@@ -19,6 +20,14 @@ final Provider<LibraryRepository> libraryRepositoryProvider =
 
 final Provider<MetadataEditorService> metadataEditorServiceProvider =
     Provider<MetadataEditorService>((Ref ref) => sl<MetadataEditorService>());
+
+final Provider<PlaylistService> playlistServiceProvider =
+    Provider<PlaylistService>((Ref ref) => sl<PlaylistService>());
+
+final StreamProvider<List<PlaylistRow>> playlistsProvider =
+    StreamProvider<List<PlaylistRow>>((Ref ref) {
+      return ref.watch(playlistServiceProvider).watchAll();
+    });
 
 final StateProvider<String> libraryQueryProvider = StateProvider<String>(
   (Ref ref) => '',

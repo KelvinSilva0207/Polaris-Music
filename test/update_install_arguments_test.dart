@@ -34,4 +34,56 @@ void main() {
 
     expect(await updater.installApk('no-existe.apk'), ApkInstallResult.failed);
   });
+
+  group('Desenlace del instalador del sistema', () {
+    test('interpreta éxito, cancelación y error', () {
+      expect(
+        ApkInstallOutcome.fromMap(<String, Object?>{'status': 'installed'}),
+        ApkInstallOutcome.installed,
+      );
+      expect(
+        ApkInstallOutcome.fromMap(<String, Object?>{'status': 'cancelled'}),
+        ApkInstallOutcome.cancelled,
+      );
+      expect(
+        ApkInstallOutcome.fromMap(<String, Object?>{'status': 'failed'}),
+        ApkInstallOutcome.failed,
+      );
+    });
+
+    test('ignora respuestas vacías o desconocidas', () {
+      expect(ApkInstallOutcome.fromMap(null), isNull);
+      expect(
+        ApkInstallOutcome.fromMap(<String, Object?>{'status': 'otro'}),
+        isNull,
+      );
+    });
+  });
+
+  group('Inspección del APK antes de instalar', () {
+    test('lee paquete, firma y versiones del canal nativo', () {
+      final ApkInspection inspection = ApkInspection.fromMap(<String, Object?>{
+        'samePackage': true,
+        'signatureMatches': true,
+        'versionCode': 10009010,
+        'installedVersionCode': 10008009,
+      });
+
+      expect(inspection.samePackage, isTrue);
+      expect(inspection.signatureMatches, isTrue);
+      expect(inspection.versionCode, 10009010);
+      expect(inspection.installedVersionCode, 10008009);
+    });
+
+    test('valores ausentes caen en falsos y cero', () {
+      final ApkInspection inspection = ApkInspection.fromMap(
+        <String, Object?>{},
+      );
+
+      expect(inspection.samePackage, isFalse);
+      expect(inspection.signatureMatches, isFalse);
+      expect(inspection.versionCode, 0);
+      expect(inspection.installedVersionCode, 0);
+    });
+  });
 }

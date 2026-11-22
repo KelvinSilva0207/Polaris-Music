@@ -1,10 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/lrc_parser.dart';
 import '../../../shared/widgets/motion_scope.dart';
+import '../../player/domain/player_controller.dart';
+import '../../player/presentation/player_providers.dart';
 import '../data/lyrics_service.dart';
 import 'lyrics_providers.dart';
 
@@ -22,6 +27,8 @@ class LyricsPanel extends ConsumerStatefulWidget {
     this.onDownload,
     this.onImport,
     this.onEdit,
+    this.karaoke = false,
+    this.onSeek,
   });
 
   final Track track;
@@ -30,6 +37,12 @@ class LyricsPanel extends ConsumerStatefulWidget {
   final VoidCallback? onDownload;
   final VoidCallback? onImport;
   final VoidCallback? onEdit;
+
+  /// Resaltado palabra por palabra sobre la línea activa.
+  final bool karaoke;
+
+  /// Al tocar una línea, la canción salta a esa marca de tiempo.
+  final ValueChanged<Duration>? onSeek;
 
   @override
   ConsumerState<LyricsPanel> createState() => _LyricsPanelState();
@@ -132,6 +145,20 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
               onImport: widget.onImport,
               onEdit: widget.onEdit,
             ),
+            if (widget.onSeek != null)
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: widget.immersive ? 18 : 12,
+                  vertical: 2,
+                ),
+                child: Text(
+                  'Toca una línea para saltar a ese instante',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.onPanel.withValues(alpha: 0.5),
+                  ),
+                ),
+              ),
             const Divider(height: 1),
             Expanded(
               child: ShaderMask(
@@ -176,36 +203,65 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                                   child: child,
                                 ),
                               ),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          vertical: widget.immersive ? 11 : 6,
-                        ),
-                        child: AnimatedDefaultTextStyle(
-                          duration: context.motion.duration(
-                            const Duration(milliseconds: 220),
+                      child: Semantics(
+                        button: document.synced && widget.onSeek != null,
+                        label: document.synced && widget.onSeek != null
+                            ? 'Saltar al segundo ${(line.time + document.offset).inSeconds} de ${line.text}'
+                            : null,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: !document.synced || widget.onSeek == null
+                              ? null
+                              : () {
+                                  unawaited(HapticFeedback.selectionClick());
+                                  widget.onSeek!(line.time + document.offset);
+                                },
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              vertical: widget.immersive ? 11 : 6,
+                            ),
+                            child: AnimatedDefaultTextStyle(
+                              duration: context.motion.duration(
+                                const Duration(milliseconds: 220),
+                              ),
+                              style: TextStyle(
+                                fontSize: isActive ? activeSize : normalSize,
+                                height: 1.32,
+                                fontWeight: isActive
+                                    ? FontWeight.w800
+                                    : bodyWeight,
+                                color: isActive
+                                    ? tokens.karaokeColor
+                                    : isPast
+                                    ? context.onPanel.withValues(alpha: 0.52)
+                                    : context.onPanel.withValues(alpha: 0.92),
+                                shadows: isActive
+                                    ? <Shadow>[
+                                        Shadow(
+                                          color: tokens.karaokeColor.withValues(
+                                            alpha: 0.42,
+                                          ),
+                                          blurRadius: widget.immersive
+                                              ? 24
+                                              : 12,
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              textAlign: TextAlign.center,
+                              child:
+                                  widget.karaoke &&
+                                      isActive &&
+                                      line.words.isNotEmpty
+                                  ? _KaraokeLineText(
+                                      line: line,
+                                      document: document,
+                                      index: index,
+                                      accent: tokens.karaokeColor,
+                                    )
+                                  : Text(line.text.isEmpty ? '♪' : line.text),
+                            ),
                           ),
-                          style: TextStyle(
-                            fontSize: isActive ? activeSize : normalSize,
-                            height: 1.32,
-                            fontWeight: isActive ? FontWeight.w800 : bodyWeight,
-                            color: isActive
-                                ? tokens.karaokeColor
-                                : isPast
-                                ? context.onPanel.withValues(alpha: 0.52)
-                                : context.onPanel.withValues(alpha: 0.92),
-                            shadows: isActive
-                                ? <Shadow>[
-                                    Shadow(
-                                      color: tokens.karaokeColor.withValues(
-                                        alpha: 0.42,
-                                      ),
-                                      blurRadius: widget.immersive ? 24 : 12,
-                                    ),
-                                  ]
-                                : null,
-                          ),
-                          textAlign: TextAlign.center,
-                          child: Text(line.text.isEmpty ? '♪' : line.text),
                         ),
                       ),
                     );
@@ -217,6 +273,59 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
         );
       },
     );
+  }
+}
+
+/// Línea activa con resaltado palabra por palabra.
+///
+/// Solo se monta para la línea en curso, así que el tick de posición no
+/// reconstruye toda la lista. Las marcas `<mm:ss.xx>` se usan si existen; si no,
+/// se reparte la duración de la línea entre sus palabras.
+class _KaraokeLineText extends ConsumerWidget {
+  const _KaraokeLineText({
+    required this.line,
+    required this.document,
+    required this.index,
+    required this.accent,
+  });
+
+  final LyricLine line;
+  final LrcDocument document;
+  final int index;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Duration raw = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.position),
+    );
+    final Duration position = raw - document.offset;
+    final Duration end = document.endTimeFor(index);
+    final int active = line.wordIndexAt(position, end);
+    final double progress = line.wordProgressAt(position, end);
+    final TextStyle base = DefaultTextStyle.of(context).style;
+    final Color idle = base.color ?? accent;
+
+    final List<TextSpan> spans = <TextSpan>[];
+    final List<String> words = line.words;
+    for (int i = 0; i < words.length; i++) {
+      final Color color;
+      if (i < active) {
+        color = accent;
+      } else if (i == active) {
+        color = Color.lerp(idle, accent, 0.35 + 0.65 * progress) ?? accent;
+      } else {
+        color = idle.withValues(alpha: 0.5);
+      }
+      spans.add(
+        TextSpan(
+          text: i == 0 ? words[i] : ' ${words[i]}',
+          style: base.copyWith(color: color),
+        ),
+      );
+    }
+
+    return Text.rich(TextSpan(children: spans), textAlign: TextAlign.center);
   }
 }
 

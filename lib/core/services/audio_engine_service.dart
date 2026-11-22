@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart' hide Track;
 import '../debug/memory_probe.dart';
 import '../models/playback_state.dart';
 import '../models/track.dart';
+import '../models/track_technical_info.dart';
 import '../utils/logger.dart';
 import '../utils/replay_gain.dart';
 
@@ -294,6 +295,51 @@ class AudioEngineService {
       }
       AppLog.w(_tag, 'No se pudo aplicar el filtro de audio', error, stack);
     }
+  }
+
+  /// Lee una sola vez las propiedades reales del archivo/stream de mpv.
+  ///
+  /// No hay suscripción ni polling: se llama únicamente al abrir el inspector,
+  /// así que no añade coste mientras se reproduce. No se expone `path` (en
+  /// streaming puede contener parámetros firmados); la fuente ya la conoce la
+  /// interfaz a través de [Track].
+  Future<TrackTechnicalInfo> readTechnicalInfo() async {
+    final PlatformPlayer? platform = _player.platform;
+    if (platform is! NativePlayer) return const TrackTechnicalInfo();
+
+    Future<String?> read(String property) async {
+      try {
+        final String raw = await platform.getProperty(property);
+        final String value = raw.trim();
+        if (value.isEmpty || value == 'null') return null;
+        return value;
+      } catch (_) {
+        // Propiedad no disponible en este contenedor o antes del primer open.
+        return null;
+      }
+    }
+
+    final List<String?> values = await Future.wait(<Future<String?>>[
+      read('audio-codec-name'),
+      read('audio-codec'),
+      read('file-format'),
+      read('audio-params/bitrate'),
+      read('audio-bitrate'),
+      read('audio-params/samplerate'),
+      read('audio-params/channels'),
+      read('duration'),
+      read('file-size'),
+    ]);
+
+    return TrackTechnicalInfo.fromMpv(<String, String?>{
+      'codec': values[0] ?? values[1],
+      'container': values[2],
+      'bitrate': values[3] ?? values[4],
+      'samplerate': values[5],
+      'channels': values[6],
+      'duration': values[7],
+      'file-size': values[8],
+    });
   }
 
   /// Comprobación conservadora: solo descarta un cambio claramente perdido.
@@ -825,6 +871,47 @@ class AudioEngineService {
         shuffledQueue: shuffled,
       ),
     );
+  }
+
+  /// Mueve una pista dentro del orden activo que ve la UI.
+  ///
+  /// La playlist nativa de mpv siempre se abre en orden activo, así que basta
+  /// con reordenar ese mismo orden y aplicar el movimiento en el reproductor.
+  /// Si hay aleatorio activo se reordena `shuffledQueue`; si no, `queue`.
+  Future<void> moveInQueue(int from, int to) async {
+    final List<Track> active = _state.activeQueue;
+    if (from < 0 ||
+        from >= active.length ||
+        to < 0 ||
+        to >= active.length ||
+        from == to) {
+      return;
+    }
+    await _cancelCrossfade();
+    final List<Track> reordered = <Track>[...active];
+    final Track moved = reordered.removeAt(from);
+    reordered.insert(to, moved);
+
+    int newIndex = _state.index;
+    if (from == _state.index) {
+      newIndex = to;
+    } else if (from < _state.index && to >= _state.index) {
+      newIndex = _state.index - 1;
+    } else if (from > _state.index && to <= _state.index) {
+      newIndex = _state.index + 1;
+    }
+
+    final bool isShuffled = _state.shuffle && _state.shuffledQueue.isNotEmpty;
+    _emit(
+      _state.copyWith(
+        queue: isShuffled ? _state.queue : List<Track>.unmodifiable(reordered),
+        shuffledQueue: isShuffled
+            ? List<Track>.unmodifiable(reordered)
+            : _state.shuffledQueue,
+        index: newIndex,
+      ),
+    );
+    await _player.move(from, to);
   }
 
   Future<void> removeAt(int index) async {

@@ -106,11 +106,13 @@ del usuario.
 - [x] Control de ventana (always on top, etc.)
 - [x] Isla dinámica de Windows
 - [x] Ecualización DSP real de 10 bandas mediante filtros de libmpv
+- [x] Modo puro / sin filtros (bypass de todo el DSP sin borrar la curva guardada)
+- [x] Anti-clip: preamp automático y limitador suave solo con filtros activos
 
 ### 3. Móvil e interfaz
 - [x] Glassmorphism + fondo dinámico según carátula
 - [x] Motor de temas con presets y perfiles
-- [ ] Gestos avanzados estilo Poweramp (pista, volumen, brillo)
+- [x] Gestos avanzados estilo Poweramp (borde derecho = volumen, borde izquierdo = brillo en Android)
 - [x] Isla dinámica
 - [x] Normalización de volumen (ReplayGain aplicado sobre el volumen efectivo)
 - [x] Notificación y controles en pantalla de bloqueo
@@ -121,8 +123,25 @@ del usuario.
 - [x] Géneros, álbumes y múltiples vistas de ordenamiento
 - [x] Recomendaciones por reproducciones y favoritos
 - [x] Letras: detección y panel de letras
-- [ ] Modo karaoke
+- [x] Modo karaoke
 - [x] Tutorial de bienvenida y créditos
+
+### 5. Recomendaciones de la comunidad
+- [x] Reproducción gapless y crossfade (mutuamente excluyentes)
+- [x] Búsqueda con debounce y términos recientes
+- [x] Temporizador de sueño personalizado con fundido
+- [x] Informe de diagnóstico copiable
+- [x] Karaoke con resaltado por palabra y salto al tocar una línea
+- [x] Listas M3U (importar y exportar)
+- [x] Listas inteligentes (favoritos, más reproducidas, recientes, largas)
+- [x] Reordenar la cola arrastrando
+- [x] Etiquetas accesibles en controles de transporte, cola y letras
+- [x] Escribir metadatos de vuelta al archivo
+- [x] Widget de Android (carátula, título y transporte esencial)
+- [x] Integración con Android Auto (árbol de navegación desde `audio_service`)
+- [x] Scrobbling (Last.fm o servidor compatible; requiere credenciales del usuario)
+- [x] Gestos de volumen y brillo
+- [x] Inspector técnico de la pista (códec, contenedor, bitrate, muestreo, canales, duración, fuente y tamaño)
 
 ---
 
@@ -133,8 +152,12 @@ del usuario.
   solo se guardan los presets.
 - **Crossfade:** se usa un segundo deck libmpv; en equipos muy lentos un fundido muy corto puede
   notarse como una pausa breve mientras el deck entrante abre el archivo.
-- **Metadatos:** la edición se guarda en Drift; escribir las etiquetas de vuelta al archivo queda
-  para una fase posterior.
+- **Metadatos:** la edición escribe las etiquetas en el archivo y actualiza Drift. Si el archivo es
+  de solo lectura o está en uso, se conserva el cambio en la base de datos y se registra el aviso.
+- **Scrobbling:** el flujo local está cubierto por tests; enviar escuchas de verdad requiere
+  `api key` y `api secret` de Last.fm (o de un servidor compatible configurado en Ajustes).
+- **Widget / Android Auto:** dependen del launcher y del coche; si el sistema no los expone, la
+  reproducción y la interfaz de la app siguen funcionando con normalidad.
 - **Android local:** sin Android SDK/JDK en el equipo de desarrollo, los APK se generan en CI.
 - **`permission_handler`:** fijado en `^12.0.3`; la rama 13 usa un plugin Android que exige
   `compileSdk 37`, mientras que Flutter 3.47.6 compila contra 36.
@@ -189,11 +212,27 @@ La versión se lee de `pubspec.yaml`; `installer/Output/` está ignorado por Git
 El CI instala Inno Setup con Chocolatey, compila el instalador en cada push y lo adjunta
 a la release cuando se publica un tag `v*`.
 
+### Carpetas estándar
+
+Polaris usa rutas predecibles y las muestra en **Ajustes → Carpetas y archivos**,
+donde se pueden abrir, cambiar o restaurar:
+
+| Contenido | Windows | Android |
+|---|---|---|
+| Datos internos (Drift, ajustes, caché) | `%LOCALAPPDATA%\Polaris Music` | almacenamiento privado de la app |
+| Documentos y exportaciones | `Documentos\Polaris Music` | directorio Documents propio de la app |
+| Música descargada | `Música\Polaris Music` | directorio Music propio de la app |
+| Actualizaciones | `Descargas\Polaris Music\Updates` | directorio Download propio de la app, `Polaris Music\Updates` |
+
+En Android no se necesita `WRITE_EXTERNAL_STORAGE`: las descargas viven en el
+almacenamiento externo **propio del paquete** y se comparten con el instalador
+mediante `FileProvider`. Las carpetas elegidas a mano se recuerdan en la base de datos.
+
 ### Autoactualización desde la app
 
 `UpdateService` consulta `releases/latest`, prioriza el asset `Polaris-Music-Setup-*.exe`
-y lo descarga en la carpeta de datos de la app. En **Ajustes → Actualizaciones** aparece
-**Instalar ahora**:
+y lo descarga en `Descargas\Polaris Music\Updates` (o su equivalente Android).
+En **Ajustes → Actualizaciones** aparece **Instalar ahora**:
 
 1. La app confirma y ejecuta el instalador con
    `/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /LOG /AUTOUPDATE`.

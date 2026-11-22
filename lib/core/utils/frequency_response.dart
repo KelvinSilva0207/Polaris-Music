@@ -4,26 +4,30 @@ import 'package:flutter/foundation.dart';
 
 import '../constants/app_constants.dart';
 import '../models/equalizer_config.dart';
-import 'equalizer_dsp.dart';
 
 /// Cálculo de la respuesta en frecuencia de la cadena del ecualizador.
 ///
-/// Se usa solo para dibujar la curva de la interfaz: reproduce con biquads
-/// digitales (RBJ) los mismos filtros que [EqualizerDsp] envía a libmpv.
+/// Reproduce con biquads digitales (RBJ) los mismos filtros que la cadena
+/// `lavfi` envía a libmpv. Además de dibujar la curva, sirve para estimar el
+/// pico de ganancia y derivar la compensación del anti-clip sin leer audio.
 class FrequencyResponse {
   FrequencyResponse._();
 
   static const double minHz = 20;
   static const double maxHz = 20000;
-  static const double sampleRate = EqualizerDsp.sampleRate;
+  static const double sampleRate = AppConstants.dspSampleRate;
+
+  /// Número de muestras logarítmicas usadas para buscar el pico.
+  static const int peakSamples = 128;
 
   /// Respuesta total en dB a una frecuencia dada.
   static double dbAt({
     required double frequencyHz,
     required EqualizerConfig config,
+    bool includePreamp = true,
   }) {
     final double f = frequencyHz.clamp(minHz, maxHz).toDouble();
-    double db = config.preampDb;
+    double db = includePreamp ? config.preampDb : 0;
 
     if (config.mode == EqMode.parametric) {
       for (final ParametricFilter filter in config.filters) {
@@ -43,6 +47,26 @@ class FrequencyResponse {
     }
 
     return db.clamp(AppConstants.eqMinGain * 2, AppConstants.eqMaxGain * 2);
+  }
+
+  /// Ganancia máxima de la curva en dB, sin contar el preamplificador.
+  ///
+  /// Se evalúa en una rejilla logarítmica fija: es determinista, no depende de
+  /// la pista y cuesta lo mismo tanto con 2 bandas como con 31. El valor se
+  /// usa para bajar la ganancia antes del limitador cuando hay procesamiento.
+  static double peakDb(EqualizerConfig config, {bool includePreamp = false}) {
+    double peak = double.negativeInfinity;
+    for (int i = 0; i < peakSamples; i++) {
+      final double t = i / (peakSamples - 1);
+      final double hz = minHz * math.pow(maxHz / minHz, t).toDouble();
+      final double db = dbAt(
+        frequencyHz: hz,
+        config: config,
+        includePreamp: includePreamp,
+      );
+      if (db > peak) peak = db;
+    }
+    return peak.isFinite ? peak : 0;
   }
 
   /// Posición X (0..width) de una frecuencia en escala logarítmica.

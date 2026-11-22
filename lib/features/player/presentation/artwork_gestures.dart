@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/theme/motion_config.dart';
 import '../../../core/theme/theme_tokens.dart';
@@ -16,6 +18,11 @@ const double _gestureHintThreshold = 18;
 /// * Deslizar a la **izquierda** → canción siguiente.
 /// * Deslizar **arriba** → letras.
 /// * Deslizar **abajo** → minimizar.
+/// * Deslizar vertical en el **borde derecho** → volumen (estilo Poweramp).
+/// * Deslizar vertical en el **borde izquierdo** → brillo (solo Android).
+///
+/// Las zonas laterales solo se activan si se pasa el callback correspondiente,
+/// así que el reproductor sigue teniendo los cuatro gestos centrales de siempre.
 ///
 /// El feedback ya no dibuja círculos ni flechas: la carátula se desplaza con un
 /// resorte, se inclina en 3D, crece apenas y su aura cambia de tono al confirmar.
@@ -30,6 +37,8 @@ class ArtworkGestures extends StatefulWidget {
     required this.onNext,
     required this.onLyrics,
     required this.onMinimize,
+    this.onVolumeDelta,
+    this.onBrightnessDelta,
     this.accent,
     this.seekEnabled = false,
     this.playing = false,
@@ -43,6 +52,13 @@ class ArtworkGestures extends StatefulWidget {
   final VoidCallback onNext;
   final VoidCallback onLyrics;
   final VoidCallback onMinimize;
+
+  /// Fracción de carátula arrastrada hacia arriba en el borde derecho.
+  final ValueChanged<double>? onVolumeDelta;
+
+  /// Fracción de carátula arrastrada hacia arriba en el borde izquierdo.
+  final ValueChanged<double>? onBrightnessDelta;
+
   final Color? accent;
 
   /// Solo se activa con `ProgressBarType.circularAroundArtwork`.
@@ -60,10 +76,16 @@ class ArtworkGestures extends StatefulWidget {
 
 enum _SwipeAction { next, previous, lyrics, minimize }
 
+enum _Edge { brightness, volume }
+
 class _ArtworkGesturesState extends State<ArtworkGestures>
     with TickerProviderStateMixin {
   Offset? _start;
   bool _seeking = false;
+  bool _outerCandidate = false;
+  _Edge? _edge;
+  double _lastEdgeY = 0;
+  bool _edgeStarted = false;
 
   final ValueNotifier<double> _intensity = ValueNotifier<double>(0);
   final ValueNotifier<Offset> _direction = ValueNotifier<Offset>(Offset.zero);
@@ -151,23 +173,73 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
   void _onDown(PointerDownEvent event) {
     _resetMotion();
     _start = event.localPosition;
+    _edge = null;
+    _lastEdgeY = 0;
+    _edgeStarted = false;
     final Offset center = Offset(widget.size / 2, widget.size / 2);
-    _seeking =
+    // Con el anillo activo, el borde es candidato a búsqueda *y* a control
+    // lateral. La dirección del primer arrastre decide: vertical manda volumen
+    // o brillo; cualquier otro movimiento conserva la búsqueda por ángulo.
+    _outerCandidate =
         widget.seekEnabled &&
         (event.localPosition - center).distance > widget.size * 0.40;
-    if (_seeking) _seekAt(event.localPosition);
+    _seeking = false;
+    if (widget.paused || !context.motion.gestures) return;
+    final double x = event.localPosition.dx;
+    if (widget.onVolumeDelta != null && x > widget.size * 0.76) {
+      _edge = _Edge.volume;
+    } else if (widget.onBrightnessDelta != null && x < widget.size * 0.24) {
+      _edge = _Edge.brightness;
+    }
   }
 
   void _onMove(PointerMoveEvent event) {
     final Offset? start = _start;
     if (start == null) return;
+    final Offset delta = event.localPosition - start;
+
+    if (_outerCandidate) {
+      final _Edge? candidate = _edge;
+      final bool verticalIntent =
+          candidate != null &&
+          delta.dy.abs() > 10 &&
+          delta.dy.abs() >= delta.dx.abs() * 1.3;
+      if (verticalIntent) {
+        _outerCandidate = false;
+        _edgeStarted = true;
+        unawaited(HapticFeedback.selectionClick());
+      } else if (delta.distance > 6) {
+        _outerCandidate = false;
+        _edge = null;
+        _seeking = true;
+      }
+    }
+
     if (_seeking) {
       _seekAt(event.localPosition);
       return;
     }
+    final _Edge? edge = _edge;
+    if (edge != null) {
+      final double y = event.localPosition.dy - start.dy;
+      final double step = _lastEdgeY - y;
+      _lastEdgeY = y;
+      if (!_edgeStarted && y.abs() > 12) {
+        _edgeStarted = true;
+        unawaited(HapticFeedback.selectionClick());
+      }
+      if (_edgeStarted && step.abs() > 0.5) {
+        final double fraction = step / widget.size;
+        if (edge == _Edge.volume) {
+          widget.onVolumeDelta?.call(fraction);
+        } else {
+          widget.onBrightnessDelta?.call(fraction);
+        }
+      }
+      return;
+    }
     if (!context.motion.gestures || widget.paused) return;
 
-    final Offset delta = event.localPosition - start;
     final double distance = delta.distance;
     if (distance < _gestureHintThreshold) return;
 
@@ -210,9 +282,18 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
     _start = null;
     if (start == null) return;
 
+    // Toque simple sobre el anillo: se mantiene el salto al segundo exacto.
+    if (_outerCandidate) {
+      _outerCandidate = false;
+      _seekAt(start);
+      _resetMotion();
+      return;
+    }
+
     final bool wasSeeking = _seeking;
     _seeking = false;
-    if (wasSeeking) {
+    if (_edge != null || wasSeeking) {
+      _edge = null;
       _resetMotion();
       return;
     }
@@ -243,6 +324,8 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
   void _onCancel(PointerCancelEvent _) {
     _start = null;
     _seeking = false;
+    _outerCandidate = false;
+    _edge = null;
     _resetMotion();
   }
 

@@ -4,10 +4,10 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../constants/app_constants.dart';
+import '../constants/app_paths.dart';
 import '../models/update_info.dart';
 import '../utils/file_utils.dart';
 import '../utils/logger.dart';
@@ -20,11 +20,17 @@ import '../utils/semver.dart';
 /// puede ejecutar en modo desatendido y la app se reinicia al terminar; en el
 /// resto de plataformas se abre el archivo o la página de la release.
 class UpdateService {
-  UpdateService({Dio? dio}) : _dio = dio ?? Dio();
+  UpdateService({Dio? dio, Future<Directory> Function()? updatesDirectory})
+    : _dio = dio ?? Dio(),
+      _updatesDirectory = updatesDirectory ?? AppPaths.updates;
 
   static const String _tag = 'Updates';
 
   final Dio _dio;
+  final Future<Directory> Function() _updatesDirectory;
+
+  /// Carpeta activa de instaladores; la usa también Ajustes para abrirla.
+  Future<Directory> get downloadsDirectory => _updatesDirectory();
 
   String? _currentVersion;
 
@@ -192,10 +198,13 @@ class UpdateService {
     if (url == null || url.isEmpty) return null;
 
     try {
-      // Los binarios de actualización son temporales: el instalador se lanza
-      // desde aquí y Android copia el APK a su propio `cacheDir` antes de
-      // compartirlo con el instalador del sistema.
-      final Directory dir = await getTemporaryDirectory();
+      // Los binarios van siempre a una carpeta visible y predecible:
+      // `Descargas/Polaris Music/Updates`. En Android es el directorio de
+      // descargas propio de la app, compartible mediante FileProvider.
+      final Directory dir = await _updatesDirectory();
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
       final String rawName = info.assetName ?? p.basename(Uri.parse(url).path);
       final String safeName = FileUtils.sanitizeFileName(
         rawName.isEmpty ? 'polaris_update' : rawName,
@@ -372,7 +381,7 @@ class UpdateService {
     String installer,
     List<String> arguments,
   ) async {
-    final Directory dir = await getTemporaryDirectory();
+    final Directory dir = await AppPaths.cache();
     final File script = File(p.join(dir.path, 'polaris-update-$pid.ps1'));
     final String quotedArgs = arguments.map(_powerShellQuote).join(', ');
     // El script corre en otro proceso: $pid sería el del helper. Inyectamos
@@ -445,10 +454,10 @@ class UpdateService {
 
   Future<bool> openDownloadedFile(String path) => _open(path);
 
-  /// Abre la carpeta de descargas en el explorador (Windows).
+  /// Abre la carpeta de actualizaciones en el explorador del sistema.
   Future<bool> openDownloadsFolder() async {
     try {
-      final Directory dir = await getTemporaryDirectory();
+      final Directory dir = await _updatesDirectory();
       if (!kIsWeb && Platform.isWindows) {
         await Process.run('explorer.exe', <String>[dir.path]);
         return true;

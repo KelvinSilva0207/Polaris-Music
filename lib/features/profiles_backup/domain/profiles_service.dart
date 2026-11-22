@@ -30,8 +30,8 @@ class ProfilesService {
 
   Future<void> delete(int id) => _profiles.deleteProfile(id);
 
-  Future<String> exportBackup({bool compress = true}) =>
-      _backup.exportToFile(compress: compress);
+  Future<String> exportBackup({bool compress = true, Directory? directory}) =>
+      _backup.exportToFile(compress: compress, directory: directory);
 
   Future<BackupSummary> importBackup(File file, {bool merge = true}) =>
       _backup.importFromFile(file, merge: merge);

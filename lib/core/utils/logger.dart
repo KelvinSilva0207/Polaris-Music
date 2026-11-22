@@ -50,7 +50,9 @@ class AppLog {
 
   static String _defaultDirectory() {
     if (Platform.isWindows) {
-      final String? appData = Platform.environment['APPDATA'];
+      final String? appData =
+          Platform.environment['LOCALAPPDATA'] ??
+          Platform.environment['APPDATA'];
       if (appData != null && appData.isNotEmpty) {
         return '$appData${Platform.pathSeparator}Polaris Music'
             '${Platform.pathSeparator}logs';

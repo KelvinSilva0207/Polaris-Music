@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
+import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/lrc_parser.dart';
 import '../../../shared/widgets/polaris_surface.dart';
+import '../../player/presentation/player_providers.dart';
 import '../data/lyrics_service.dart';
 import 'lyrics_editor_dialog.dart';
 import 'lyrics_panel.dart';
@@ -99,9 +101,22 @@ class _ExpandedLyricsViewState extends ConsumerState<ExpandedLyricsView> {
     }
   }
 
+  void _toggleKaraoke(bool enabled) {
+    unawaited(ref.read(settingsServiceProvider).setKaraokeEnabled(!enabled));
+  }
+
   @override
   Widget build(BuildContext context) {
     final Color ink = context.onPanel;
+    final bool synced =
+        ref
+            .watch(lyricsForTrackProvider(widget.track))
+            .valueOrNull
+            ?.document
+            .synced ??
+        false;
+    ref.watch(settingsValuesProvider);
+    final bool karaoke = ref.read(settingsServiceProvider).karaokeEnabled;
 
     return PolarisSurface(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
@@ -123,6 +138,20 @@ class _ExpandedLyricsViewState extends ConsumerState<ExpandedLyricsView> {
                 ),
               ),
               const Spacer(),
+              IconButton(
+                tooltip: karaoke
+                    ? 'Desactivar karaoke'
+                    : 'Karaoke: resalta cada palabra',
+                onPressed: synced ? () => _toggleKaraoke(karaoke) : null,
+                icon: Icon(
+                  karaoke ? Icons.lyrics_rounded : Icons.lyrics_outlined,
+                  size: 20,
+                  color: karaoke
+                      ? widget.accent
+                      : ink.withValues(alpha: synced ? 0.72 : 0.3),
+                ),
+                visualDensity: VisualDensity.compact,
+              ),
               PopupMenuButton<String>(
                 tooltip: 'Opciones de letra',
                 icon: Icon(
@@ -183,6 +212,10 @@ class _ExpandedLyricsViewState extends ConsumerState<ExpandedLyricsView> {
               onDownload: _download,
               onImport: _import,
               onEdit: _edit,
+              karaoke: karaoke,
+              onSeek: (Duration position) => unawaited(
+                ref.read(playerControllerProvider.notifier).seek(position),
+              ),
             ),
           ),
         ],

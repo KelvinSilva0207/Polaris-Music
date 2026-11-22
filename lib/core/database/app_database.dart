@@ -2,9 +2,8 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 
+import '../constants/app_paths.dart';
 import '../utils/logger.dart';
 import 'database_guard.dart';
 import 'tables.dart';
@@ -206,12 +205,5 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Ruta de la carpeta de datos de la app (carátulas, backups, letras).
-  static Future<Directory> appDataDirectory() async {
-    final Directory base = await getApplicationSupportDirectory();
-    final Directory dir = Directory(p.join(base.path, 'polaris_music'));
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
-  }
+  static Future<Directory> appDataDirectory() => AppPaths.root();
 }
