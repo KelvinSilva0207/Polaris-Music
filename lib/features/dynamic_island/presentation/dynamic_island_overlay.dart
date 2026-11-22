@@ -109,8 +109,10 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
     super.dispose();
   }
 
-  /// Contrae la cápsula antes de apartarla al borde para que el cambio se lea
-  /// como una transición y no como una desaparición brusca.
+  /// Aparta la isla al borde tras un breve retardo para que el movimiento se
+  /// lea como una transición y no como una desaparición brusca. El contenido
+  /// nunca se desvanece: hacerlo podía congelarlo en opacidad 0 al perder el
+  /// foco y dejar únicamente la sombra nativa a la vista.
   void _requestHide() {
     if (_dismissing || !mounted) return;
     _hideTimer?.cancel();
@@ -242,10 +244,6 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
       const Duration(milliseconds: 380),
       category: MotionCategory.island,
     );
-    final Duration dismissDuration = context.motion.duration(
-      const Duration(milliseconds: 220),
-      category: MotionCategory.island,
-    );
 
     final Size capsuleSize = expanded
         ? WindowService.islandExpandedCapsule
@@ -260,11 +258,11 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
       });
     }
 
-    // La forma nativa (región + sombra) existe aunque Flutter deje de tickar
-    // al perder foco. Si los tickers están muteados, las animaciones implícitas
-    // se quedan en su valor inicial (opacity 0) y la isla parece solo una
-    // sombra. En ese estado usamos los valores finales directamente: la isla
-    // sigue siendo visible y el auto-ocultado/apartado no depende de un ticker.
+    // La región y la sombra nativas existen aunque Flutter deje de tickar al
+    // perder foco. Por eso el contenido NO depende de animaciones implícitas:
+    // un AnimatedOpacity congelado a mitad de camino era justamente la "isla
+    // sombra". El intro fuerza el valor final sin tickers y apartar la isla
+    // mueve la ventana sin desvanecer nada.
     final bool ticking = TickerMode.of(context);
     return Material(
       color: Colors.transparent,
@@ -280,31 +278,21 @@ class _IslandWindowState extends ConsumerState<IslandWindow> {
               child: Transform.scale(scale: effective, child: child),
             );
           },
-          child: AnimatedScale(
-            scale: ticking && _dismissing ? 0.68 : 1,
-            duration: dismissDuration,
-            curve: Curves.easeInCubic,
-            child: AnimatedOpacity(
-              opacity: ticking && _dismissing ? 0 : 1,
-              duration: dismissDuration,
-              curve: Curves.easeInCubic,
-              child: MouseRegion(
-                onEnter: (_) => _setHovering(true),
-                onExit: (_) => _setHovering(false),
-                child: _Capsule(
-                  track: track,
-                  playing: playing,
-                  buffering: buffering,
-                  hovering: expanded,
-                  message: message,
-                  style: resolved,
-                  controller: controller,
-                  onRestore: widget.onRestore,
-                  onHide: _requestHide,
-                  onGeometrySettled: () =>
-                      _syncCapsuleGeometry(capsuleSize, resolved.radius),
-                ),
-              ),
+          child: MouseRegion(
+            onEnter: (_) => _setHovering(true),
+            onExit: (_) => _setHovering(false),
+            child: _Capsule(
+              track: track,
+              playing: playing,
+              buffering: buffering,
+              hovering: expanded,
+              message: message,
+              style: resolved,
+              controller: controller,
+              onRestore: widget.onRestore,
+              onHide: _requestHide,
+              onGeometrySettled: () =>
+                  _syncCapsuleGeometry(capsuleSize, resolved.radius),
             ),
           ),
         ),
@@ -369,14 +357,22 @@ class _Capsule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final double artworkSize = hovering ? 68 : 44;
-    final Duration capsuleDuration = context.motion.duration(
-      const Duration(milliseconds: 320),
-      category: MotionCategory.island,
-    );
-    final Duration switchDuration = context.motion.duration(
-      const Duration(milliseconds: 240),
-      category: MotionCategory.island,
-    );
+    // Sin tickers, cualquier animación implícita puede congelarse a mitad de
+    // camino (incluido un FadeTransition en 0). Con duración cero el widget
+    // adopta directamente su valor final y el contenido sigue siendo visible.
+    final bool ticking = TickerMode.of(context);
+    final Duration capsuleDuration = ticking
+        ? context.motion.duration(
+            const Duration(milliseconds: 320),
+            category: MotionCategory.island,
+          )
+        : Duration.zero;
+    final Duration switchDuration = ticking
+        ? context.motion.duration(
+            const Duration(milliseconds: 240),
+            category: MotionCategory.island,
+          )
+        : Duration.zero;
     return CompactPanel(
       style: style,
       padding: EdgeInsets.zero,

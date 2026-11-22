@@ -140,7 +140,9 @@ class WindowService with WindowListener {
   static const Size islandExpandedCapsule = Size(376, 104);
   static const double islandDefaultRadius = 38;
 
-  /// Franja visible cuando la isla se aparta al borde superior.
+  /// Mínimo visible cuando la isla se aparta. [IslandShape.visibleSpan] lo
+  /// amplía hasta la medida completa de la cápsula para que no se vea solo
+  /// la sombra.
   static const double islandPeekHeight = IslandShape.defaultPeekHeight;
   static const Duration islandPeekPollInterval = Duration(milliseconds: 90);
   static const double islandPeekHorizontalPadding =
@@ -391,7 +393,11 @@ class WindowService with WindowListener {
       capsuleSize: _capsuleSize,
       displayBounds: _islandDisplayBounds,
       edge: _islandPeekEdge,
-      visibleHeight: islandPeekHeight,
+      visibleHeight: IslandShape.visibleSpan(
+        edge: _islandPeekEdge,
+        capsuleSize: _capsuleSize,
+        minimum: islandPeekHeight,
+      ),
     );
     await windowManager.setPosition(target, animate: true);
   }
@@ -441,7 +447,11 @@ class WindowService with WindowListener {
           windowSize: islandSize,
           displayBounds: _islandDisplayBounds,
           edge: _islandPeekEdge,
-          visibleHeight: islandPeekHeight,
+          visibleHeight: IslandShape.visibleSpan(
+            edge: _islandPeekEdge,
+            capsuleSize: _capsuleSize,
+            minimum: islandPeekHeight,
+          ),
           alongPadding: islandPeekHorizontalPadding,
           depthPadding: islandPeekVerticalPadding,
         );

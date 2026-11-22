@@ -194,4 +194,60 @@ void main() {
       },
     );
   });
+
+  group('IslandShape (isla apartada legible)', () {
+    const Offset normal = Offset(300, 0);
+    const Rect display = Rect.fromLTWH(0, 0, 1000, 800);
+
+    for (final IslandPeekEdge edge in IslandPeekEdge.values) {
+      test('${edge.name}: la cápsula sigue completamente en pantalla', () {
+        final Size windowSize = WindowService.islandSize;
+        final Size capsule = WindowService.islandCompactCapsule;
+        final double visible = IslandShape.visibleSpan(
+          edge: edge,
+          capsuleSize: capsule,
+        );
+        final Offset position = IslandShape.peekPosition(
+          normalTopLeft: normal,
+          windowSize: windowSize,
+          capsuleSize: capsule,
+          displayBounds: display,
+          edge: edge,
+          visibleHeight: visible,
+        );
+        final Rect capsuleRect = Rect.fromLTWH(
+          position.dx + (windowSize.width - capsule.width) / 2,
+          position.dy + (windowSize.height - capsule.height) / 2,
+          capsule.width,
+          capsule.height,
+        );
+
+        expect(display.contains(capsuleRect.topLeft), isTrue);
+        expect(display.contains(capsuleRect.bottomRight), isTrue);
+      });
+    }
+
+    test('visibleSpan usa el lado de la cápsula y respeta el mínimo', () {
+      final Size capsule = WindowService.islandCompactCapsule;
+      expect(
+        IslandShape.visibleSpan(edge: IslandPeekEdge.top, capsuleSize: capsule),
+        closeTo(capsule.height + 8, 0.01),
+      );
+      expect(
+        IslandShape.visibleSpan(
+          edge: IslandPeekEdge.left,
+          capsuleSize: capsule,
+        ),
+        closeTo(capsule.width + 8, 0.01),
+      );
+      expect(
+        IslandShape.visibleSpan(
+          edge: IslandPeekEdge.top,
+          capsuleSize: capsule,
+          minimum: 500,
+        ),
+        500,
+      );
+    });
+  });
 }

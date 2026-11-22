@@ -18,9 +18,28 @@ abstract final class IslandShape {
   /// mantiene la región ligera (36 puntos para la cápsula completa).
   static const int segmentsPerCorner = 8;
 
-  /// Altura/ancho de la franja de la cápsula que queda visible al apartar la
-  /// isla hacia cualquiera de los bordes de la pantalla.
+  /// Mínimo garantizado de cápsula visible al apartar la isla. Es solo un
+  /// suelo: [visibleSpan] lo amplía para que el contenido nunca quede fuera
+  /// de pantalla (antes, 12 px dejaban ver únicamente la sombra del panel).
   static const double defaultPeekHeight = 12;
+
+  /// Cuánto debe asomar la cápsula por el borde elegido.
+  ///
+  /// Se calcula a partir del lado correspondiente de la cápsula para que el
+  /// texto y la carátula sigan visibles incluso apartada: arriba/abajo basta
+  /// con su altura y izquierda/derecha con su ancho. El margen extra evita
+  /// que el recorte y la sombra nativa coman el primer píxel del contenido.
+  static double visibleSpan({
+    required IslandPeekEdge edge,
+    required Size capsuleSize,
+    double minimum = defaultPeekHeight,
+  }) {
+    final double side = switch (edge) {
+      IslandPeekEdge.top || IslandPeekEdge.bottom => capsuleSize.height,
+      IslandPeekEdge.left || IslandPeekEdge.right => capsuleSize.width,
+    };
+    return math.max(minimum, side + 8);
+  }
 
   /// Margen longitudinal de la zona de detección (a lo largo del borde).
   static const double peekAlongPadding = 140;

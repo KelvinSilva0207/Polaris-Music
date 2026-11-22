@@ -2249,6 +2249,8 @@ class _ArtworkStage extends ConsumerWidget {
     required this.onNext,
     required this.onLyrics,
     required this.onMinimize,
+    this.nextTrack,
+    this.previousTrack,
   });
 
   final Track track;
@@ -2261,6 +2263,10 @@ class _ArtworkStage extends ConsumerWidget {
   final VoidCallback onNext;
   final VoidCallback onLyrics;
   final VoidCallback onMinimize;
+
+  /// Vecinos reales de la cola activa, para el preview del gesto horizontal.
+  final Track? nextTrack;
+  final Track? previousTrack;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2312,6 +2318,45 @@ class _ArtworkStage extends ConsumerWidget {
         ? _CircularProgressRing(size: size, accent: accent, child: artwork)
         : artwork;
 
+    // Preview plano (incluso si la carátula usa card3D): al arrastrar se ve
+    // un adelanto limpio de la pista vecina sin perspectivas ni giros.
+    Widget swipePreview(Track neighbor) => KeyedSubtree(
+      key: ValueKey<String>('swipe-preview-${neighbor.id}'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _ArtworkImage(
+            path: neighbor.artworkPath,
+            size: artSize * 0.72,
+            shape: config.artworkShape == ArtworkShape.circleVinyl
+                ? BoxShape.circle
+                : BoxShape.rectangle,
+            radius: BorderRadius.circular(config.artworkRadius),
+            accent: accent,
+          ),
+          SizedBox(height: size * 0.035),
+          Text(
+            neighbor.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: context.inkAlpha(0.92),
+            ),
+          ),
+          Text(
+            neighbor.artist,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.60)),
+          ),
+        ],
+      ),
+    );
+
     return SizedBox(
       width: size,
       height: size,
@@ -2335,6 +2380,10 @@ class _ArtworkStage extends ConsumerWidget {
         seekEnabled: ring,
         playing: playing,
         paused: paused,
+        nextPreview: nextTrack == null ? null : swipePreview(nextTrack!),
+        previousPreview: previousTrack == null
+            ? null
+            : swipePreview(previousTrack!),
         child: RepaintBoundary(child: body),
       ),
     );
@@ -2388,6 +2437,30 @@ class _PlayerStage extends ConsumerWidget {
     final int position = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.index),
     );
+    final List<Track> queue = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.playback.activeQueue,
+      ),
+    );
+    final RepeatMode repeat = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.repeat),
+    );
+
+    // La vista previa usa la cola en su orden real (ya barajado si toca) y
+    // respeta "repetir toda". El motor puede saltar pistas no reproducibles,
+    // pero para un adelanto visual basta con el vecino inmediato.
+    Track? nextTrack;
+    Track? previousTrack;
+    if (queue.isNotEmpty) {
+      final int at = position.clamp(0, queue.length - 1);
+      if (repeat == RepeatMode.all) {
+        nextTrack = queue[(at + 1) % queue.length];
+        previousTrack = queue[(at - 1 + queue.length) % queue.length];
+      } else {
+        if (at + 1 < queue.length) nextTrack = queue[at + 1];
+        if (at - 1 >= 0) previousTrack = queue[at - 1];
+      }
+    }
 
     final Widget child = showLyrics
         ? KeyedSubtree(
@@ -2415,6 +2488,8 @@ class _PlayerStage extends ConsumerWidget {
               onNext: onNext,
               onLyrics: onLyrics,
               onMinimize: onMinimize,
+              nextTrack: nextTrack,
+              previousTrack: previousTrack,
             ),
           );
 

@@ -24,8 +24,10 @@ const double _gestureHintThreshold = 18;
 /// Las zonas laterales solo se activan si se pasa el callback correspondiente,
 /// así que el reproductor sigue teniendo los cuatro gestos centrales de siempre.
 ///
-/// El feedback ya no dibuja círculos ni flechas: la carátula se desplaza con un
-/// resorte, se inclina en 3D, crece apenas y su aura cambia de tono al confirmar.
+/// El feedback ya no dibuja círculos ni flechas: al deslizar, la carátula se
+/// aparta suavemente y asoma un **preview real** de la pista vecina desde el
+/// borde, siguiendo el dedo desde los primeros píxeles. Al soltar, un resorte
+/// devuelve la carátula si no se pasó el umbral. No hay inclinación 3D.
 /// Solo el anillo de progreso circular (cuando está activo) busca por ángulo.
 class ArtworkGestures extends StatefulWidget {
   const ArtworkGestures({
@@ -43,6 +45,8 @@ class ArtworkGestures extends StatefulWidget {
     this.seekEnabled = false,
     this.playing = false,
     this.paused = false,
+    this.nextPreview,
+    this.previousPreview,
   });
 
   final double size;
@@ -70,6 +74,12 @@ class ArtworkGestures extends StatefulWidget {
   /// Ventana minimizada/en segundo plano: detiene todo feedback continuo.
   final bool paused;
 
+  /// Adelanto de la pista siguiente/anterior. Se montan siempre (con opacidad
+  /// 0) para que la imagen ya esté decodificada cuando empiece el arrastre.
+  /// Si son `null` el gesto conserva solo el aura, como hasta ahora.
+  final Widget? nextPreview;
+  final Widget? previousPreview;
+
   @override
   State<ArtworkGestures> createState() => _ArtworkGesturesState();
 }
@@ -95,6 +105,10 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
 
   Offset _lastDirection = Offset.zero;
   bool _releasing = false;
+
+  /// El swipe ya confirmó el cambio: ocultamos el preview para que no se vea
+  /// la carátula vieja y la nueva a la vez durante la transición entrante.
+  bool _committing = false;
 
   @override
   void initState() {
@@ -167,7 +181,18 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
   void _resetMotion() {
     _spring.stop();
     _releasing = false;
+    _committing = false;
     if (_intensity.value != 0) _intensity.value = 0;
+  }
+
+  /// Progreso visual del adelanto: a 20 px ya se ve el 30 % y a 48 px el 100 %.
+  /// Se calcula sobre la distancia real del dedo, sin curvas que lo retrasen.
+  double _revealFor(double draggedPixels) {
+    if (draggedPixels <= 0) return 0;
+    if (draggedPixels <= 20) return 0.30 * (draggedPixels / 20);
+    final double rest = ((draggedPixels - 20) / (_gestureSwipeThreshold - 20))
+        .clamp(0.0, 1.0);
+    return 0.30 + 0.70 * rest;
   }
 
   void _onDown(PointerDownEvent event) {
@@ -307,6 +332,12 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
     final _SwipeAction action = _actionFor(delta);
     _lastDirection = _unitFor(action);
     _direction.value = _lastDirection;
+    final bool hasPreview = switch (action) {
+      _SwipeAction.next => widget.nextPreview != null,
+      _SwipeAction.previous => widget.previousPreview != null,
+      _ => false,
+    };
+    if (hasPreview) _committing = true;
     _release(delta);
 
     switch (action) {
@@ -339,6 +370,11 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
   Widget build(BuildContext context) {
     final Color accent = widget.accent ?? context.tokens.accent;
     final double radius = widget.size / 2;
+    // El gate visual no altera la lógica del swipe: con movimiento reducido el
+    // preview no aparece, pero los callbacks siguen funcionando como siempre.
+    final bool previewAllowed =
+        context.motionAllowed(MotionCategory.gestures) && !widget.paused;
+    final double travelScale = context.motion.travelScale.clamp(0.0, 1.0);
 
     return ClipPath(
       clipper: _CircleClipper(radius),
@@ -384,26 +420,67 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
                 builder: (BuildContext context, Widget? child) {
                   final double e = _effectiveIntensity;
                   final Offset dir = _direction.value;
-                  final double shift = widget.size * 0.022 * e;
-                  final double tilt = 0.10 * e;
-                  final double scale = (1 + 0.025 * e).clamp(0.94, 1.05);
+                  // Sin perspectiva ni rotación: la carátula solo acompaña al
+                  // dedo y cede un poco de sitio al preview que entra detrás.
+                  final double shift = widget.size * 0.07 * e.clamp(0.0, 1.35);
+                  final double scale = (1 - 0.04 * e).clamp(0.92, 1.04);
 
-                  return Transform(
-                    alignment: Alignment.center,
-                    transform: Matrix4.identity()
-                      ..setEntry(3, 2, 0.0015)
-                      ..rotateX(-dir.dy * tilt)
-                      ..rotateY(dir.dx * tilt),
-                    child: Transform.scale(
-                      scale: scale,
-                      child: Transform.translate(
-                        offset: dir * shift,
-                        child: child,
-                      ),
-                    ),
+                  return Transform.translate(
+                    offset: dir * shift,
+                    child: Transform.scale(scale: scale, child: child),
                   );
                 },
                 child: widget.child,
+              ),
+              // Se dibuja encima de la carátula actual: al arrastrar, la
+              // pista vecina entra por el borde y tapa progresivamente la
+              // anterior, como un carrusel, sin ningún giro 3D.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _motion,
+                    builder: (BuildContext context, Widget? _) {
+                      final Offset direction = _direction.value;
+                      final bool horizontal =
+                          direction.dx.abs() > direction.dy.abs() &&
+                          direction.dx != 0;
+                      final Widget? preview = !horizontal
+                          ? null
+                          : direction.dx < 0
+                          ? widget.nextPreview
+                          : widget.previousPreview;
+                      if (!previewAllowed || _committing || preview == null) {
+                        return const SizedBox.shrink();
+                      }
+                      final double reveal = _revealFor(
+                        _effectiveIntensity * _gestureSwipeThreshold,
+                      );
+                      if (reveal <= 0) return const SizedBox.shrink();
+                      // Deslizar a la izquierda (siguiente) hace entrar la
+                      // carátula por la derecha; el gesto inverso, por la
+                      // izquierda. A 20 px ya asoma un 30 %.
+                      final double side = -direction.dx;
+                      final double offset =
+                          side *
+                          widget.size *
+                          (0.95 - 0.70 * reveal * travelScale);
+                      return Opacity(
+                        opacity: (reveal * 1.6).clamp(0.0, 1.0),
+                        child: FractionalTranslation(
+                          translation: Offset(offset / widget.size, 0),
+                          child: Transform.scale(
+                            scale: 0.86 + 0.14 * reveal,
+                            child: SizedBox(
+                              width: widget.size,
+                              height: widget.size,
+                              child: preview,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
             ],
           ),

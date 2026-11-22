@@ -206,4 +206,138 @@ void main() {
 
     expect(action, 'seek');
   });
+
+  Widget previews({
+    required ValueChanged<String> onAction,
+    required Widget next,
+    required Widget previous,
+    bool paused = false,
+  }) {
+    return MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: ArtworkGestures(
+            size: 200,
+            onSeekFraction: (_) => onAction('seek'),
+            onPrevious: () => onAction('previous'),
+            onNext: () => onAction('next'),
+            onLyrics: () => onAction('lyrics'),
+            onMinimize: () => onAction('minimize'),
+            nextPreview: next,
+            previousPreview: previous,
+            paused: paused,
+            child: const SizedBox(width: 200, height: 200),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget sample(String key) =>
+      KeyedSubtree(key: Key(key), child: const SizedBox(width: 30, height: 30));
+
+  testWidgets('el preview de la siguiente aparece al arrastrar 20 px', (
+    WidgetTester tester,
+  ) async {
+    String action = 'none';
+    await tester.pumpWidget(
+      previews(
+        onAction: (String value) => action = value,
+        next: sample('next-preview'),
+        previous: sample('previous-preview'),
+      ),
+    );
+    final Offset center = tester.getCenter(find.byType(ArtworkGestures));
+    final TestGesture gesture = await tester.startGesture(center);
+
+    await gesture.moveBy(const Offset(-20, 0));
+    await tester.pump();
+    expect(find.byKey(const Key('next-preview')), findsOneWidget);
+    expect(find.byKey(const Key('previous-preview')), findsNothing);
+    expect(
+      tester.getCenter(find.byKey(const Key('next-preview'))).dx,
+      greaterThan(center.dx),
+    );
+
+    await gesture.up();
+    await tester.pump();
+    expect(action, 'none');
+    expect(find.byKey(const Key('next-preview')), findsNothing);
+  });
+
+  testWidgets('el preview de la anterior sale por el lado izquierdo', (
+    WidgetTester tester,
+  ) async {
+    String action = 'none';
+    await tester.pumpWidget(
+      previews(
+        onAction: (String value) => action = value,
+        next: sample('next-preview'),
+        previous: sample('previous-preview'),
+      ),
+    );
+    final Offset center = tester.getCenter(find.byType(ArtworkGestures));
+    final TestGesture gesture = await tester.startGesture(center);
+    await gesture.moveBy(const Offset(20, 0));
+    await tester.pump();
+
+    expect(find.byKey(const Key('previous-preview')), findsOneWidget);
+    expect(find.byKey(const Key('next-preview')), findsNothing);
+    expect(
+      tester.getCenter(find.byKey(const Key('previous-preview'))).dx,
+      lessThan(center.dx),
+    );
+
+    await gesture.up();
+    await tester.pump();
+    expect(action, 'none');
+  });
+
+  testWidgets('los gestos verticales no muestran preview horizontal', (
+    WidgetTester tester,
+  ) async {
+    String action = 'none';
+    await tester.pumpWidget(
+      previews(
+        onAction: (String value) => action = value,
+        next: sample('next-preview'),
+        previous: sample('previous-preview'),
+      ),
+    );
+    final TestGesture gesture = await tester.startGesture(
+      tester.getCenter(find.byType(ArtworkGestures)),
+    );
+    await gesture.moveBy(const Offset(0, -60));
+    await tester.pump();
+    expect(find.byKey(const Key('next-preview')), findsNothing);
+    expect(find.byKey(const Key('previous-preview')), findsNothing);
+
+    await gesture.up();
+    await tester.pump();
+    expect(action, 'lyrics');
+  });
+
+  testWidgets('el preview se oculta al confirmar el cambio de pista', (
+    WidgetTester tester,
+  ) async {
+    String action = 'none';
+    await tester.pumpWidget(
+      previews(
+        onAction: (String value) => action = value,
+        next: sample('next-preview'),
+        previous: sample('previous-preview'),
+      ),
+    );
+    final TestGesture gesture = await tester.startGesture(
+      tester.getCenter(find.byType(ArtworkGestures)),
+    );
+    await gesture.moveBy(const Offset(-60, 0));
+    await tester.pump();
+    expect(find.byKey(const Key('next-preview')), findsOneWidget);
+
+    await gesture.up();
+    await tester.pump();
+    expect(action, 'next');
+    expect(find.byKey(const Key('next-preview')), findsNothing);
+  });
 }
