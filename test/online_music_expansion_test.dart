@@ -13,6 +13,7 @@ import 'package:polaris_music/features/online_music/domain/music_source_catalog.
 import 'package:polaris_music/features/online_music/domain/online_catalog_items.dart';
 import 'package:polaris_music/features/online_music/domain/online_music_repository.dart';
 import 'package:polaris_music/features/online_music/domain/online_track.dart';
+import 'package:polaris_music/features/online_music/domain/request_cancellation.dart';
 
 OnlineTrack _track(
   String source,
@@ -167,6 +168,28 @@ class _DownloadRepository implements OnlineMusicRepository {
     OnlineCollectionRef collection, {
     int limit = 50,
   }) async => const <OnlineTrack>[];
+
+  @override
+  Future<List<OnlineTrack>> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) => search(query, limit: limit);
+
+  @override
+  Future<List<OnlineTrack>> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) => trending(limit: limit);
+
+  @override
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  }) async =>
+      CollectionPage.only(await collectionTracks(collection, limit: limit));
 }
 
 class _RecordingAdapter implements HttpClientAdapter {

@@ -5,6 +5,8 @@ import '../domain/music_source.dart';
 import '../domain/online_catalog_items.dart';
 import '../domain/online_source_settings.dart';
 import '../domain/online_track.dart';
+import '../domain/request_cancellation.dart';
+import 'dio_request_cancellation.dart';
 import 'source_helpers.dart';
 
 /// Proveedor de metadatos de Spotify mediante Web API.
@@ -13,7 +15,8 @@ import 'source_helpers.dart';
 /// exige atribución, por lo que esta fuente busca y muestra canciones, pero
 /// desactiva explícitamente streaming y descarga. El token se introduce en
 /// ajustes (OAuth de la app del usuario); nunca se guarda un `client_secret`.
-class SpotifySource implements MusicSourceProvider {
+class SpotifySource
+    implements MusicSourceProvider, CancellableMusicSourceProvider {
   SpotifySource({required this.settings, Dio? dio, ArtworkCache? artworkCache})
     : _dio =
           dio ??
@@ -111,7 +114,24 @@ class SpotifySource implements MusicSourceProvider {
   }
 
   @override
-  Future<SourceResult> search(String query, {int limit = 25}) async {
+  Future<SourceResult> search(String query, {int limit = 25}) =>
+      _search(query, limit: limit);
+
+  @override
+  Future<SourceResult> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _search(query, limit: limit, token: token);
+  }
+
+  Future<SourceResult> _search(
+    String query, {
+    int limit = 25,
+    OnlineRequestToken? token,
+  }) async {
     final MusicSourceStatus current = status;
     if (!current.available && current.issue == MusicSourceIssue.notConfigured) {
       return SourceResult(source: id, status: current);
@@ -125,6 +145,7 @@ class SpotifySource implements MusicSourceProvider {
           'limit': limit,
           'market': _market,
         },
+        dioCancelTokenOf(token),
       );
       final Map<String, dynamic>? payload = SourceJson.map(response.data);
       final Map<String, dynamic>? tracks = SourceJson.map(payload?['tracks']);
@@ -139,6 +160,12 @@ class SpotifySource implements MusicSourceProvider {
       );
     }
   }
+
+  @override
+  Future<SourceResult> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) => trending(limit: limit);
 
   @override
   Future<SourceResult> trending({int limit = 25}) => Future<SourceResult>.value(
@@ -161,8 +188,28 @@ class SpotifySource implements MusicSourceProvider {
     String query, {
     required OnlineSearchType type,
     int limit = 25,
+  }) => _searchCollections(query, type: type, limit: limit);
+
+  @override
+  Future<List<OnlineCollectionRef>> searchCollectionsCancellable(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _searchCollections(query, type: type, limit: limit, token: token);
+  }
+
+  Future<List<OnlineCollectionRef>> _searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    OnlineRequestToken? token,
   }) async {
-    if (query.trim().isEmpty || type == OnlineSearchType.songs) {
+    if (query.trim().isEmpty ||
+        type == OnlineSearchType.songs ||
+        type == OnlineSearchType.all) {
       return const <OnlineCollectionRef>[];
     }
     final MusicSourceStatus current = status;
@@ -173,7 +220,7 @@ class SpotifySource implements MusicSourceProvider {
       OnlineSearchType.albums => 'albums',
       OnlineSearchType.artists => 'artists',
       OnlineSearchType.playlists => 'playlists',
-      OnlineSearchType.songs => '',
+      OnlineSearchType.songs || OnlineSearchType.all => '',
     };
     try {
       final Response<dynamic> response = await _get(
@@ -184,6 +231,7 @@ class SpotifySource implements MusicSourceProvider {
           'limit': limit,
           'market': _market,
         },
+        dioCancelTokenOf(token),
       );
       final Map<String, dynamic>? payload = SourceJson.map(response.data);
       final Map<String, dynamic>? page = SourceJson.map(payload?[section]);
@@ -197,6 +245,25 @@ class SpotifySource implements MusicSourceProvider {
   Future<List<OnlineTrack>> collectionTracks(
     OnlineCollectionRef collection, {
     int limit = 50,
+  }) => _collectionTracks(collection, limit: limit);
+
+  @override
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  }) async {
+    token.throwIfCancelled();
+    return CollectionPage.only(
+      await _collectionTracks(collection, limit: limit, token: token),
+    );
+  }
+
+  Future<List<OnlineTrack>> _collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+    OnlineRequestToken? token,
   }) async {
     if (collection.id.isEmpty) return const <OnlineTrack>[];
     try {
@@ -209,6 +276,7 @@ class SpotifySource implements MusicSourceProvider {
           _ => '/playlists/${Uri.encodeComponent(collection.id)}/tracks',
         },
         <String, dynamic>{'market': _market, 'limit': limit},
+        dioCancelTokenOf(token),
       );
       final Map<String, dynamic>? payload = SourceJson.map(response.data);
       final List<Object?> items = collection.kind == OnlineSearchType.artists
@@ -288,7 +356,11 @@ class SpotifySource implements MusicSourceProvider {
   Future<String?> cacheArtwork(String? artworkUrl) =>
       _artworkCache.cache(artworkUrl, id);
 
-  Future<Response<dynamic>> _get(String path, [Map<String, dynamic>? query]) {
+  Future<Response<dynamic>> _get(
+    String path, [
+    Map<String, dynamic>? query,
+    CancelToken? cancel,
+  ]) {
     final String? token = _token;
     if (token == null) {
       throw const MusicSourceException(
@@ -300,6 +372,7 @@ class SpotifySource implements MusicSourceProvider {
     return _dio.get<dynamic>(
       '$_baseUrl$path',
       queryParameters: query,
+      cancelToken: cancel,
       options: Options(
         headers: <String, String>{
           'Authorization': 'Bearer $token',

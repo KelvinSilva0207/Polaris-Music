@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import '../constants/app_constants.dart';
+import 'audio_output_selection_service.dart';
 import '../models/equalizer_config.dart';
 import '../utils/logger.dart';
 import 'settings_service.dart';
@@ -30,6 +31,7 @@ class AudioDeviceProfileService {
   final SettingsService _settings;
   final SystemAudioService _systemAudio;
   StreamSubscription<AudioOutputDevice>? _outputSub;
+  AudioOutputSelectionService? _selection;
 
   final StreamController<EqualizerConfig?> _activeController =
       StreamController<EqualizerConfig?>.broadcast();
@@ -40,11 +42,28 @@ class AudioDeviceProfileService {
   EqualizerConfig? _activeConfig;
   EqualizerConfig? get activeConfig => _activeConfig;
 
-  AudioOutputDevice? get currentDevice => _systemAudio.currentOutput;
+  /// Salida fijada por el usuario si la hay; si no, la que detecta el sistema.
+  AudioOutputDevice? get currentDevice =>
+      (_selection != null && _selection!.hasExplicitSelection)
+      ? _selection!.currentSystemDevice ?? _systemAudio.currentOutput
+      : _systemAudio.currentOutput;
 
   bool get enabled => _settings.perDeviceProfilesEnabled;
 
   String scopeFor(AudioOutputDevice device) => '$_scopePrefix${device.key}';
+
+  /// Conecta el selector de salida creado por el provider de la hoja de audio.
+  ///
+  /// El perfil por salida debe seguir al dispositivo elegido por el usuario,
+  /// aunque el dispositivo predeterminado del sistema siga siendo otro.
+  void attachSelection(AudioOutputSelectionService selection) {
+    if (identical(_selection, selection)) return;
+    _selection?.removeListener(_onSelectionChanged);
+    _selection = selection;
+    _selection?.addListener(_onSelectionChanged);
+    final AudioOutputDevice? device = currentDevice;
+    if (device != null) unawaited(_applyProfile(device));
+  }
 
   /// Devuelve el perfil guardado para una salida, o `null` si no existe.
   Future<EqualizerConfig?> loadFor(AudioOutputDevice device) async {
@@ -100,7 +119,20 @@ class AudioDeviceProfileService {
     }
   }
 
-  void _onOutputChanged(AudioOutputDevice device) async {
+  void _onOutputChanged(AudioOutputDevice device) {
+    // El dispositivo por defecto del sistema deja de mandar cuando el usuario
+    // ha fijado una salida concreta en el selector.
+    if (_selection != null && _selection!.hasExplicitSelection) return;
+    unawaited(_applyProfile(device));
+  }
+
+  void _onSelectionChanged() {
+    final AudioOutputDevice? device = currentDevice;
+    if (device == null) return;
+    unawaited(_applyProfile(device));
+  }
+
+  Future<void> _applyProfile(AudioOutputDevice device) async {
     if (!enabled) {
       _activeConfig = null;
       if (!_activeController.isClosed) _activeController.add(null);
@@ -117,6 +149,7 @@ class AudioDeviceProfileService {
   }
 
   Future<void> dispose() async {
+    _selection?.removeListener(_onSelectionChanged);
     await _outputSub?.cancel();
     await _activeController.close();
   }

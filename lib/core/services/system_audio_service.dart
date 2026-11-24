@@ -74,6 +74,13 @@ class SystemAudioService {
   bool _wasSystemVolumeZero = false;
   String? _lastEndpointId;
 
+  /// Lo fija el selector de salida: con una salida elegida a mano, un cambio
+  /// del dispositivo *predeterminado* del sistema no debe pausar la música.
+  bool Function()? hasExplicitAudioOutputSelection;
+
+  bool get _hasExplicitSelection =>
+      hasExplicitAudioOutputSelection?.call() ?? false;
+
   final StreamController<AudioOutputDevice> _outputController =
       StreamController<AudioOutputDevice>.broadcast();
   AudioOutputDevice? _currentOutput;
@@ -146,7 +153,7 @@ class SystemAudioService {
         event.devicesRemoved.any((AudioDevice d) => d.isOutput)) {
       unawaited(_refreshAndroidOutput());
     }
-    if (!settings.pauseOnHeadphonesDisconnect) return;
+    if (!settings.pauseOnHeadphonesDisconnect || _hasExplicitSelection) return;
     if (event.devicesRemoved.any((AudioDevice device) => device.isOutput)) {
       unawaited(_pause('salida de audio desconectada'));
     }
@@ -264,7 +271,8 @@ class SystemAudioService {
       _lastEndpointId = endpointId;
       if (previous != null &&
           previous != endpointId &&
-          settings.pauseOnHeadphonesDisconnect) {
+          settings.pauseOnHeadphonesDisconnect &&
+          !_hasExplicitSelection) {
         await _pause('salida de audio cambiada');
       }
 
@@ -305,6 +313,79 @@ class SystemAudioService {
       calloc.free(key);
       store?.release();
     }
+  }
+
+  /// Convierte el nombre interno de mpv a la clave estable que ya usan los
+  /// perfiles de ecualizador (`device:<key>`).
+  ///
+  /// En Windows el `name` de media_kit es `wasapi/<endpoint-id>`, así que se
+  /// reutiliza el endpoint WASAPI detectado por [_pollWindows] cuando coincide.
+  /// En Android no hay una equivalencia pública, así que se intenta emparejar
+  /// por nombre y, si no, se crea una clave `mediakit:` estable.
+  AudioOutputDevice resolveMediaKitDevice({
+    required String name,
+    required String description,
+  }) {
+    final String mpvName = name.trim();
+    final String label = description.trim().isEmpty
+        ? mpvName
+        : description.trim();
+    final AudioOutputDevice? current = _currentOutput;
+
+    if (Platform.isWindows) {
+      final String endpoint = mpvName.replaceFirst(
+        RegExp(r'^wasapi[/\\]', caseSensitive: false),
+        '',
+      );
+      if (current != null &&
+          current.platform == 'windows' &&
+          _sameWindowsEndpoint(current.key, endpoint)) {
+        return current;
+      }
+      return AudioOutputDevice(
+        key: 'windows:$endpoint',
+        name: label,
+        platform: 'windows',
+      );
+    }
+
+    if (Platform.isAndroid) {
+      if (current != null &&
+          current.platform == 'android' &&
+          _sameDeviceLabel(label, current.name)) {
+        return current;
+      }
+      return AudioOutputDevice(
+        key: 'android:mediakit:$mpvName',
+        name: label,
+        platform: 'android',
+      );
+    }
+
+    return AudioOutputDevice(
+      key: 'mediakit:$mpvName',
+      name: label,
+      platform: current?.platform ?? 'unknown',
+    );
+  }
+
+  static bool _sameWindowsEndpoint(String key, String mpvEndpoint) {
+    String normalize(String value) => value
+        .replaceAll('{', '')
+        .replaceAll('}', '')
+        .replaceAll('\\', '')
+        .replaceAll('/', '')
+        .toLowerCase();
+    final String scope = key.startsWith('windows:') ? key.substring(8) : key;
+    return normalize(scope) == normalize(mpvEndpoint);
+  }
+
+  static bool _sameDeviceLabel(String a, String b) {
+    final String left = a.toLowerCase().trim();
+    final String right = b.toLowerCase().trim();
+    return left == right ||
+        (left.isNotEmpty && right.contains(left)) ||
+        (right.isNotEmpty && left.contains(right));
   }
 
   Future<void> _pause(String reason) async {

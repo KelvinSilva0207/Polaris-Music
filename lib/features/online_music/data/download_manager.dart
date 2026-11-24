@@ -9,11 +9,11 @@ import '../../../core/constants/app_paths.dart';
 import '../../../core/models/downloaded_track.dart';
 import '../../../core/models/track.dart' show StreamAlternative;
 import '../../../core/utils/file_utils.dart';
-import '../../../core/utils/logger.dart';
 import '../domain/download_task.dart';
 import '../domain/music_source.dart';
 import '../domain/online_music_repository.dart';
 import '../domain/online_track.dart';
+import 'online_diagnostics.dart';
 import 'source_helpers.dart';
 
 /// Persiste una descarga en la biblioteca local. Devuelve el id de la fila.
@@ -234,11 +234,11 @@ class DownloadManager implements DownloadQueue {
                   status == 404 ||
                   status == 410);
           if (!retryable) rethrow;
-          AppLog.w(
+          OnlineDiagnostics.report(
             _tag,
             'Fallo al descargar con ${candidate.label.isEmpty ? 'la fuente principal' : candidate.label} '
             '($status); probando alternativa ${i + 2}/${candidates.length}',
-            error,
+            error: error,
           );
           await _deletePartial(partial);
         }
@@ -274,10 +274,14 @@ class DownloadManager implements DownloadQueue {
         indeterminate: false,
         filePath: target.path,
       );
-      AppLog.i(_tag, 'Descarga completada: ${target.path}');
+      OnlineDiagnostics.report(_tag, 'Descarga completada: ${target.path}');
     } on DioException catch (error, stack) {
       if (CancelToken.isCancel(error)) {
         _update(initial, status: DownloadStatus.canceled);
+        OnlineDiagnostics.report(
+          _tag,
+          'Descarga cancelada: ${track.externalId}',
+        );
       } else {
         final MusicSourceId source =
             MusicSourceIdX.fromExternalId(track.externalId) ??
@@ -288,7 +292,12 @@ class DownloadManager implements DownloadQueue {
           status: DownloadStatus.failed,
           error: detail.isEmpty ? 'No se pudo descargar la pista.' : detail,
         );
-        AppLog.w(_tag, 'Fallo al descargar ${track.externalId}', error, stack);
+        OnlineDiagnostics.report(
+          _tag,
+          'Fallo al descargar ${track.externalId}',
+          error: error,
+          stack: stack,
+        );
       }
       await _deletePartial(partial);
     } catch (error, stack) {
@@ -304,7 +313,12 @@ class DownloadManager implements DownloadQueue {
         status: DownloadStatus.failed,
         error: detail.isEmpty ? 'No se pudo descargar la pista.' : detail,
       );
-      AppLog.w(_tag, 'Fallo al descargar ${track.externalId}', error, stack);
+      OnlineDiagnostics.report(
+        _tag,
+        'Fallo al descargar ${track.externalId}',
+        error: error,
+        stack: stack,
+      );
       await _deletePartial(partial);
     } finally {
       _tokens.remove(track.externalId);

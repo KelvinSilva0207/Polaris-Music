@@ -6,7 +6,7 @@ class AppConstants {
   AppConstants._();
 
   static const String appName = 'Polaris Music';
-  static const String appVersionFallback = '1.1.0';
+  static const String appVersionFallback = '1.1.1';
   static const String githubOwner = 'KelvinSilva0207';
   static const String githubRepo = 'Polaris-Music';
   static const String githubReleasesUrl =
@@ -189,6 +189,10 @@ class AppConstants {
   static const String keyPerDeviceProfiles = 'eq.per_device_profiles';
   static const String keyNormalizeVolume = 'audio.normalize';
   static const String keyVolume = 'audio.volume';
+
+  /// Nombre del `audio-device` de media_kit elegido por el usuario.
+  /// `null` significa selección automática del sistema.
+  static const String keyAudioOutputDevice = 'audio.output_device';
   static const String keyPauseOnHeadphonesDisconnect =
       'audio.pause_on_headphones_disconnect';
   static const String keyPauseOnVolumeZero = 'audio.pause_on_volume_zero';
@@ -256,6 +260,7 @@ class AppConstants {
     keySilenceTrimEndMs,
     keyNormalizeVolume,
     keyVolume,
+    keyAudioOutputDevice,
     keyPauseOnHeadphonesDisconnect,
     keyPauseOnVolumeZero,
     keySleepTimerDefault,

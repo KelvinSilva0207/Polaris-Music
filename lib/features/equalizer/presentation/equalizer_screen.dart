@@ -11,6 +11,7 @@ import '../domain/equalizer_controller.dart';
 import 'eq_curve_painter.dart';
 import 'equalizer_providers.dart';
 import 'parametric_eq_view.dart';
+import 'precision_controls.dart';
 import 'subharmonic_control.dart';
 
 /// Ecualizador gráfico configurable + paramétrico + sub-armónico.
@@ -567,11 +568,24 @@ class _BandSlider extends StatelessWidget {
     return frequency.toStringAsFixed(0);
   }
 
+  String get _gainLabel {
+    if (gain.abs() < 0.05) return '0';
+    if (gain == gain.roundToDouble()) return gain.toStringAsFixed(0);
+    return gain.toStringAsFixed(1);
+  }
+
   @override
   Widget build(BuildContext context) {
     final Color accent = context.tokens.accent;
+    const double min = AppConstants.eqMinGain;
+    const double max = AppConstants.eqMaxGain;
+    const double step = 1;
+    final String bandLabel = 'Banda $_label Hz';
+    final String hint = 'Doble toque para escribir $_label Hz';
+
     return SizedBox(
       width: 58,
+      height: 230,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
@@ -579,7 +593,7 @@ class _BandSlider extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: <Widget>[
               Text(
-                gain == 0 ? '0' : gain.toStringAsFixed(0),
+                _gainLabel,
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -597,22 +611,55 @@ class _BandSlider extends StatelessWidget {
                 ),
             ],
           ),
-          SizedBox(
-            height: 168,
-            child: RotatedBox(
-              quarterTurns: 3,
-              child: Slider(
-                value: gain.clamp(
-                  AppConstants.eqMinGain,
-                  AppConstants.eqMaxGain,
-                ),
-                min: AppConstants.eqMinGain,
-                max: AppConstants.eqMaxGain,
-                divisions: 24,
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              PrecisionStepButtons(
+                value: gain,
+                min: min,
+                max: max,
+                step: step,
                 onChanged: onChanged,
+                label: bandLabel,
+                stepLabel: 'dB',
+                axis: Axis.vertical,
+                size: 24,
               ),
-            ),
+              const SizedBox(width: 2),
+              SizedBox(
+                width: 32,
+                height: 166,
+                child: Tooltip(
+                  message: hint,
+                  child: GestureDetector(
+                    onDoubleTap: () => showPrecisionValueDialog(
+                      context: context,
+                      title: bandLabel,
+                      label: 'Ganancia',
+                      current: gain,
+                      min: min,
+                      max: max,
+                      decimals: 1,
+                      unit: 'dB',
+                      onPreview: onChanged,
+                    ),
+                    child: RotatedBox(
+                      quarterTurns: 3,
+                      child: Slider(
+                        value: gain.clamp(min, max).toDouble(),
+                        min: min,
+                        max: max,
+                        divisions: 24,
+                        onChanged: onChanged,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
+          const SizedBox(height: 6),
           Text(
             '$_label Hz',
             style: TextStyle(fontSize: 10, color: context.inkAlpha(0.54)),
@@ -631,32 +678,20 @@ class _PreampControl extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        const SizedBox(width: 8),
-        const Text(
-          'Preamplificador',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        Expanded(
-          child: Slider(
-            value: value.clamp(AppConstants.eqMinGain, AppConstants.eqMaxGain),
-            min: AppConstants.eqMinGain,
-            max: AppConstants.eqMaxGain,
-            divisions: 24,
-            onChanged: onChanged,
-          ),
-        ),
-        SizedBox(
-          width: 52,
-          child: Text(
-            '${value >= 0 ? '+' : ''}${value.toStringAsFixed(1)} dB',
-            textAlign: TextAlign.end,
-            style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
-          ),
-        ),
-        const SizedBox(width: 8),
-      ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: PrecisionSliderRow(
+        label: 'Preamplificador',
+        value: value,
+        min: AppConstants.eqMinGain,
+        max: AppConstants.eqMaxGain,
+        step: 1,
+        decimals: 1,
+        unit: 'dB',
+        onChanged: onChanged,
+        formatter: (double v) =>
+            '${v > 0 ? '+' : ''}${v.toStringAsFixed(1)} dB',
+      ),
     );
   }
 }

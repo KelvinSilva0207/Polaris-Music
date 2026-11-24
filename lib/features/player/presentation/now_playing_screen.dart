@@ -15,7 +15,6 @@ import '../../../core/providers/app_providers.dart';
 import '../../../core/providers/compact_style_provider.dart';
 import '../../../core/providers/motion_provider.dart';
 import '../../../core/providers/theme_provider.dart';
-import '../../../core/services/brightness_service.dart';
 import '../../../core/services/settings_service.dart';
 import '../../../core/services/window_service.dart';
 import '../../../core/theme/app_theme_config.dart';
@@ -27,6 +26,7 @@ import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/audio_progress_bar.dart';
 import 'animated_favorite_button.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/light_motion.dart';
 import '../../../shared/widgets/motion_scope.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import '../../../shared/widgets/tactile_icon_button.dart';
@@ -37,6 +37,8 @@ import '../../equalizer/presentation/equalizer_screen.dart';
 import '../../lyrics/presentation/expanded_lyrics_view.dart';
 import '../domain/player_controller.dart';
 import 'artwork_gestures.dart';
+import 'audio_output_providers.dart';
+import 'audio_output_sheet.dart';
 import 'player_providers.dart';
 
 /// Pantalla de reproducción dinámica.
@@ -1081,13 +1083,10 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
     return Semantics(
       button: true,
       label: widget.playing ? 'Pausar' : 'Reproducir',
-      child: AnimatedScale(
+      child: MotionScale(
         scale: _pressed ? 1 - (0.03 + 0.07 * context.motion.intensity) : 1,
-        duration: context.motion.duration(
-          const Duration(milliseconds: 130),
-          category: MotionCategory.gestures,
-        ),
-        curve: Curves.easeOutCubic,
+        category: MotionCategory.gestures,
+        duration: const Duration(milliseconds: 130),
         child: GestureDetector(
           onTapDown: (_) => _setPressed(true),
           onTapUp: (_) => _setPressed(false),
@@ -1096,72 +1095,88 @@ class _PlayPauseButtonState extends State<_PlayPauseButton> {
             unawaited(HapticFeedback.lightImpact());
             widget.onPressed();
           },
-          child: AnimatedContainer(
-            duration: context.motion.duration(
-              const Duration(milliseconds: 240),
-              category: MotionCategory.gestures,
-            ),
-            curve: Curves.easeOutCubic,
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[
-                  Color.lerp(widget.accent, context.ink, 0.22) ?? widget.accent,
-                  widget.accent,
-                ],
-              ),
-              boxShadow: <BoxShadow>[
-                BoxShadow(
-                  color: widget.accent.withValues(
-                    alpha: _pressed ? 0.30 : 0.48,
+          // La sombra ya no se interpola: un halo con Opacity y la escala del
+          // botón bastan para la respuesta táctil sin repintar el blur.
+          child: Stack(
+            alignment: Alignment.center,
+            children: <Widget>[
+              IgnorePointer(
+                child: MotionFade(
+                  opacity: _pressed ? 0.55 : 1,
+                  category: MotionCategory.gestures,
+                  duration: const Duration(milliseconds: 240),
+                  child: Container(
+                    width: 78,
+                    height: 78,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: widget.accent.withValues(alpha: 0.20),
+                    ),
                   ),
-                  blurRadius: _pressed ? 14 : 26,
-                  spreadRadius: _pressed ? 0 : 3,
-                  offset: const Offset(0, 6),
                 ),
-              ],
-            ),
-            child: Center(
-              child: AnimatedSwitcher(
-                duration: context.motion.duration(
-                  const Duration(milliseconds: 200),
-                ),
-                transitionBuilder:
-                    (Widget child, Animation<double> animation) =>
-                        ScaleTransition(
-                          scale: Tween<double>(
-                            begin: 0.6,
-                            end: 1,
-                          ).animate(animation),
-                          child: FadeTransition(
-                            opacity: animation,
-                            child: child,
-                          ),
-                        ),
-                child: widget.buffering
-                    ? SizedBox(
-                        key: ValueKey<String>('buffering'),
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.4,
-                          color: ColorMath.onColor(widget.accent),
-                        ),
-                      )
-                    : Icon(
-                        widget.playing
-                            ? Icons.pause_rounded
-                            : Icons.play_arrow_rounded,
-                        key: ValueKey<bool>(widget.playing),
-                        size: 38,
-                        color: ColorMath.onColor(widget.accent),
-                      ),
               ),
-            ),
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      Color.lerp(widget.accent, context.ink, 0.22) ??
+                          widget.accent,
+                      widget.accent,
+                    ],
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: widget.accent.withValues(alpha: 0.40),
+                      blurRadius: 22,
+                      spreadRadius: 2,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: AnimatedSwitcher(
+                    duration: context.motion.duration(
+                      const Duration(milliseconds: 200),
+                    ),
+                    transitionBuilder:
+                        (Widget child, Animation<double> animation) =>
+                            ScaleTransition(
+                              scale: Tween<double>(
+                                begin: 0.6,
+                                end: 1,
+                              ).animate(animation),
+                              child: FadeTransition(
+                                opacity: animation,
+                                child: child,
+                              ),
+                            ),
+                    child: widget.buffering
+                        ? SizedBox(
+                            key: ValueKey<String>('buffering'),
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.4,
+                              color: ColorMath.onColor(widget.accent),
+                            ),
+                          )
+                        : Icon(
+                            widget.playing
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                            key: ValueKey<bool>(widget.playing),
+                            size: 38,
+                            color: ColorMath.onColor(widget.accent),
+                          ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1593,6 +1608,9 @@ class _QuickActionsState extends ConsumerState<_QuickActions>
     final bool pure = ref.watch(
       equalizerControllerProvider.select((s) => s.pure),
     );
+    final output = ref.watch(
+      audioOutputSelectionProvider.select((s) => s.state),
+    );
     final ButtonStyle style = OutlinedButton.styleFrom(
       foregroundColor: accent,
       side: BorderSide(color: accent.withValues(alpha: 0.35)),
@@ -1608,6 +1626,15 @@ class _QuickActionsState extends ConsumerState<_QuickActions>
       spacing: 10,
       runSpacing: 8,
       children: <Widget>[
+        Tooltip(
+          message: 'Salida actual: ${output.selected.label}',
+          child: OutlinedButton.icon(
+            onPressed: () => unawaited(AudioOutputSheet.show(context)),
+            icon: const Icon(Icons.speaker_outlined, size: 18),
+            label: const Text('Salida'),
+            style: style,
+          ),
+        ),
         OutlinedButton.icon(
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
@@ -2286,7 +2313,6 @@ class _ArtworkStage extends ConsumerWidget {
     final PlayerController controller = ref.read(
       playerControllerProvider.notifier,
     );
-    final BrightnessService brightness = ref.read(brightnessServiceProvider);
     final Widget artwork = ValueListenableBuilder<WindowUiState>(
       valueListenable: windowNotifier,
       builder: (BuildContext context, WindowUiState state, Widget? _) {
@@ -2373,9 +2399,6 @@ class _ArtworkStage extends ConsumerWidget {
               .toDouble();
           unawaited(controller.setVolume(next));
         },
-        onBrightnessDelta: brightness.isAvailable
-            ? (double fraction) => unawaited(brightness.adjust(fraction))
-            : null,
         accent: accent,
         seekEnabled: ring,
         playing: playing,

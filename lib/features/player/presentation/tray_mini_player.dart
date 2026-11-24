@@ -37,6 +37,234 @@ class _TrayProgress extends ConsumerWidget {
   }
 }
 
+/// Carátula y textos: se reconstruyen solo cuando cambia la pista.
+class _TrayTrackInfo extends ConsumerWidget {
+  const _TrayTrackInfo({required this.style});
+
+  final ResolvedCompactStyle style;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Track? track = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.track),
+    );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        TrackArtwork(
+          key: ValueKey<int>(track?.id ?? 0),
+          path: track?.artworkPath,
+          size: 52,
+          radius: style.artworkRadius(style.radius * 0.55),
+        ),
+        const SizedBox(width: 10),
+      ],
+    );
+  }
+}
+
+/// Etiquetas de la pista, aisladas de los controles y del volumen.
+class _TrayTitles extends ConsumerWidget {
+  const _TrayTitles();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final Track? track = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.track),
+    );
+    return Column(
+      key: ValueKey<int>(track?.id ?? 0),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Text(
+          track?.title ?? 'Polaris en espera',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 1),
+        Text(
+          track?.artist ?? 'Elige una canción desde la biblioteca',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.60)),
+        ),
+      ],
+    );
+  }
+}
+
+/// Transporte: solo reacciona a `playing`/`buffering`, no al tick de posición
+/// ni al volumen.
+class _TrayTransport extends ConsumerWidget {
+  const _TrayTransport({required this.style, required this.onOpen});
+
+  final ResolvedCompactStyle style;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool playing = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playing),
+    );
+    final bool buffering = ref.watch(
+      playerControllerProvider.select(
+        (PlayerUiState s) => s.playback.buffering,
+      ),
+    );
+    final PlayerController controller = ref.read(
+      playerControllerProvider.notifier,
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        _MiniButton(
+          icon: Icons.skip_previous_rounded,
+          tooltip: 'Anterior',
+          onTap: controller.previous,
+        ),
+        SizedBox(
+          width: 38,
+          height: 38,
+          child: FilledButton(
+            onPressed: controller.togglePlay,
+            style: FilledButton.styleFrom(
+              shape: const CircleBorder(),
+              padding: EdgeInsets.zero,
+              backgroundColor: style.accent,
+              foregroundColor: ColorMath.onColor(style.accent),
+            ),
+            child: buffering
+                ? SizedBox(
+                    width: 15,
+                    height: 15,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: ColorMath.onColor(style.accent),
+                    ),
+                  )
+                : Icon(
+                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    size: 23,
+                  ),
+          ),
+        ),
+        _MiniButton(
+          icon: Icons.skip_next_rounded,
+          tooltip: 'Siguiente',
+          onTap: controller.next,
+        ),
+        const SizedBox(width: 4),
+        _MiniButton(
+          icon: Icons.open_in_full_rounded,
+          tooltip: 'Abrir ventana principal',
+          onTap: onOpen,
+        ),
+      ],
+    );
+  }
+}
+
+/// El volumen tiene su propia suscripción: arrastrar el slider no repinta
+/// carátula, textos ni transporte.
+class _TrayVolume extends ConsumerWidget {
+  const _TrayVolume({required this.style});
+
+  final ResolvedCompactStyle style;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final double volume = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playback.volume),
+    );
+    final PlayerController controller = ref.read(
+      playerControllerProvider.notifier,
+    );
+
+    return Row(
+      children: <Widget>[
+        Icon(
+          volume <= 0 ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+          size: 15,
+          color: context.inkAlpha(0.54),
+        ),
+        Expanded(
+          child: SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              trackHeight: 2.5,
+              activeTrackColor: style.volumeColor,
+              thumbColor: style.volumeColor,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+            ),
+            child: Slider(
+              value: volume.clamp(0.0, 100.0).toDouble(),
+              max: 100,
+              onChanged: controller.setVolume,
+            ),
+          ),
+        ),
+        Text(
+          '${volume.round()}%',
+          style: TextStyle(fontSize: 10, color: context.inkAlpha(0.38)),
+        ),
+      ],
+    );
+  }
+}
+
+/// Cuerpo de la mini ventana cuando hay pista. Cada bloque tiene su propio
+/// [RepaintBoundary] para que un cambio aislado no invalide el panel completo.
+class _TrayBody extends StatelessWidget {
+  const _TrayBody({
+    required this.style,
+    required this.onOpen,
+    required this.onHide,
+  });
+
+  final ResolvedCompactStyle style;
+  final VoidCallback onOpen;
+  final VoidCallback onHide;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
+      child: Column(
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              RepaintBoundary(child: _TrayTrackInfo(style: style)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    RepaintBoundary(child: _TrayTitles()),
+                    const SizedBox(height: 2),
+                    RepaintBoundary(
+                      child: _TrayTransport(style: style, onOpen: onOpen),
+                    ),
+                  ],
+                ),
+              ),
+              _MiniButton(
+                icon: Icons.close_rounded,
+                tooltip: 'Ocultar en la bandeja',
+                onTap: onHide,
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          RepaintBoundary(child: _TrayVolume(style: style)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Mini reproductor de bandeja.
 ///
 /// Es la misma ventana en `WindowMode.mini`: compacta, siempre encima, sin
@@ -49,24 +277,10 @@ class TrayMiniPlayer extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final Track? track = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.track),
-    );
-    final bool playing = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.playing),
-    );
-    final bool buffering = ref.watch(
-      playerControllerProvider.select(
-        (PlayerUiState s) => s.playback.buffering,
-      ),
-    );
-    final double volume = ref.watch(
-      playerControllerProvider.select((PlayerUiState s) => s.playback.volume),
-    );
-    // El progreso se aísla en un hijo para no reconstruir el CompactPanel
-    // (con BackdropFilter) cada tick de posición.
-    final PlayerController controller = ref.read(
-      playerControllerProvider.notifier,
+    // Un bool evita reaccionar a actualizaciones de metadatos de la misma pista:
+    // el panel solo se rehace cuando aparece o desaparece la pista.
+    final bool hasTrack = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.hasTrack),
     );
     final CompactStyleConfig style = ref.watch(
       compactStyleProvider(CompactSurface.mini),
@@ -86,160 +300,14 @@ class TrayMiniPlayer extends ConsumerWidget {
               RepaintBoundary(
                 child: _TrayProgress(color: resolved.progressColor),
               ),
-              if (track == null)
+              if (!hasTrack)
                 _EmptyState(
                   accent: resolved.accent,
                   onOpen: onOpen,
                   onHide: onHide,
                 )
               else
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 10, 8),
-                  child: Column(
-                    children: <Widget>[
-                      Row(
-                        children: <Widget>[
-                          TrackArtwork(
-                            key: ValueKey<int>(track.id),
-                            path: track.artworkPath,
-                            size: 52,
-                            radius: resolved.artworkRadius(
-                              resolved.radius * 0.55,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              key: ValueKey<int>(track.id),
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                Text(
-                                  track.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                                const SizedBox(height: 1),
-                                Text(
-                                  track.artist,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 10.5,
-                                    color: context.inkAlpha(0.60),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    _MiniButton(
-                                      icon: Icons.skip_previous_rounded,
-                                      tooltip: 'Anterior',
-                                      onTap: controller.previous,
-                                    ),
-                                    SizedBox(
-                                      width: 38,
-                                      height: 38,
-                                      child: FilledButton(
-                                        onPressed: controller.togglePlay,
-                                        style: FilledButton.styleFrom(
-                                          shape: const CircleBorder(),
-                                          padding: EdgeInsets.zero,
-                                          backgroundColor: resolved.accent,
-                                          foregroundColor: ColorMath.onColor(
-                                            resolved.accent,
-                                          ),
-                                        ),
-                                        child: buffering
-                                            ? SizedBox(
-                                                width: 15,
-                                                height: 15,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: ColorMath.onColor(
-                                                        resolved.accent,
-                                                      ),
-                                                    ),
-                                              )
-                                            : Icon(
-                                                playing
-                                                    ? Icons.pause_rounded
-                                                    : Icons.play_arrow_rounded,
-                                                size: 23,
-                                              ),
-                                      ),
-                                    ),
-                                    _MiniButton(
-                                      icon: Icons.skip_next_rounded,
-                                      tooltip: 'Siguiente',
-                                      onTap: controller.next,
-                                    ),
-                                    const SizedBox(width: 4),
-                                    _MiniButton(
-                                      icon: Icons.open_in_full_rounded,
-                                      tooltip: 'Abrir ventana principal',
-                                      onTap: onOpen,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                          _MiniButton(
-                            icon: Icons.close_rounded,
-                            tooltip: 'Ocultar en la bandeja',
-                            onTap: onHide,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: <Widget>[
-                          Icon(
-                            volume <= 0
-                                ? Icons.volume_off_rounded
-                                : Icons.volume_up_rounded,
-                            size: 15,
-                            color: context.inkAlpha(0.54),
-                          ),
-                          Expanded(
-                            child: SliderTheme(
-                              data: SliderTheme.of(context).copyWith(
-                                trackHeight: 2.5,
-                                activeTrackColor: resolved.volumeColor,
-                                thumbColor: resolved.volumeColor,
-                                thumbShape: const RoundSliderThumbShape(
-                                  enabledThumbRadius: 6,
-                                ),
-                                overlayShape: const RoundSliderOverlayShape(
-                                  overlayRadius: 12,
-                                ),
-                              ),
-                              child: Slider(
-                                value: volume.clamp(0.0, 100.0).toDouble(),
-                                max: 100,
-                                onChanged: controller.setVolume,
-                              ),
-                            ),
-                          ),
-                          Text(
-                            '${volume.round()}%',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: context.inkAlpha(0.38),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                _TrayBody(style: resolved, onOpen: onOpen, onHide: onHide),
             ],
           ),
         ),
@@ -297,7 +365,7 @@ class _EmptyState extends StatelessWidget {
                 ],
               ),
             ),
-            TextButton(onPressed: onOpen, child: Text('Abrir')),
+            TextButton(onPressed: onOpen, child: const Text('Abrir')),
             _MiniButton(
               icon: Icons.close_rounded,
               tooltip: 'Ocultar en la bandeja',

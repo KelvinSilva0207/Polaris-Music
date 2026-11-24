@@ -152,3 +152,55 @@ class Plugins extends Table {
   DateTimeColumn get installedAt =>
       dateTime().withDefault(currentDateAndTime)();
 }
+
+/// Referencias a colecciones/pistas online guardadas para uso sin red.
+///
+/// NO crea filas en `Tracks`: una referencia es solo un puntero a contenido
+/// público, no una copia local. `externalId` es la clave natural y única. Los
+/// campos locales (`isFavorite`, `playCount`) jamás se sobreescriben desde la
+/// sincronización; las URLs firmadas y los tokens nunca se persisten aquí.
+@DataClassName('OnlineReferenceRow')
+class OnlineReferences extends Table {
+  TextColumn get externalId => text()();
+  TextColumn get source => text()();
+  TextColumn get kind => text()();
+  TextColumn get nativeId => text()();
+  TextColumn get title => text()();
+  TextColumn get subtitle => text().withDefault(const Constant(''))();
+  TextColumn get artworkPath => text().nullable()();
+  TextColumn get permalink => text().nullable()();
+  IntColumn get trackCount => integer().withDefault(const Constant(0))();
+  TextColumn get continuation => text().nullable()();
+  BoolColumn get hasMore => boolean().withDefault(const Constant(false))();
+
+  DateTimeColumn get syncedAt => dateTime().nullable()();
+  DateTimeColumn get lastSuccessfulSyncAt => dateTime().nullable()();
+  TextColumn get lastError => text().nullable()();
+
+  /// Estado local: nunca lo toca una sincronización remota.
+  BoolColumn get isFavorite => boolean().withDefault(const Constant(false))();
+  IntColumn get playCount => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {externalId};
+}
+
+/// Pistas de una referencia online ya vista, guardadas solo como metadatos.
+///
+/// Sirve para seguir navegando una colección sin conexión. No contiene URLs de
+/// audio ni cabeceras: para reproducirlas hay que resolver el stream de nuevo.
+@DataClassName('OnlineReferenceTrackRow')
+class OnlineReferenceTracks extends Table {
+  TextColumn get referenceId => text()();
+  TextColumn get externalId => text()();
+  TextColumn get source => text()();
+  TextColumn get sourceId => text()();
+  TextColumn get title => text()();
+  TextColumn get artist => text()();
+  TextColumn get album => text().withDefault(const Constant(''))();
+  IntColumn get durationMs => integer().withDefault(const Constant(0))();
+  IntColumn get position => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => <Column>{referenceId, externalId};
+}

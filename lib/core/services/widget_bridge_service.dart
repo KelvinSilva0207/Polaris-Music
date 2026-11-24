@@ -4,10 +4,27 @@ import 'package:flutter/services.dart';
 
 import '../models/track.dart';
 
+/// Payload completo del snapshot que consume el provider nativo.
+///
+/// Se expone para poder comprobar en tests que título, artista, play/pausa y
+/// carátula viajan juntos y que una carátula vacía no sobrescribe la anterior.
+Map<String, Object> buildWidgetPayload(
+  Track track, {
+  required bool playing,
+  Uint8List? artwork,
+}) => <String, Object>{
+  'title': track.title,
+  'artist': track.artist,
+  'playing': playing,
+  if (artwork != null && artwork.isNotEmpty) 'artwork': artwork,
+};
+
 /// Publica la pista actual en el widget de Android.
 ///
 /// El canal nativo guarda un pequeño estado en SharedPreferences y repinta el
-/// widget; en otras plataformas el servicio no hace nada.
+/// widget; en otras plataformas el servicio no hace nada. El estado se construye
+/// siempre con los cuatro campos del snapshot (título, artista, carátula y
+/// reproducción), de modo que una pista sin carátula limpia la anterior.
 class WidgetBridgeService {
   static const MethodChannel _channel = MethodChannel(
     'com.polaris.polaris_music/widget',
@@ -26,13 +43,21 @@ class WidgetBridgeService {
         // Una carátula cacheada desaparecida no impide actualizar el texto.
       }
     }
+    await _invoke(
+      'update',
+      buildWidgetPayload(track, playing: playing, artwork: artwork),
+    );
+  }
+
+  /// Vuelve al estado de espera cuando no hay pista activa.
+  Future<void> clear() async {
+    if (!isAvailable) return;
+    await _invoke('clear');
+  }
+
+  Future<void> _invoke(String method, [Map<String, Object>? arguments]) async {
     try {
-      await _channel.invokeMethod<void>('update', <String, Object>{
-        'title': track.title,
-        'artist': track.artist,
-        'playing': playing,
-        if (artwork != null && artwork.isNotEmpty) 'artwork': artwork,
-      });
+      await _channel.invokeMethod<void>(method, arguments);
     } on MissingPluginException {
       // Widget no disponible en esta build.
     } on PlatformException {

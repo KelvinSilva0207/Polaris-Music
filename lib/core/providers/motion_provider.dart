@@ -60,6 +60,11 @@ class MotionController extends StateNotifier<MotionConfig> {
     });
   }
 
+  /// Modo puro/rendimiento visual: no altera el perfil ni el DSP de audio.
+  Future<void> setPure(bool value) => _persist(state.copyWith(pure: value));
+
+  Future<void> togglePure() => setPure(!state.pure);
+
   Future<void> reset() => _persist(MotionConfig.defaults);
 
   Future<void> _persist(MotionConfig next) async {

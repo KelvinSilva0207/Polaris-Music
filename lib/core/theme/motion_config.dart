@@ -59,6 +59,7 @@ class MotionConfig {
     this.ambient = true,
     this.gestures = true,
     this.island = true,
+    this.pure = false,
   });
 
   final MotionProfile profile;
@@ -67,6 +68,11 @@ class MotionConfig {
   final bool ambient;
   final bool gestures;
   final bool island;
+
+  /// Modo puro / rendimiento **visual**: desactiva toda animación sin borrar el
+  /// perfil elegido. Es independiente del `pure` del ecualizador (audio): esta
+  /// capa de presentación no lee ni modifica la cadena de audio.
+  final bool pure;
 
   static const MotionConfig fluid = MotionConfig(
     profile: MotionProfile.fluid,
@@ -126,12 +132,15 @@ class MotionConfig {
     MotionProfile.custom => medio,
   };
 
-  bool enabled(MotionCategory category) => switch (category) {
-    MotionCategory.transitions => transitions,
-    MotionCategory.ambient => ambient,
-    MotionCategory.gestures => gestures,
-    MotionCategory.island => island,
-  };
+  bool enabled(MotionCategory category) {
+    if (pure) return false;
+    return switch (category) {
+      MotionCategory.transitions => transitions,
+      MotionCategory.ambient => ambient,
+      MotionCategory.gestures => gestures,
+      MotionCategory.island => island,
+    };
+  }
 
   /// Duración ajustada al perfil. Las categorías apagadas duran cero.
   Duration duration(
@@ -144,20 +153,24 @@ class MotionConfig {
     return Duration(microseconds: microseconds < 0 ? 0 : microseconds);
   }
 
-  bool get anyAnimation => transitions || ambient || gestures || island;
+  bool get anyAnimation =>
+      !pure && (transitions || ambient || gestures || island);
 
   /// Amplitud recomendada para micro-animaciones decorativas.
   ///
   /// Las duraciones ya se derivan de [speed]; este valor modula recorridos,
   /// escalas, brillos y número de partículas. Nunca afecta a la precisión de
   /// arrastre de la línea de tiempo.
-  double get intensity => switch (profile) {
-    MotionProfile.alto || MotionProfile.fluid => 1,
-    MotionProfile.medio || MotionProfile.balanced => 0.65,
-    MotionProfile.bajo => 0.35,
-    MotionProfile.minimal => 0,
-    MotionProfile.custom => ((1.6 - speed) / 1.2).clamp(0.15, 1),
-  };
+  double get intensity {
+    if (pure) return 0;
+    return switch (profile) {
+      MotionProfile.alto || MotionProfile.fluid => 1,
+      MotionProfile.medio || MotionProfile.balanced => 0.65,
+      MotionProfile.bajo => 0.35,
+      MotionProfile.minimal => 0,
+      MotionProfile.custom => ((1.6 - speed) / 1.2).clamp(0.15, 1),
+    };
+  }
 
   MotionConfig copyWith({
     MotionProfile? profile,
@@ -166,6 +179,7 @@ class MotionConfig {
     bool? ambient,
     bool? gestures,
     bool? island,
+    bool? pure,
   }) {
     final bool edited =
         speed != null ||
@@ -173,6 +187,8 @@ class MotionConfig {
         ambient != null ||
         gestures != null ||
         island != null;
+    // `pure` no cuenta como edición: es un modo superpuesto y debe conservar
+    // el perfil activo para poder volver a activarlo sin reelegirlo.
     return MotionConfig(
       profile: profile ?? (edited ? MotionProfile.custom : this.profile),
       speed: speed ?? this.speed,
@@ -180,6 +196,7 @@ class MotionConfig {
       ambient: ambient ?? this.ambient,
       gestures: gestures ?? this.gestures,
       island: island ?? this.island,
+      pure: pure ?? this.pure,
     );
   }
 
@@ -190,6 +207,7 @@ class MotionConfig {
     'ambient': ambient,
     'gestures': gestures,
     'island': island,
+    'pure': pure,
   };
 
   factory MotionConfig.fromJson(Map<Object?, Object?> json) {
@@ -207,6 +225,8 @@ class MotionConfig {
       ambient: _bool(json['ambient'], base.ambient),
       gestures: _bool(json['gestures'], base.gestures),
       island: _bool(json['island'], base.island),
+      // Los backups antiguos no tenían este bloque: conservan el movimiento.
+      pure: _bool(json['pure'], false),
     );
   }
 
@@ -232,11 +252,12 @@ class MotionConfig {
       other.transitions == transitions &&
       other.ambient == ambient &&
       other.gestures == gestures &&
-      other.island == island;
+      other.island == island &&
+      other.pure == pure;
 
   @override
   int get hashCode =>
-      Object.hash(profile, speed, transitions, ambient, gestures, island);
+      Object.hash(profile, speed, transitions, ambient, gestures, island, pure);
 }
 
 /// Acceso cómodo desde cualquier widget del árbol de la aplicación.

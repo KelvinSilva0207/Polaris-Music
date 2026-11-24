@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import 'online_catalog_items.dart';
 import 'online_track.dart';
+import 'request_cancellation.dart';
 
 /// Identificador estable de un proveedor de catálogo online.
 enum MusicSourceId { audius, soundcloud, spotify, tidal, youtube }
@@ -18,6 +19,16 @@ enum MusicSourceIssue {
   offline,
   unavailable,
   unsupported,
+
+  /// Cancelación intencional (el usuario escribió o cambió de filtro).
+  /// No es un error de red y nunca debe mostrarse como aviso.
+  canceled,
+}
+
+/// Contrato mínimo para clasificar fallos de una fuente sin que el dominio
+/// dependa de la implementación HTTP (`data/source_helpers.dart`).
+abstract interface class MusicSourceFailure {
+  MusicSourceIssue get issue;
 }
 
 extension MusicSourceIdX on MusicSourceId {
@@ -118,6 +129,11 @@ class SourceResult {
 
   List<OnlineCollectionRef> collections(OnlineSearchType type) =>
       switch (type) {
+        OnlineSearchType.all => <OnlineCollectionRef>[
+          ...albums,
+          ...artists,
+          ...playlists,
+        ],
         OnlineSearchType.albums => albums,
         OnlineSearchType.artists => artists,
         OnlineSearchType.playlists => playlists,
@@ -188,4 +204,38 @@ abstract interface class MusicSourceProvider {
 
   /// Cachea una carátula. Devuelve `null` si no hay imagen o falla.
   Future<String?> cacheArtwork(String? artworkUrl);
+}
+
+/// Extensión opcional para proveedores capaces de cancelar su HTTP.
+///
+/// No se añaden parámetros al contrato histórico para no romper a los
+/// proveedores de pruebas: el catálogo comprueba `is` y usa estas variantes
+/// cuando existen.
+abstract interface class CancellableMusicSourceProvider {
+  Future<SourceResult> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  });
+
+  Future<SourceResult> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  });
+
+  Future<List<OnlineCollectionRef>> searchCollectionsCancellable(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    required OnlineRequestToken token,
+  });
+
+  /// Página de una colección. Las fuentes sin continuación pueden heredar la
+  /// implementación por defecto, que reutiliza `collectionTracks`.
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  });
 }

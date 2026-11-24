@@ -17,6 +17,7 @@ import '../../features/online_music/data/youtube_music_source.dart';
 import '../../features/online_music/domain/music_source.dart';
 import '../../features/online_music/domain/music_source_catalog.dart';
 import '../../features/online_music/domain/online_music_repository.dart';
+import '../../features/online_music/domain/stream_track_use_case.dart';
 import '../../features/profiles_backup/domain/profiles_service.dart';
 import '../../features/stats_sync/domain/stats_service.dart';
 import '../database/app_database.dart';
@@ -24,7 +25,6 @@ import '../database/database_guard.dart';
 import '../services/app_updater_service.dart';
 import '../services/audio_engine_service.dart';
 import '../services/backup_service.dart';
-import '../services/brightness_service.dart';
 import '../services/font_service.dart';
 import '../services/global_hotkey_service.dart';
 import '../services/media_session_service.dart';
@@ -111,6 +111,22 @@ class ServiceLocator {
       isBackgrounded: () =>
           sl.isRegistered<WindowService>() && sl<WindowService>().backgrounded,
       refreshLocalAccess: permissions.refreshLibraryAccess,
+      // El repositorio online se registra más abajo: se resuelve en el momento
+      // del reintento, cuando ya existe y solo se usa si la pista es online.
+      refreshStream: (track) async {
+        if (!sl.isRegistered<StreamTrackUseCase>()) return null;
+        try {
+          return await sl<StreamTrackUseCase>().refresh(track);
+        } on Object catch (error, stack) {
+          AppLog.w(
+            'Bootstrap',
+            'No se pudo refrescar el audio de “${track.title}”',
+            error,
+            stack,
+          );
+          return null;
+        }
+      },
     );
     await engine.initialize();
     sl.registerSingleton<AudioEngineService>(engine);
@@ -153,7 +169,6 @@ class ServiceLocator {
     await hotkeys.initialize();
     sl.registerSingleton<GlobalHotkeyService>(hotkeys);
 
-    sl.registerSingleton<BrightnessService>(BrightnessService());
     sl.registerSingleton<WidgetBridgeService>(WidgetBridgeService());
 
     final ScrobbleService scrobbler = ScrobbleService(settings: settings);
@@ -247,6 +262,9 @@ class ServiceLocator {
         bridge: sl<MetadataAudioBridge>(),
       ),
     );
+    sl.registerLazySingleton<StreamTrackUseCase>(
+      () => StreamTrackUseCase(sl<OnlineMusicRepository>()),
+    );
     sl.registerLazySingleton<DownloadManager>(
       () => DownloadManager(
         repository: sl<OnlineMusicRepository>(),
@@ -272,27 +290,18 @@ class ServiceLocator {
     }
   }
 
-  /// Cierre completo en Android: detiene audio, notificación y servicio en
-  /// primer plano antes de liberar el resto de recursos.
-  static Future<void> shutdownAndroid() async {
-    if (sl.isRegistered<MediaSessionService>()) {
-      await sl<MediaSessionService>().shutdown();
-    }
-    if (sl.isRegistered<AudioDeviceProfileService>()) {
-      await sl<AudioDeviceProfileService>().dispose();
-    }
-    if (sl.isRegistered<SystemAudioService>()) {
-      await sl<SystemAudioService>().dispose();
-    }
-    if (sl.isRegistered<PlaybackStatsRecorder>()) {
-      await sl<PlaybackStatsRecorder>().dispose();
-    }
-    if (sl.isRegistered<AudioEngineService>()) {
-      await sl<AudioEngineService>().dispose();
-    }
-  }
+  /// Cierre completo en Android.
+  ///
+  /// Conservado por compatibilidad con Ajustes: ahora delega en [shutdown],
+  /// que también detiene la notificación y el servicio en primer plano.
+  static Future<void> shutdownAndroid() => shutdown();
 
   /// Libera recursos nativos en orden inverso.
+  ///
+  /// En Android se usa `MediaSessionService.shutdown()` (no solo `dispose()`)
+  /// para retirar la notificación y detener el `AudioService` antes de cerrar
+  /// la base de datos. Así el botón `X` y el cierre desde Ajustes comparten la
+  /// misma secuencia y no quedan servicios en segundo plano.
   static Future<void> shutdown() async {
     if (sl.isRegistered<PlaybackSessionService>()) {
       await sl<PlaybackSessionService>().flush();
@@ -307,7 +316,7 @@ class ServiceLocator {
       await sl<WindowService>().dispose();
     }
     if (sl.isRegistered<MediaSessionService>()) {
-      await sl<MediaSessionService>().dispose();
+      await sl<MediaSessionService>().shutdown();
     }
     if (sl.isRegistered<AudioDeviceProfileService>()) {
       await sl<AudioDeviceProfileService>().dispose();

@@ -19,7 +19,6 @@ const double _gestureHintThreshold = 18;
 /// * Deslizar **arriba** → letras.
 /// * Deslizar **abajo** → minimizar.
 /// * Deslizar vertical en el **borde derecho** → volumen (estilo Poweramp).
-/// * Deslizar vertical en el **borde izquierdo** → brillo (solo Android).
 ///
 /// Las zonas laterales solo se activan si se pasa el callback correspondiente,
 /// así que el reproductor sigue teniendo los cuatro gestos centrales de siempre.
@@ -40,7 +39,6 @@ class ArtworkGestures extends StatefulWidget {
     required this.onLyrics,
     required this.onMinimize,
     this.onVolumeDelta,
-    this.onBrightnessDelta,
     this.accent,
     this.seekEnabled = false,
     this.playing = false,
@@ -59,9 +57,6 @@ class ArtworkGestures extends StatefulWidget {
 
   /// Fracción de carátula arrastrada hacia arriba en el borde derecho.
   final ValueChanged<double>? onVolumeDelta;
-
-  /// Fracción de carátula arrastrada hacia arriba en el borde izquierdo.
-  final ValueChanged<double>? onBrightnessDelta;
 
   final Color? accent;
 
@@ -86,7 +81,7 @@ class ArtworkGestures extends StatefulWidget {
 
 enum _SwipeAction { next, previous, lyrics, minimize }
 
-enum _Edge { brightness, volume }
+enum _Edge { volume }
 
 class _ArtworkGesturesState extends State<ArtworkGestures>
     with TickerProviderStateMixin {
@@ -203,8 +198,8 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
     _edgeStarted = false;
     final Offset center = Offset(widget.size / 2, widget.size / 2);
     // Con el anillo activo, el borde es candidato a búsqueda *y* a control
-    // lateral. La dirección del primer arrastre decide: vertical manda volumen
-    // o brillo; cualquier otro movimiento conserva la búsqueda por ángulo.
+    // lateral. La dirección del primer arrastre decide: vertical manda volumen;
+    // cualquier otro movimiento conserva la búsqueda por ángulo.
     _outerCandidate =
         widget.seekEnabled &&
         (event.localPosition - center).distance > widget.size * 0.40;
@@ -213,8 +208,6 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
     final double x = event.localPosition.dx;
     if (widget.onVolumeDelta != null && x > widget.size * 0.76) {
       _edge = _Edge.volume;
-    } else if (widget.onBrightnessDelta != null && x < widget.size * 0.24) {
-      _edge = _Edge.brightness;
     }
   }
 
@@ -257,8 +250,6 @@ class _ArtworkGesturesState extends State<ArtworkGestures>
         final double fraction = step / widget.size;
         if (edge == _Edge.volume) {
           widget.onVolumeDelta?.call(fraction);
-        } else {
-          widget.onBrightnessDelta?.call(fraction);
         }
       }
       return;

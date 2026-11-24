@@ -14,6 +14,7 @@ class _RecordingAdapter implements HttpClientAdapter {
 
   final List<Map<String, Object?>> responses;
   final List<Map<String, Object?>> requests = <Map<String, Object?>>[];
+  final List<RequestOptions> options = <RequestOptions>[];
   int _index = 0;
 
   @override
@@ -22,6 +23,7 @@ class _RecordingAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    this.options.add(options);
     requests.add(Map<String, Object?>.from(options.data as Map));
     final Map<String, Object?> body = responses[_index++ % responses.length];
     return ResponseBody.fromString(jsonEncode(body), 200);
@@ -103,6 +105,15 @@ void main() {
       );
       expect(token, 'tok-123');
       expect(
+        adapter.options.single.connectTimeout,
+        ScrobbleService.connectTimeout,
+      );
+      expect(
+        adapter.options.single.receiveTimeout,
+        ScrobbleService.receiveTimeout,
+      );
+      expect(adapter.options.single.sendTimeout, ScrobbleService.sendTimeout);
+      expect(
         adapter.requests.single['api_sig'],
         'b4705499705a550b07ca058a15bde9b0',
       );
@@ -148,6 +159,50 @@ void main() {
         }, 'secret'),
       );
     });
+
+    test(
+      'un fallo de red al conectar conserva la sesión local anterior',
+      () async {
+        const ScrobbleConfig previous = ScrobbleConfig(
+          enabled: true,
+          apiKey: 'old-key',
+          apiSecret: 'old-secret',
+          sessionKey: 'sk-old',
+          username: 'polaris',
+          endpoint: 'https://ejemplo/2.0/',
+        );
+        final FakeSettingsService settings = FakeSettingsService();
+        await settings.setScrobbleConfig(previous);
+        final _RecordingAdapter adapter = _RecordingAdapter(
+          <Map<String, Object?>>[
+            <String, Object?>{'error': 9, 'message': 'Región bloqueada'},
+          ],
+        );
+        final ScrobbleService service = ScrobbleService(
+          settings: settings,
+          dio: Dio()..httpClientAdapter = adapter,
+        );
+
+        await expectLater(
+          service.beginLogin(
+            apiKey: 'new-key',
+            apiSecret: 'new-secret',
+            endpoint: 'https://otro/2.0/',
+          ),
+          throwsA(
+            isA<ScrobbleException>().having(
+              (ScrobbleException error) => error.message,
+              'message',
+              'Región bloqueada',
+            ),
+          ),
+        );
+
+        expect(settings.scrobbleConfig, equals(previous));
+        expect(service.isReady, isTrue);
+        expect(adapter.requests, hasLength(1));
+      },
+    );
 
     test('no envía nada si no hay sesión activa', () async {
       final _RecordingAdapter adapter = _RecordingAdapter(

@@ -5,6 +5,8 @@ import '../domain/music_source.dart';
 import '../domain/online_catalog_items.dart';
 import '../domain/online_source_settings.dart';
 import '../domain/online_track.dart';
+import '../domain/request_cancellation.dart';
+import 'dio_request_cancellation.dart';
 import 'source_helpers.dart';
 
 /// Proveedor de metadatos de Tidal.
@@ -13,7 +15,8 @@ import 'source_helpers.dart';
 /// consulta su catálogo (con el token OAuth que el usuario introduce en
 /// ajustes) y el reproductor resuelve un equivalente reproducible mediante
 /// [MetadataAudioBridge], etiquetando siempre el origen real del audio.
-class TidalSource implements MusicSourceProvider {
+class TidalSource
+    implements MusicSourceProvider, CancellableMusicSourceProvider {
   TidalSource({required this.settings, Dio? dio, ArtworkCache? artworkCache})
     : _dio =
           dio ??
@@ -97,7 +100,24 @@ class TidalSource implements MusicSourceProvider {
   }
 
   @override
-  Future<SourceResult> search(String query, {int limit = 25}) async {
+  Future<SourceResult> search(String query, {int limit = 25}) =>
+      _search(query, limit: limit);
+
+  @override
+  Future<SourceResult> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _search(query, limit: limit, token: token);
+  }
+
+  Future<SourceResult> _search(
+    String query, {
+    int limit = 25,
+    OnlineRequestToken? token,
+  }) async {
     final String term = query.trim();
     if (term.isEmpty) {
       return const SourceResult(source: MusicSourceId.tidal);
@@ -107,7 +127,12 @@ class TidalSource implements MusicSourceProvider {
       return SourceResult(source: id, status: current);
     }
     try {
-      final List<Object?> entries = await _searchItems('tracks', term, limit);
+      final List<Object?> entries = await _searchItems(
+        'tracks',
+        term,
+        limit,
+        dioCancelTokenOf(token),
+      );
       return SourceResult(source: id, items: _parseTracks(entries, limit));
     } catch (error) {
       return SourceResult(
@@ -116,6 +141,12 @@ class TidalSource implements MusicSourceProvider {
       );
     }
   }
+
+  @override
+  Future<SourceResult> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) => trending(limit: limit);
 
   @override
   Future<SourceResult> trending({int limit = 25}) => Future<SourceResult>.value(
@@ -132,9 +163,29 @@ class TidalSource implements MusicSourceProvider {
     String query, {
     required OnlineSearchType type,
     int limit = 25,
+  }) => _searchCollections(query, type: type, limit: limit);
+
+  @override
+  Future<List<OnlineCollectionRef>> searchCollectionsCancellable(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _searchCollections(query, type: type, limit: limit, token: token);
+  }
+
+  Future<List<OnlineCollectionRef>> _searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    OnlineRequestToken? token,
   }) async {
     final String term = query.trim();
-    if (term.isEmpty || type == OnlineSearchType.songs) {
+    if (term.isEmpty ||
+        type == OnlineSearchType.songs ||
+        type == OnlineSearchType.all) {
       return const <OnlineCollectionRef>[];
     }
     final MusicSourceStatus current = status;
@@ -145,10 +196,15 @@ class TidalSource implements MusicSourceProvider {
       OnlineSearchType.albums => 'albums',
       OnlineSearchType.artists => 'artists',
       OnlineSearchType.playlists => 'playlists',
-      OnlineSearchType.songs => '',
+      OnlineSearchType.songs || OnlineSearchType.all => '',
     };
     try {
-      final List<Object?> entries = await _searchItems(section, term, limit);
+      final List<Object?> entries = await _searchItems(
+        section,
+        term,
+        limit,
+        dioCancelTokenOf(token),
+      );
       return _parseCollections(entries, type, limit);
     } on Object {
       return const <OnlineCollectionRef>[];
@@ -159,6 +215,25 @@ class TidalSource implements MusicSourceProvider {
   Future<List<OnlineTrack>> collectionTracks(
     OnlineCollectionRef collection, {
     int limit = 50,
+  }) => _collectionTracks(collection, limit: limit);
+
+  @override
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  }) async {
+    token.throwIfCancelled();
+    return CollectionPage.only(
+      await _collectionTracks(collection, limit: limit, token: token),
+    );
+  }
+
+  Future<List<OnlineTrack>> _collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+    OnlineRequestToken? token,
   }) async {
     if (collection.id.isEmpty) return const <OnlineTrack>[];
     final String path = switch (collection.kind) {
@@ -172,7 +247,7 @@ class TidalSource implements MusicSourceProvider {
       final Response<dynamic> response = await _get(path, <String, dynamic>{
         'limit': limit,
         'countryCode': _market,
-      });
+      }, dioCancelTokenOf(token));
       final Map<String, dynamic>? payload = SourceJson.map(response.data);
       final List<Object?> entries = SourceJson.list(payload?['items']);
       final List<Object?> tracks = collection.kind == OnlineSearchType.playlists
@@ -203,20 +278,25 @@ class TidalSource implements MusicSourceProvider {
   Future<List<Object?>> _searchItems(
     String section,
     String query,
-    int limit,
-  ) async {
+    int limit, [
+    CancelToken? cancel,
+  ]) async {
     final Response<dynamic> response = await _get('/search', <String, dynamic>{
       'query': query,
       'types': section.toUpperCase(),
       'limit': limit,
       'countryCode': _market,
-    });
+    }, cancel);
     final Map<String, dynamic>? payload = SourceJson.map(response.data);
     final Map<String, dynamic>? page = SourceJson.map(payload?[section]);
     return SourceJson.list(page?['items'] ?? payload?['items']);
   }
 
-  Future<Response<dynamic>> _get(String path, [Map<String, dynamic>? query]) {
+  Future<Response<dynamic>> _get(
+    String path, [
+    Map<String, dynamic>? query,
+    CancelToken? cancel,
+  ]) {
     final String? token = _token;
     if (token == null) {
       throw const MusicSourceException(
@@ -228,6 +308,7 @@ class TidalSource implements MusicSourceProvider {
     return _dio.get<dynamic>(
       '$_baseUrl$path',
       queryParameters: query,
+      cancelToken: cancel,
       options: Options(
         headers: <String, String>{
           'Authorization': 'Bearer $token',

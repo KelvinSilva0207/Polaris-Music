@@ -319,6 +319,21 @@ class PlayerController extends StateNotifier<PlayerUiState> {
     }
   }
 
+  /// Añade un bloque de pistas al final de la cola sin iniciar reproducción.
+  ///
+  /// Con la cola vacía `addToQueue` usaría `setQueue` con `autoPlay: true`, así
+  /// que se delega directamente en el motor con `autoPlay: false`.
+  Future<void> enqueueQueue(List<Track> tracks) async {
+    if (tracks.isEmpty) return;
+    if (!state.playback.hasQueue) {
+      await _engine.setQueue(tracks, autoPlay: false);
+      return;
+    }
+    for (final Track track in tracks) {
+      await _engine.addToQueue(track);
+    }
+  }
+
   Future<void> addToQueue(Track track) => _engine.addToQueue(track);
 
   /// Coloca la pista inmediatamente después de la actual, sin interrumpirla.

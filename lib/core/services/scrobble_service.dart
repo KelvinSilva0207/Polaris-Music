@@ -18,8 +18,15 @@ class ScrobbleService {
 
   static const String defaultEndpoint = 'https://ws.audioscrobbler.com/2.0/';
 
+  /// Timeouts acotados: una región bloqueada o una red lenta nunca deben dejar
+  /// el diálogo de cuenta esperando indefinidamente ni bloquear la UI.
+  static const Duration connectTimeout = Duration(seconds: 8);
+  static const Duration receiveTimeout = Duration(seconds: 12);
+  static const Duration sendTimeout = Duration(seconds: 8);
+
   final SettingsService settings;
   final Dio _dio;
+  bool _loginInFlight = false;
 
   ScrobbleConfig get config => settings.scrobbleConfig;
 
@@ -65,24 +72,33 @@ class ScrobbleService {
     final String cleanEndpoint = endpoint.trim().isEmpty
         ? defaultEndpoint
         : endpoint.trim();
-    final ScrobbleConfig next = ScrobbleConfig(
-      apiKey: cleanKey,
-      apiSecret: cleanSecret,
-      endpoint: cleanEndpoint,
-    );
-    await settings.setScrobbleConfig(next);
-
-    final Map<String, Object?> response = await _call(
-      'auth.getToken',
-      <String, String>{'api_key': cleanKey},
-      config: next,
-    );
-    final String token = (response['token'] ?? '').toString().trim();
-    if (token.isEmpty) {
-      throw const ScrobbleException('Last.fm no devolvió un token');
+    if (_loginInFlight) {
+      throw const ScrobbleException('Ya hay una autorización en curso');
     }
-    await settings.setScrobbleConfig(next.copyWith(pendingToken: token));
-    return token;
+    _loginInFlight = true;
+    try {
+      // No se persiste nada hasta obtener el token. Así un timeout, un bloqueo
+      // regional o una cancelación dejan la configuración local exactamente
+      // como estaba (incluida una sesión ya conectada).
+      final ScrobbleConfig next = config.copyWith(
+        apiKey: cleanKey,
+        apiSecret: cleanSecret,
+        endpoint: cleanEndpoint,
+      );
+      final Map<String, Object?> response = await _call(
+        'auth.getToken',
+        <String, String>{'api_key': cleanKey},
+        config: next,
+      );
+      final String token = (response['token'] ?? '').toString().trim();
+      if (token.isEmpty) {
+        throw const ScrobbleException('Last.fm no devolvió un token');
+      }
+      await settings.setScrobbleConfig(next.copyWith(pendingToken: token));
+      return token;
+    } finally {
+      _loginInFlight = false;
+    }
   }
 
   /// Página donde el usuario autoriza la aplicación con el token recibido.
@@ -107,27 +123,35 @@ class ScrobbleService {
     if (token.isEmpty || current.apiKey.isEmpty || current.apiSecret.isEmpty) {
       throw const ScrobbleException('No hay una autorización pendiente');
     }
-    final Map<String, Object?> response = await _call(
-      'auth.getSession',
-      <String, String>{'api_key': current.apiKey, 'token': token},
-      config: current,
-    );
-    final Object? rawSession = response['session'];
-    final Map<dynamic, dynamic> session = rawSession is Map
-        ? rawSession
-        : const <dynamic, dynamic>{};
-    final String key = (session['key'] ?? '').toString().trim();
-    if (key.isEmpty) {
-      throw const ScrobbleException('Last.fm no devolvió una sesión');
+    if (_loginInFlight) {
+      throw const ScrobbleException('Ya hay una autorización en curso');
     }
-    final ScrobbleConfig connected = current.copyWith(
-      sessionKey: key,
-      username: (session['name'] ?? '').toString().trim(),
-      pendingToken: '',
-      enabled: true,
-    );
-    await settings.setScrobbleConfig(connected);
-    return connected;
+    _loginInFlight = true;
+    try {
+      final Map<String, Object?> response = await _call(
+        'auth.getSession',
+        <String, String>{'api_key': current.apiKey, 'token': token},
+        config: current,
+      );
+      final Object? rawSession = response['session'];
+      final Map<dynamic, dynamic> session = rawSession is Map
+          ? rawSession
+          : const <dynamic, dynamic>{};
+      final String key = (session['key'] ?? '').toString().trim();
+      if (key.isEmpty) {
+        throw const ScrobbleException('Last.fm no devolvió una sesión');
+      }
+      final ScrobbleConfig connected = current.copyWith(
+        sessionKey: key,
+        username: (session['name'] ?? '').toString().trim(),
+        pendingToken: '',
+        enabled: true,
+      );
+      await settings.setScrobbleConfig(connected);
+      return connected;
+    } finally {
+      _loginInFlight = false;
+    }
   }
 
   /// Envía una escucha ya validada por el registrador de estadísticas.
@@ -174,6 +198,9 @@ class ScrobbleService {
         data: signed,
         options: Options(
           responseType: ResponseType.plain,
+          connectTimeout: connectTimeout,
+          receiveTimeout: receiveTimeout,
+          sendTimeout: sendTimeout,
           headers: <String, Object>{'User-Agent': 'PolarisMusic/1.0'},
         ),
       );
@@ -190,12 +217,15 @@ class ScrobbleService {
       }
       return Map<String, Object?>.from(decoded);
     } on DioException catch (error) {
-      throw ScrobbleException(
-        error.type == DioExceptionType.connectionTimeout ||
-                error.type == DioExceptionType.receiveTimeout
-            ? 'El servidor no respondió a tiempo'
-            : 'No se pudo contactar con el servidor',
-      );
+      final bool timeout =
+          error.type == DioExceptionType.connectionTimeout ||
+          error.type == DioExceptionType.receiveTimeout ||
+          error.type == DioExceptionType.sendTimeout;
+      throw ScrobbleException(switch (error.type) {
+        DioExceptionType.cancel => 'Autorización cancelada',
+        _ when timeout => 'El servidor no respondió a tiempo',
+        _ => 'No se pudo contactar con el servidor',
+      });
     } on FormatException {
       throw const ScrobbleException('Respuesta no válida del servidor');
     }

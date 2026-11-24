@@ -51,11 +51,23 @@ class PlaybackStatsRecorder {
 
   void _onState(PlaybackSnapshot snapshot) {
     final Track? track = snapshot.currentTrack;
-    if (track == null) return;
+    final WidgetBridgeService? widgetBridge = _widgetBridge;
+    final bool canUpdateWidget =
+        widgetBridge != null && widgetBridge.isAvailable;
+
+    if (track == null) {
+      // Al vaciar la cola el widget debe volver al estado de espera; sin esto
+      // conservaba el último título y el icono en "pausa" de forma indefinida.
+      if (canUpdateWidget && (_widgetTrackId != null || _lastWidgetPlaying)) {
+        _widgetTrackId = null;
+        _lastWidgetPlaying = false;
+        unawaited(widgetBridge.clear());
+      }
+      return;
+    }
 
     // El widget se actualiza también con pistas de streaming y al pausar.
-    final WidgetBridgeService? widgetBridge = _widgetBridge;
-    if (widgetBridge != null && widgetBridge.isAvailable) {
+    if (canUpdateWidget) {
       final bool wasPlaying = _lastWidgetPlaying;
       _lastWidgetPlaying = snapshot.playing;
       if (wasPlaying != snapshot.playing || _widgetTrackId != track.id) {

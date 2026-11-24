@@ -3,13 +3,17 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/database/app_database.dart';
 import '../../../core/debug/memory_probe.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/services/settings_service.dart';
 import '../../library/data/library_repository.dart';
+import '../data/dio_request_cancellation.dart';
 import '../data/download_manager.dart';
+import '../data/online_diagnostics.dart';
 import '../data/online_music_service.dart';
+import '../data/online_sync_repository.dart';
 import '../domain/download_task.dart';
 import '../domain/download_track_use_case.dart';
 import '../domain/music_source.dart';
@@ -18,6 +22,7 @@ import '../domain/music_source_catalog.dart';
 import '../domain/online_music_repository.dart';
 import '../domain/online_source_settings.dart';
 import '../domain/online_track.dart';
+import '../domain/request_cancellation.dart';
 import '../domain/search_online_tracks_use_case.dart';
 import '../domain/stream_track_use_case.dart';
 
@@ -45,6 +50,13 @@ final Provider<StreamTrackUseCase> streamTrackUseCaseProvider =
 
 final Provider<DownloadManager> downloadManagerProvider =
     Provider<DownloadManager>((Ref ref) => sl<DownloadManager>());
+
+/// Repositorio de referencias offline-first. Se construye aquí para no tocar el
+/// registro global de dependencias (pendiente en otra tarea).
+final Provider<OnlineSyncRepository> onlineSyncRepositoryProvider =
+    Provider<OnlineSyncRepository>(
+      (Ref ref) => OnlineSyncRepository(sl<AppDatabase>()),
+    );
 
 final Provider<DownloadTrackUseCase> downloadTrackUseCaseProvider =
     Provider<DownloadTrackUseCase>(
@@ -80,6 +92,10 @@ class OnlineSearchState {
     this.openedCollection,
     this.collectionLoading = false,
     this.collectionError,
+    this.collectionContinuation,
+    this.collectionHasMore = false,
+    this.loadingMore = false,
+    this.loadMoreError,
   });
 
   final String query;
@@ -100,7 +116,7 @@ class OnlineSearchState {
   /// Tipo de resultado visible en la pestaña activa.
   final OnlineSearchType resultType;
 
-  /// Colecciones devueltas por la búsqueda tipada.
+  /// Colecciones devueltas por la búsqueda tipada (o por la vista [all]).
   final List<OnlineCollectionRef> collections;
 
   /// Colección abierta actualmente; cuando no es `null`, [tracks] contiene sus
@@ -109,17 +125,35 @@ class OnlineSearchState {
   final bool collectionLoading;
   final String? collectionError;
 
+  /// Token de la siguiente página y banderas de carga incremental.
+  final String? collectionContinuation;
+  final bool collectionHasMore;
+  final bool loadingMore;
+  final String? loadMoreError;
+
+  /// Las vistas que muestran colecciones (incluida la agrupada [all]).
+  bool get showCollections =>
+      openedCollection == null &&
+      resultType != OnlineSearchType.songs &&
+      (isTrending == false || collections.isNotEmpty);
+
   bool get isEmpty =>
       !loading &&
       !collectionLoading &&
+      !loadingMore &&
       (openedCollection == null
-          ? (resultType == OnlineSearchType.songs
-                ? tracks.isEmpty
-                : collections.isEmpty)
+          ? (showCollections
+                ? collections.isEmpty && tracks.isEmpty
+                : tracks.isEmpty)
           : tracks.isEmpty);
 
   List<SourceResult> get issues => results
       .where((SourceResult result) => !result.ok)
+      .toList(growable: false);
+
+  /// Colecciones agrupadas por sección para la vista `all`.
+  List<OnlineCollectionRef> collectionsOf(OnlineSearchType kind) => collections
+      .where((OnlineCollectionRef item) => item.kind == kind)
       .toList(growable: false);
 
   SourceResult? resultFor(MusicSourceId source) {
@@ -147,6 +181,12 @@ class OnlineSearchState {
     bool? collectionLoading,
     String? collectionError,
     bool clearCollectionError = false,
+    String? collectionContinuation,
+    bool clearCollectionContinuation = false,
+    bool? collectionHasMore,
+    bool? loadingMore,
+    String? loadMoreError,
+    bool clearLoadMoreError = false,
   }) => OnlineSearchState(
     query: query ?? this.query,
     tracks: tracks ?? this.tracks,
@@ -167,34 +207,64 @@ class OnlineSearchState {
     collectionError: clearCollectionError
         ? null
         : (collectionError ?? this.collectionError),
+    collectionContinuation: clearCollectionContinuation
+        ? null
+        : (collectionContinuation ?? this.collectionContinuation),
+    collectionHasMore: collectionHasMore ?? this.collectionHasMore,
+    loadingMore: loadingMore ?? this.loadingMore,
+    loadMoreError: clearLoadMoreError
+        ? null
+        : (loadMoreError ?? this.loadMoreError),
   );
 }
 
-/// Búsqueda con debounce, tendencias y agregación de fuentes.
+/// Búsqueda con debounce, tendencias, cancelación real y paginación.
 ///
 /// Los errores de una fuente no impiden mostrar el resto: se guardan en
-/// [OnlineSearchState.results] y la interfaz decide cómo comunicarlos.
+/// [OnlineSearchState.results] y la interfaz decide cómo comunicarlos. La
+/// cancelación intencional (el usuario escribe o cambia de filtro) no se
+/// muestra como error de red: se descarta en cuanto llega.
 class OnlineSearchController extends StateNotifier<OnlineSearchState> {
-  OnlineSearchController(this._catalog, this._settings)
-    : super(
-        OnlineSearchState(loading: true, sourceStatuses: _catalog.statuses),
-      ) {
+  OnlineSearchController(
+    this._catalog,
+    this._settings, {
+    OnlineRequestCancellation? cancellation,
+  }) : _cancellation = cancellation ?? const DioRequestCancellation(),
+       super(
+         OnlineSearchState(loading: true, sourceStatuses: _catalog.statuses),
+       ) {
     unawaited(loadTrending());
   }
 
   final MusicSourceCatalog _catalog;
   final SettingsService _settings;
+  final OnlineRequestCancellation _cancellation;
 
   Timer? _debounce;
   int _generation = 0;
   int _collectionGeneration = 0;
+  OnlineRequestToken? _activeToken;
+  OnlineRequestToken? _collectionToken;
 
   Future<void> loadTrending() => _load(isTrending: true);
 
-  /// Cambia entre Canciones / Álbumes / Artistas / Playlists y recarga.
+  /// Cancela la consulta anterior en cuanto el usuario cambia de intención.
+  void _cancelActive() {
+    _activeToken?.cancel();
+    _activeToken = null;
+  }
+
+  void _cancelCollection() {
+    _collectionToken?.cancel();
+    _collectionToken = null;
+  }
+
+  /// Cambia entre Todos / Canciones / Álbumes / Artistas / Playlists y recarga.
   Future<void> setResultType(OnlineSearchType type) async {
     if (type == state.resultType && state.openedCollection == null) return;
     _debounce?.cancel();
+    _cancelActive();
+    _cancelCollection();
     _generation++;
     state = state.copyWith(
       resultType: type,
@@ -202,53 +272,139 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
       collections: const <OnlineCollectionRef>[],
       clearOpenedCollection: true,
       clearCollectionError: true,
+      clearCollectionContinuation: true,
       loading: true,
     );
     await _load(isTrending: false, query: state.query);
   }
 
-  /// Abre una colección pública y muestra sus pistas reproducibles.
+  /// Abre una colección pública y muestra su primera página de pistas.
   Future<void> openCollection(OnlineCollectionRef collection) async {
     _debounce?.cancel();
+    _cancelActive();
+    _cancelCollection();
     _generation++;
     final int generation = ++_collectionGeneration;
+    final OnlineRequestToken token = _cancellation.issue();
+    _collectionToken = token;
     state = state.copyWith(
       openedCollection: collection,
       collectionLoading: true,
       tracks: const <OnlineTrack>[],
       loading: false,
       clearCollectionError: true,
+      clearCollectionContinuation: true,
+      collectionHasMore: false,
+      clearLoadMoreError: true,
     );
     try {
-      final List<OnlineTrack> tracks = await _catalog.collectionTracks(
+      final CollectionPage page = await _catalog.loadCollectionPage(
         collection,
+        token: token,
       );
       if (!mounted || generation != _collectionGeneration) return;
+      _collectionToken = null;
       state = state.copyWith(
-        tracks: tracks,
+        tracks: page.tracks,
         collectionLoading: false,
         loading: false,
+        collectionContinuation: page.continuation,
+        collectionHasMore: page.hasMore,
       );
-    } catch (error) {
+    } on RequestCanceledException {
+      // El usuario abrió otra colección o cambió de vista: no es un fallo.
+      return;
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        'OnlineSearch',
+        'No se pudo abrir la colección ${collection.externalId}',
+        error: error,
+        stack: stack,
+      );
       if (!mounted || generation != _collectionGeneration) return;
+      _collectionToken = null;
       state = state.copyWith(
         collectionLoading: false,
-        collectionError: 'No se pudo abrir esta colección: $error',
+        collectionError:
+            'No se pudo abrir esta colección. '
+            'Prueba de nuevo en unos segundos.',
+      );
+    }
+  }
+
+  /// Concatena la siguiente página sin perder la posición de reproducción.
+  ///
+  /// Las pistas nuevas se añaden al final y se descartan las que ya están por
+  /// `externalId`, de modo que los índices de la cola siguen siendo válidos.
+  Future<void> loadMoreCollection() async {
+    final OnlineCollectionRef? collection = state.openedCollection;
+    if (collection == null ||
+        state.loadingMore ||
+        !state.collectionHasMore ||
+        _collectionToken != null) {
+      return;
+    }
+    final int generation = _collectionGeneration;
+    final OnlineRequestToken token = _cancellation.issue();
+    _collectionToken = token;
+    state = state.copyWith(loadingMore: true, clearLoadMoreError: true);
+    try {
+      final CollectionPage page = await _catalog.loadCollectionPage(
+        collection,
+        continuation: state.collectionContinuation,
+        token: token,
+      );
+      if (!mounted || generation != _collectionGeneration) return;
+      _collectionToken = null;
+      final Set<String> seen = <String>{
+        for (final OnlineTrack item in state.tracks) item.externalId,
+      };
+      final List<OnlineTrack> appended = <OnlineTrack>[];
+      for (final OnlineTrack item in page.tracks) {
+        if (seen.add(item.externalId)) appended.add(item);
+      }
+      state = state.copyWith(
+        tracks: <OnlineTrack>[...state.tracks, ...appended],
+        loadingMore: false,
+        collectionContinuation: page.continuation,
+        collectionHasMore: page.hasMore && page.tracks.isNotEmpty,
+      );
+    } on RequestCanceledException {
+      return;
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        'OnlineSearch',
+        'No se pudo cargar más pistas de ${collection.externalId}',
+        error: error,
+        stack: stack,
+      );
+      if (!mounted || generation != _collectionGeneration) return;
+      _collectionToken = null;
+      state = state.copyWith(
+        loadingMore: false,
+        loadMoreError: 'No se pudieron cargar más pistas.',
       );
     }
   }
 
   Future<void> closeCollection() async {
+    _cancelCollection();
     _collectionGeneration++;
     state = state.copyWith(
       clearOpenedCollection: true,
       clearCollectionError: true,
+      clearCollectionContinuation: true,
+      collectionHasMore: false,
+      clearLoadMoreError: true,
     );
     await retryCurrent();
   }
 
   Future<void> _load({required bool isTrending, String? query}) async {
+    _cancelActive();
     final int generation = ++_generation;
+    final OnlineRequestToken token = _cancellation.issue();
+    _activeToken = token;
     MemoryProbe.mark(isTrending ? 'online:trending' : 'online:search');
     final String term = (query ?? state.query).trim();
     state = state.copyWith(
@@ -260,11 +416,28 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
     try {
       final OnlineSearchType type = state.resultType;
       final CatalogResult result = isTrending
-          ? await _catalog.trending(only: _onlySelected)
+          ? await _catalog.trending(only: _onlySelected, token: token)
+          : type == OnlineSearchType.all
+          ? await _catalog.searchAll(term, only: _onlySelected, token: token)
           : type == OnlineSearchType.songs
-          ? await _catalog.search(term, only: _onlySelected)
-          : await _catalog.searchType(term, type: type, only: _onlySelected);
+          ? await _catalog.search(term, only: _onlySelected, token: token)
+          : await _catalog.searchType(
+              term,
+              type: type,
+              only: _onlySelected,
+              token: token,
+            );
       if (!mounted || generation != _generation) return;
+      _activeToken = null;
+      for (final SourceResult source in result.sources) {
+        if (source.ok || source.status.issue == MusicSourceIssue.canceled) {
+          continue;
+        }
+        OnlineDiagnostics.report(
+          'OnlineSearch',
+          '${source.source.label}: ${source.status.detail}',
+        );
+      }
       state = state.copyWith(
         loading: false,
         tracks: result.tracks,
@@ -272,15 +445,31 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
         results: result.sources,
         clearOpenedCollection: true,
         clearCollectionError: true,
+        clearCollectionContinuation: true,
+        collectionHasMore: false,
+        clearLoadMoreError: true,
         sourceStatuses: <MusicSourceId, MusicSourceStatus>{
           ...state.sourceStatuses,
           for (final SourceResult source in result.sources)
             source.source: source.status,
         },
       );
-    } catch (error) {
+    } on RequestCanceledException {
+      // Cancelación intencional: se descarta sin tocar el estado visible.
+      return;
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        'OnlineSearch',
+        'Fallo inesperado en la búsqueda online',
+        error: error,
+        stack: stack,
+      );
       if (!mounted || generation != _generation) return;
-      state = state.copyWith(loading: false, error: '$error');
+      _activeToken = null;
+      state = state.copyWith(
+        loading: false,
+        error: 'No se pudo completar la búsqueda. Inténtalo de nuevo.',
+      );
     }
   }
 
@@ -289,6 +478,8 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
 
   void onQueryChanged(String raw) {
     _debounce?.cancel();
+    _cancelActive();
+    _cancelCollection();
     final String query = raw.trim();
     if (query.isEmpty) {
       // Al borrar la búsqueda se vuelve a la vista de tendencias de canciones;
@@ -307,6 +498,8 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
       loading: true,
       isTrending: false,
       clearOpenedCollection: true,
+      clearCollectionContinuation: true,
+      collectionHasMore: false,
     );
     _debounce = Timer(const Duration(milliseconds: 450), () {
       unawaited(_load(isTrending: false, query: query));
@@ -316,6 +509,8 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
   Future<void> setSourceFilter(MusicSourceId? source) async {
     if (source == state.sourceFilter) return;
     _debounce?.cancel();
+    _cancelActive();
+    _cancelCollection();
     state = source == null
         ? state.copyWith(clearSourceFilter: true, clearOpenedCollection: true)
         : state.copyWith(sourceFilter: source, clearOpenedCollection: true);
@@ -388,6 +583,8 @@ class OnlineSearchController extends StateNotifier<OnlineSearchState> {
   @override
   void dispose() {
     _debounce?.cancel();
+    _cancelActive();
+    _cancelCollection();
     super.dispose();
   }
 }
@@ -398,5 +595,6 @@ onlineSearchProvider =
       return OnlineSearchController(
         ref.watch(musicSourceCatalogProvider),
         ref.watch(settingsServiceProvider),
+        cancellation: const DioRequestCancellation(),
       );
     });

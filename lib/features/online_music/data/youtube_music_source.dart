@@ -1,10 +1,12 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/models/track.dart' show StreamAlternative;
-import '../../../core/utils/logger.dart';
 import '../domain/music_source.dart';
 import '../domain/online_catalog_items.dart';
 import '../domain/online_track.dart';
+import '../domain/request_cancellation.dart';
+import 'dio_request_cancellation.dart';
+import 'online_diagnostics.dart';
 import 'source_helpers.dart';
 
 /// Un formato de audio ya filtrado: URL directa + cabeceras de su cliente.
@@ -32,7 +34,8 @@ class _AudioCandidate {
 /// iOS, que entrega URLs de audio directas sin iniciar sesión. Nunca se envían
 /// credenciales: solo el `context` público (`clientName`, `clientVersion`,
 /// `hl`, `gl` y `visitorData`) y las cabeceras que acompañan a ese cliente.
-class YouTubeMusicSource implements MusicSourceProvider {
+class YouTubeMusicSource
+    implements MusicSourceProvider, CancellableMusicSourceProvider {
   YouTubeMusicSource({Dio? dio, ArtworkCache? artworkCache})
     : _dio =
           dio ??
@@ -159,10 +162,15 @@ class YouTubeMusicSource implements MusicSourceProvider {
           _match(html, r'"VISITOR_DATA":"([^"]+)"') ??
           _match(html, r'\\"VISITOR_DATA\\":\\"([^"\\]+)\\"');
       if (visitor != null && visitor.isNotEmpty) _visitorData = visitor;
-    } on Object {
+    } on Object catch (error, stack) {
       // Sin homepage no hay versión fresca: se conserva el último valor known
       // y el reintento ante un 404 fuerza una nueva lectura.
-      AppLog.w(_tag, 'No se pudo actualizar el contexto de InnerTube');
+      OnlineDiagnostics.report(
+        _tag,
+        'No se pudo actualizar el contexto de InnerTube',
+        error: error,
+        stack: stack,
+      );
     }
   }
 
@@ -224,11 +232,13 @@ class YouTubeMusicSource implements MusicSourceProvider {
     String host,
     String path,
     Map<String, dynamic> payload,
-    String client,
-  ) async {
+    String client, [
+    CancelToken? cancel,
+  ]) async {
     final Response<dynamic> response = await _dio.post<dynamic>(
       'https://$host/youtubei/v1/$path?prettyPrint=false',
       data: payload,
+      cancelToken: cancel,
       options: Options(
         responseType: ResponseType.json,
         headers: _headersFor(client),
@@ -253,20 +263,44 @@ class YouTubeMusicSource implements MusicSourceProvider {
     String client = _web,
     String host = _musicHost,
     bool retryOn404 = true,
+    CancelToken? cancel,
   }) async {
+    if (cancel?.isCancelled ?? false) throw const RequestCanceledException();
     await _ensureContext();
+    if (cancel?.isCancelled ?? false) throw const RequestCanceledException();
     final Map<String, dynamic> payload = <String, dynamic>{
       ...body,
       'context': _contextFor(client),
       if (client == _web) 'contentCheckOk': true,
     };
     try {
-      return await _send(host, path, payload, client);
+      final Map<String, dynamic> result = await _send(
+        host,
+        path,
+        payload,
+        client,
+        cancel,
+      );
+      if (cancel?.isCancelled ?? false) throw const RequestCanceledException();
+      return result;
+    } on RequestCanceledException {
+      rethrow;
     } on DioException catch (error) {
+      if (CancelToken.isCancel(error) ||
+          error.type == DioExceptionType.cancel) {
+        throw const RequestCanceledException();
+      }
       if (error.response?.statusCode != 404 || !retryOn404) rethrow;
       _contextLoaded = false;
       await _discoverContext();
-      return _post(path, body, client: client, host: host, retryOn404: false);
+      return _post(
+        path,
+        body,
+        client: client,
+        host: host,
+        retryOn404: false,
+        cancel: cancel,
+      );
     }
   }
 
@@ -274,11 +308,24 @@ class YouTubeMusicSource implements MusicSourceProvider {
   /// Android Music. Ninguno de los dos requiere inicio de sesión.
   Future<Map<String, dynamic>> _postCatalog(
     String path,
-    Map<String, dynamic> body,
-  ) async {
+    Map<String, dynamic> body, [
+    CancelToken? cancel,
+  ]) async {
     try {
-      return await _post(path, body, client: _web, host: _musicHost);
+      return await _post(
+        path,
+        body,
+        client: _web,
+        host: _musicHost,
+        cancel: cancel,
+      );
+    } on RequestCanceledException {
+      rethrow;
     } on DioException catch (error) {
+      if (CancelToken.isCancel(error) ||
+          error.type == DioExceptionType.cancel) {
+        throw const RequestCanceledException();
+      }
       if (error.response?.statusCode != 404) rethrow;
       return _post(
         path,
@@ -286,6 +333,7 @@ class YouTubeMusicSource implements MusicSourceProvider {
         client: _androidMusic,
         host: _wwwHost,
         retryOn404: false,
+        cancel: cancel,
       );
     }
   }
@@ -300,14 +348,39 @@ class YouTubeMusicSource implements MusicSourceProvider {
         },
       });
       _status = MusicSourceStatus(available: true, checkedAt: DateTime.now());
-    } catch (error) {
+    } on Object catch (error, stack) {
+      if (error is! RequestCanceledException) {
+        OnlineDiagnostics.report(
+          _tag,
+          'Fallo al comprobar la disponibilidad de YouTube Music',
+          error: error,
+          stack: stack,
+        );
+      }
       _status = MusicSourceErrorMapper.map(error, id);
     }
     return _status;
   }
 
   @override
-  Future<SourceResult> search(String query, {int limit = 25}) async {
+  Future<SourceResult> search(String query, {int limit = 25}) =>
+      _search(query, limit: limit);
+
+  @override
+  Future<SourceResult> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _search(query, limit: limit, token: token);
+  }
+
+  Future<SourceResult> _search(
+    String query, {
+    int limit = 25,
+    OnlineRequestToken? token,
+  }) async {
     if (query.trim().isEmpty) {
       return const SourceResult(source: MusicSourceId.youtube);
     }
@@ -320,9 +393,18 @@ class YouTubeMusicSource implements MusicSourceProvider {
             'clientSearchContext': <String, dynamic>{},
           },
         },
+        dioCancelTokenOf(token),
       );
       return SourceResult(source: id, items: _parse(_shelves(payload), limit));
-    } catch (error) {
+    } on RequestCanceledException {
+      rethrow;
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        _tag,
+        'Fallo al buscar en YouTube Music',
+        error: error,
+        stack: stack,
+      );
       return SourceResult(
         source: id,
         status: MusicSourceErrorMapper.map(error, id),
@@ -331,14 +413,37 @@ class YouTubeMusicSource implements MusicSourceProvider {
   }
 
   @override
-  Future<SourceResult> trending({int limit = 25}) async {
+  Future<SourceResult> trending({int limit = 25}) => _trending(limit: limit);
+
+  @override
+  Future<SourceResult> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _trending(limit: limit, token: token);
+  }
+
+  Future<SourceResult> _trending({
+    int limit = 25,
+    OnlineRequestToken? token,
+  }) async {
     try {
       final Map<String, dynamic> payload = await _postCatalog(
         'browse',
         <String, dynamic>{'browseId': _homeBrowseId},
+        dioCancelTokenOf(token),
       );
       return SourceResult(source: id, items: _parse(_shelves(payload), limit));
-    } catch (error) {
+    } on RequestCanceledException {
+      rethrow;
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        _tag,
+        'Fallo al cargar tendencias de YouTube Music',
+        error: error,
+        stack: stack,
+      );
       return SourceResult(
         source: id,
         status: MusicSourceErrorMapper.map(error, id),
@@ -354,8 +459,29 @@ class YouTubeMusicSource implements MusicSourceProvider {
     String query, {
     required OnlineSearchType type,
     int limit = 25,
+  }) => _searchCollections(query, type: type, limit: limit);
+
+  @override
+  Future<List<OnlineCollectionRef>> searchCollectionsCancellable(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _searchCollections(query, type: type, limit: limit, token: token);
+  }
+
+  Future<List<OnlineCollectionRef>> _searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    OnlineRequestToken? token,
   }) async {
-    if (query.trim().isEmpty || type == OnlineSearchType.songs) {
+    // En la vista `all` es el catálogo quien pide cada tipo por separado.
+    if (query.trim().isEmpty ||
+        type == OnlineSearchType.songs ||
+        type == OnlineSearchType.all) {
       return const <OnlineCollectionRef>[];
     }
     try {
@@ -367,9 +493,21 @@ class YouTubeMusicSource implements MusicSourceProvider {
       };
       final String? params = _searchParams[type];
       if (params != null) body['params'] = params;
-      final Map<String, dynamic> payload = await _postCatalog('search', body);
+      final Map<String, dynamic> payload = await _postCatalog(
+        'search',
+        body,
+        dioCancelTokenOf(token),
+      );
       return _parseCollections(_shelves(payload), type, limit);
-    } on Object {
+    } on RequestCanceledException {
+      rethrow;
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        _tag,
+        'Fallo al buscar colecciones en YouTube Music',
+        error: error,
+        stack: stack,
+      );
       return const <OnlineCollectionRef>[];
     }
   }
@@ -380,17 +518,104 @@ class YouTubeMusicSource implements MusicSourceProvider {
   Future<List<OnlineTrack>> collectionTracks(
     OnlineCollectionRef collection, {
     int limit = 50,
+  }) => _collectionTracks(collection, limit: limit);
+
+  @override
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  }) async {
+    token.throwIfCancelled();
+    if (collection.id.isEmpty && continuation == null) {
+      return CollectionPage.empty;
+    }
+    try {
+      final String? next = continuation ?? collection.continuation;
+      final Map<String, dynamic> body = next != null && next.isNotEmpty
+          ? <String, dynamic>{'continuation': next}
+          : <String, dynamic>{'browseId': collection.id};
+      // `continuation` usa el mismo endpoint `browse` que la apertura.
+      final Map<String, dynamic> payload = await _postCatalog(
+        'browse',
+        body,
+        dioCancelTokenOf(token),
+      );
+      token.throwIfCancelled();
+      return CollectionPage(
+        tracks: _parse(_shelves(payload), limit),
+        continuation: _continuationToken(payload),
+        hasMore: _continuationToken(payload) != null,
+      );
+    } on RequestCanceledException {
+      rethrow;
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        _tag,
+        'Fallo al paginar la colección ${collection.externalId}',
+        error: error,
+        stack: stack,
+      );
+      // La página previa se conserva en el controlador; aquí no se borra nada.
+      return CollectionPage.empty;
+    }
+  }
+
+  Future<List<OnlineTrack>> _collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+    OnlineRequestToken? token,
   }) async {
     if (collection.id.isEmpty) return const <OnlineTrack>[];
     try {
       final Map<String, dynamic> payload = await _postCatalog(
         'browse',
         <String, dynamic>{'browseId': collection.id},
+        dioCancelTokenOf(token),
       );
       return _parse(_shelves(payload), limit);
-    } on Object {
+    } on RequestCanceledException {
+      rethrow;
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        _tag,
+        'Fallo al abrir la colección ${collection.externalId}',
+        error: error,
+        stack: stack,
+      );
       return const <OnlineTrack>[];
     }
+  }
+
+  /// Busca el `continuationCommand.token` que InnerTube coloca al final de la
+  /// estantería. Se recorre todo el payload (incluidas las acciones de
+  /// continuación) para encontrar el más reciente.
+  String? _continuationToken(Map<String, dynamic> payload) {
+    String? found;
+    void walk(Object? node, int depth) {
+      if (depth > 16) return;
+      final Map<String, dynamic>? map = SourceJson.map(node);
+      if (map == null) {
+        if (node is List) {
+          for (final Object? value in node) {
+            walk(value, depth + 1);
+          }
+        }
+        return;
+      }
+      final String token = SourceJson.text(
+        SourceJson.map(map['continuationCommand'])?['token'] ??
+            map['continuation'],
+      );
+      if (token.isNotEmpty) found = token;
+      for (final Object? value in map.values) {
+        if (value is Map || value is List) walk(value, depth + 1);
+      }
+    }
+
+    walk(payload, 0);
+    return found;
   }
 
   List<OnlineCollectionRef> _parseCollections(
@@ -497,6 +722,9 @@ class YouTubeMusicSource implements MusicSourceProvider {
     }
 
     walk(payload['contents'], 0);
+    // Las páginas sucesivas llegan en `onResponseReceivedActions`, no en
+    // `contents`: sin esto "Cargar más" no mostraría ninguna pista nueva.
+    walk(payload['onResponseReceivedActions'], 0);
     return result;
   }
 

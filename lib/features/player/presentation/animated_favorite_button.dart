@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/theme/motion_config.dart';
 import '../../../core/theme/theme_tokens.dart';
+import '../../../shared/widgets/light_motion.dart';
 import '../../../shared/widgets/motion_scope.dart';
 
 /// Botón de favorito con un latido y una pequeña explosión de partículas.
@@ -117,7 +118,7 @@ class _AnimatedFavoriteButtonState extends State<AnimatedFavoriteButton>
           children: <Widget>[
             if (progress > 0 && progress < 1)
               IgnorePointer(
-                child: CustomPaint(
+                child: MotionPaint(
                   painter: _FavoriteBurstPainter(
                     progress: progress,
                     color: widget.accent,

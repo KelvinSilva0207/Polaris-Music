@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/equalizer_config.dart';
 import '../../../core/theme/theme_tokens.dart';
+import 'precision_controls.dart';
 
 /// Controles del sintetizador sub-armónico.
 ///
@@ -51,59 +52,31 @@ class SubharmonicControl extends StatelessWidget {
             style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
           ),
           const SizedBox(height: 10),
-          Row(
-            children: <Widget>[
-              const SizedBox(width: 78, child: Text('Mezcla')),
-              Expanded(
-                child: Slider(
-                  value: settings.mix.clamp(
-                    AppConstants.subMinMix,
-                    AppConstants.subMaxMix,
-                  ),
-                  min: AppConstants.subMinMix,
-                  max: AppConstants.subMaxMix,
-                  divisions: 35,
-                  activeColor: accent,
-                  onChanged: (double value) =>
-                      onChanged(settings.copyWith(mix: value)),
-                ),
-              ),
-              SizedBox(
-                width: 68,
-                child: Text(
-                  '${(settings.mix * 100).toStringAsFixed(0)} %',
-                  textAlign: TextAlign.end,
-                  style: TextStyle(fontSize: 11, color: context.inkAlpha(0.70)),
-                ),
-              ),
-            ],
+          PrecisionSliderRow(
+            label: 'Mezcla',
+            value: settings.mix,
+            min: AppConstants.subMinMix,
+            max: AppConstants.subMaxMix,
+            step: 0.01,
+            decimals: 0,
+            unit: '%',
+            displayScale: 100,
+            stepLabel: '1',
+            onChanged: (double value) =>
+                onChanged(settings.copyWith(mix: value)),
+            formatter: (double v) => '${(v * 100).toStringAsFixed(0)} %',
           ),
-          Row(
-            children: <Widget>[
-              const SizedBox(width: 78, child: Text('Corte')),
-              Expanded(
-                child: Slider(
-                  value: settings.crossoverHz.clamp(
-                    AppConstants.subMinCrossover,
-                    AppConstants.subMaxCrossover,
-                  ),
-                  min: AppConstants.subMinCrossover,
-                  max: AppConstants.subMaxCrossover,
-                  divisions: 32,
-                  activeColor: accent,
-                  onChanged: (double value) =>
-                      onChanged(settings.copyWith(crossoverHz: value)),
-                ),
-              ),
-              SizedBox(
-                width: 68,
-                child: Text(
-                  '${settings.crossoverHz.toStringAsFixed(0)} Hz',
-                  textAlign: TextAlign.end,
-                  style: TextStyle(fontSize: 11, color: context.inkAlpha(0.70)),
-                ),
-              ),
-            ],
+          PrecisionSliderRow(
+            label: 'Corte',
+            value: settings.crossoverHz,
+            min: AppConstants.subMinCrossover,
+            max: AppConstants.subMaxCrossover,
+            step: 1,
+            decimals: 0,
+            unit: 'Hz',
+            onChanged: (double value) =>
+                onChanged(settings.copyWith(crossoverHz: value)),
+            formatter: (double v) => '${v.toStringAsFixed(0)} Hz',
           ),
         ],
       ),

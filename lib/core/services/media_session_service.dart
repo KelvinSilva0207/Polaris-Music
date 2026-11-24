@@ -11,6 +11,22 @@ import '../models/track.dart';
 import '../utils/logger.dart';
 import 'audio_engine_service.dart';
 
+/// Controles de la notificación multimedia de Android.
+///
+/// La acción `quit` se construye aparte para poder comprobar en tests que la
+/// notificación siempre ofrece el botón de cierre total.
+List<MediaControl> buildAndroidMediaControls({required bool playing}) =>
+    <MediaControl>[
+      MediaControl.skipToPrevious,
+      if (playing) MediaControl.pause else MediaControl.play,
+      MediaControl.skipToNext,
+      MediaControl.custom(
+        androidIcon: 'drawable/ic_close',
+        label: 'Cerrar',
+        name: PolarisAudioHandler.quitAction,
+      ),
+    ];
+
 /// Integración con los controles nativos de cada plataforma.
 ///
 /// - Android: `audio_service` → notificación, pantalla de bloqueo y botones
@@ -31,6 +47,26 @@ class MediaSessionService {
   StreamSubscription<smtc.PressedButton>? _buttonSub;
   StreamSubscription<smtc.RepeatMode>? _repeatSub;
   StreamSubscription<bool>? _shuffleSub;
+  StreamSubscription<dynamic>? _androidEventSub;
+
+  /// Se emite cuando la notificación pide cerrar la app por completo.
+  ///
+  /// El handler de `audio_service` solo publica el evento: la suscripción vive
+  /// en el isolate que arrancó la interfaz y es quien puede cerrar Drift,
+  /// bandeja, ventana y motor antes de terminar el proceso.
+  final StreamController<void> _quitRequests =
+      StreamController<void>.broadcast();
+
+  bool _quitPending = false;
+
+  Stream<void> get quitRequests => _quitRequests.stream;
+
+  /// Recupera una solicitud llegada antes de que la UI se suscribiera.
+  bool takePendingQuitRequest() {
+    final bool pending = _quitPending;
+    _quitPending = false;
+    return pending;
+  }
 
   Track? _smtcTrack;
   bool _smtcPlaying = false;
@@ -45,12 +81,16 @@ class MediaSessionService {
   /// notificación persistente; además se pide al plataforma que detenga el
   /// `AudioService` para que no quede proceso en segundo plano.
   Future<void> shutdown() async {
+    await _androidEventSub?.cancel();
+    _androidEventSub = null;
     final AudioHandler? handler = _androidHandler;
     if (handler != null) {
       try {
-        await handler.stop();
         if (handler is PolarisAudioHandler) {
+          await handler.stopWithoutQuit();
           await handler.disposeHandler();
+        } else {
+          await handler.stop();
         }
         // ignore: deprecated_member_use
         await AudioService.stop();
@@ -77,6 +117,7 @@ class MediaSessionService {
           androidNotificationIcon: 'mipmap/ic_launcher',
         ),
       );
+      _androidEventSub = _androidHandler!.customEvent.listen(_onAndroidEvent);
       AppLog.i(_tag, 'audio_service inicializado (Android)');
       return;
     }
@@ -122,6 +163,13 @@ class MediaSessionService {
         stack,
       );
     }
+  }
+
+  void _onAndroidEvent(dynamic event) {
+    if (event != PolarisAudioHandler.quitEvent) return;
+    _quitPending = true;
+    if (_quitRequests.isClosed) return;
+    _quitRequests.add(null);
   }
 
   void _onButton(smtc.PressedButton button) {
@@ -209,15 +257,22 @@ class MediaSessionService {
   }
 
   Future<void> dispose() async {
+    await _androidEventSub?.cancel();
+    _androidEventSub = null;
+    if (!_quitRequests.isClosed) await _quitRequests.close();
     await _stateSub?.cancel();
     await _buttonSub?.cancel();
     await _repeatSub?.cancel();
     await _shuffleSub?.cancel();
     await _smtc?.dispose();
     if (_androidHandler is PolarisAudioHandler) {
-      await (_androidHandler! as PolarisAudioHandler).disposeHandler();
+      final PolarisAudioHandler handler =
+          _androidHandler! as PolarisAudioHandler;
+      await handler.stopWithoutQuit();
+      await handler.disposeHandler();
+    } else {
+      await _androidHandler?.stop();
     }
-    await _androidHandler?.stop();
     _androidHandler = null;
   }
 }
@@ -233,6 +288,12 @@ class PolarisAudioHandler extends BaseAudioHandler
   static const String browseRoot = AudioService.browsableRootId;
   static const String browseQueue = 'polaris.queue';
 
+  /// Nombre de la acción personalizada de la notificación (`X`).
+  static const String quitAction = 'quit';
+
+  /// Evento publicado hacia el isolate que arrancó la interfaz.
+  static const String quitEvent = 'polaris.quit';
+
   final AudioEngineService _engine;
   StreamSubscription<PlaybackSnapshot>? _subscription;
 
@@ -241,6 +302,7 @@ class PolarisAudioHandler extends BaseAudioHandler
   bool _lastPlaying = false;
   Duration _lastPosition = Duration.zero;
   DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _quitEmitted = false;
 
   void _onState(PlaybackSnapshot snapshot) {
     final Track? track = snapshot.currentTrack;
@@ -274,11 +336,9 @@ class PolarisAudioHandler extends BaseAudioHandler
 
     playbackState.add(
       PlaybackState(
-        controls: <MediaControl>[
-          MediaControl.skipToPrevious,
-          if (snapshot.playing) MediaControl.pause else MediaControl.play,
-          MediaControl.skipToNext,
-        ],
+        controls: buildAndroidMediaControls(playing: snapshot.playing),
+        // La acción personalizada no cuenta como acción nativa compacta; se
+        // muestra en el panel expandido de la notificación.
         androidCompactActionIndices: const <int>[0, 1, 2],
         systemActions: const <MediaAction>{
           MediaAction.seek,
@@ -395,10 +455,38 @@ class PolarisAudioHandler extends BaseAudioHandler
   @override
   Future<void> pause() => _engine.pause();
 
-  @override
-  Future<void> stop() async {
+  /// Detiene audio y deja el estado `idle` sin pedir el cierre de la app.
+  ///
+  /// Lo usan los cierres ya controlados desde Ajustes o el apagado general para
+  /// no publicar dos veces el mismo evento de salida.
+  Future<void> stopWithoutQuit() async {
     await _engine.stop();
     await super.stop();
+  }
+
+  @override
+  Future<void> stop() async {
+    await stopWithoutQuit();
+    _emitQuit();
+  }
+
+  /// Botón `X` de la notificación: detiene el audio, retira el estado `idle` y
+  /// pide al isolate principal que cierre la app por completo.
+  @override
+  Future<dynamic> customAction(
+    String name, [
+    Map<String, dynamic>? extras,
+  ]) async {
+    if (name != quitAction) return null;
+    await stopWithoutQuit();
+    _emitQuit();
+    return null;
+  }
+
+  void _emitQuit() {
+    if (_quitEmitted) return;
+    _quitEmitted = true;
+    customEvent.add(quitEvent);
   }
 
   @override

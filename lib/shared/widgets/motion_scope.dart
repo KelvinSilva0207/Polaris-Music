@@ -79,8 +79,11 @@ class _MotionScopeState extends ConsumerState<MotionScope> {
         : stored;
 
     final MediaQueryData media = MediaQuery.of(context);
+    // `enabled` ya incorpora el modo puro: las transiciones desactivadas
+    // fuerzan Duration.zero y deshabilitan las animaciones implícitas.
     final bool disableImplicit =
-        media.disableAnimations || !effective.transitions;
+        media.disableAnimations ||
+        !effective.enabled(MotionCategory.transitions);
     final bool ambientAllowed =
         effective.enabled(MotionCategory.ambient) &&
         // ignore: deprecated_member_use

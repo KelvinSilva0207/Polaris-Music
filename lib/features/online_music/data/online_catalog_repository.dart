@@ -3,6 +3,7 @@ import '../domain/music_source_catalog.dart';
 import '../domain/online_catalog_items.dart';
 import '../domain/online_music_repository.dart';
 import '../domain/online_track.dart';
+import '../domain/request_cancellation.dart';
 import 'metadata_audio_bridge.dart';
 import 'source_helpers.dart';
 
@@ -33,6 +34,32 @@ class OnlineCatalogRepository implements OnlineMusicRepository {
   @override
   Future<List<OnlineTrack>> trending({int limit = 25}) async {
     final CatalogResult result = await catalog.trending(limit: limit);
+    return result.tracks;
+  }
+
+  @override
+  Future<List<OnlineTrack>> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) async {
+    final CatalogResult result = await catalog.search(
+      query,
+      limit: limit,
+      token: token,
+    );
+    return result.tracks;
+  }
+
+  @override
+  Future<List<OnlineTrack>> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) async {
+    final CatalogResult result = await catalog.trending(
+      limit: limit,
+      token: token,
+    );
     return result.tracks;
   }
 
@@ -90,4 +117,17 @@ class OnlineCatalogRepository implements OnlineMusicRepository {
     OnlineCollectionRef collection, {
     int limit = 50,
   }) => catalog.collectionTracks(collection, limit: limit);
+
+  @override
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  }) => catalog.loadCollectionPage(
+    collection,
+    continuation: continuation,
+    limit: limit,
+    token: token,
+  );
 }

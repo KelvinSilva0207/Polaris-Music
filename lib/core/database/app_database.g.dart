@@ -4631,6 +4631,1503 @@ class PluginsCompanion extends UpdateCompanion<PluginRow> {
   }
 }
 
+class $OnlineReferencesTable extends OnlineReferences
+    with TableInfo<$OnlineReferencesTable, OnlineReferenceRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OnlineReferencesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _externalIdMeta = const VerificationMeta(
+    'externalId',
+  );
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+    'external_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _kindMeta = const VerificationMeta('kind');
+  @override
+  late final GeneratedColumn<String> kind = GeneratedColumn<String>(
+    'kind',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _nativeIdMeta = const VerificationMeta(
+    'nativeId',
+  );
+  @override
+  late final GeneratedColumn<String> nativeId = GeneratedColumn<String>(
+    'native_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _subtitleMeta = const VerificationMeta(
+    'subtitle',
+  );
+  @override
+  late final GeneratedColumn<String> subtitle = GeneratedColumn<String>(
+    'subtitle',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _artworkPathMeta = const VerificationMeta(
+    'artworkPath',
+  );
+  @override
+  late final GeneratedColumn<String> artworkPath = GeneratedColumn<String>(
+    'artwork_path',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _permalinkMeta = const VerificationMeta(
+    'permalink',
+  );
+  @override
+  late final GeneratedColumn<String> permalink = GeneratedColumn<String>(
+    'permalink',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _trackCountMeta = const VerificationMeta(
+    'trackCount',
+  );
+  @override
+  late final GeneratedColumn<int> trackCount = GeneratedColumn<int>(
+    'track_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _continuationMeta = const VerificationMeta(
+    'continuation',
+  );
+  @override
+  late final GeneratedColumn<String> continuation = GeneratedColumn<String>(
+    'continuation',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _hasMoreMeta = const VerificationMeta(
+    'hasMore',
+  );
+  @override
+  late final GeneratedColumn<bool> hasMore = GeneratedColumn<bool>(
+    'has_more',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("has_more" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _lastSuccessfulSyncAtMeta =
+      const VerificationMeta('lastSuccessfulSyncAt');
+  @override
+  late final GeneratedColumn<DateTime> lastSuccessfulSyncAt =
+      GeneratedColumn<DateTime>(
+        'last_successful_sync_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _lastErrorMeta = const VerificationMeta(
+    'lastError',
+  );
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+    'last_error',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isFavoriteMeta = const VerificationMeta(
+    'isFavorite',
+  );
+  @override
+  late final GeneratedColumn<bool> isFavorite = GeneratedColumn<bool>(
+    'is_favorite',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_favorite" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _playCountMeta = const VerificationMeta(
+    'playCount',
+  );
+  @override
+  late final GeneratedColumn<int> playCount = GeneratedColumn<int>(
+    'play_count',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    externalId,
+    source,
+    kind,
+    nativeId,
+    title,
+    subtitle,
+    artworkPath,
+    permalink,
+    trackCount,
+    continuation,
+    hasMore,
+    syncedAt,
+    lastSuccessfulSyncAt,
+    lastError,
+    isFavorite,
+    playCount,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'online_references';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OnlineReferenceRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('external_id')) {
+      context.handle(
+        _externalIdMeta,
+        externalId.isAcceptableOrUnknown(data['external_id']!, _externalIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_externalIdMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('kind')) {
+      context.handle(
+        _kindMeta,
+        kind.isAcceptableOrUnknown(data['kind']!, _kindMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_kindMeta);
+    }
+    if (data.containsKey('native_id')) {
+      context.handle(
+        _nativeIdMeta,
+        nativeId.isAcceptableOrUnknown(data['native_id']!, _nativeIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nativeIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('subtitle')) {
+      context.handle(
+        _subtitleMeta,
+        subtitle.isAcceptableOrUnknown(data['subtitle']!, _subtitleMeta),
+      );
+    }
+    if (data.containsKey('artwork_path')) {
+      context.handle(
+        _artworkPathMeta,
+        artworkPath.isAcceptableOrUnknown(
+          data['artwork_path']!,
+          _artworkPathMeta,
+        ),
+      );
+    }
+    if (data.containsKey('permalink')) {
+      context.handle(
+        _permalinkMeta,
+        permalink.isAcceptableOrUnknown(data['permalink']!, _permalinkMeta),
+      );
+    }
+    if (data.containsKey('track_count')) {
+      context.handle(
+        _trackCountMeta,
+        trackCount.isAcceptableOrUnknown(data['track_count']!, _trackCountMeta),
+      );
+    }
+    if (data.containsKey('continuation')) {
+      context.handle(
+        _continuationMeta,
+        continuation.isAcceptableOrUnknown(
+          data['continuation']!,
+          _continuationMeta,
+        ),
+      );
+    }
+    if (data.containsKey('has_more')) {
+      context.handle(
+        _hasMoreMeta,
+        hasMore.isAcceptableOrUnknown(data['has_more']!, _hasMoreMeta),
+      );
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    }
+    if (data.containsKey('last_successful_sync_at')) {
+      context.handle(
+        _lastSuccessfulSyncAtMeta,
+        lastSuccessfulSyncAt.isAcceptableOrUnknown(
+          data['last_successful_sync_at']!,
+          _lastSuccessfulSyncAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(
+        _lastErrorMeta,
+        lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta),
+      );
+    }
+    if (data.containsKey('is_favorite')) {
+      context.handle(
+        _isFavoriteMeta,
+        isFavorite.isAcceptableOrUnknown(data['is_favorite']!, _isFavoriteMeta),
+      );
+    }
+    if (data.containsKey('play_count')) {
+      context.handle(
+        _playCountMeta,
+        playCount.isAcceptableOrUnknown(data['play_count']!, _playCountMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {externalId};
+  @override
+  OnlineReferenceRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OnlineReferenceRow(
+      externalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}external_id'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      kind: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}kind'],
+      )!,
+      nativeId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}native_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      subtitle: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}subtitle'],
+      )!,
+      artworkPath: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}artwork_path'],
+      ),
+      permalink: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}permalink'],
+      ),
+      trackCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}track_count'],
+      )!,
+      continuation: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}continuation'],
+      ),
+      hasMore: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}has_more'],
+      )!,
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      ),
+      lastSuccessfulSyncAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_successful_sync_at'],
+      ),
+      lastError: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}last_error'],
+      ),
+      isFavorite: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_favorite'],
+      )!,
+      playCount: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}play_count'],
+      )!,
+    );
+  }
+
+  @override
+  $OnlineReferencesTable createAlias(String alias) {
+    return $OnlineReferencesTable(attachedDatabase, alias);
+  }
+}
+
+class OnlineReferenceRow extends DataClass
+    implements Insertable<OnlineReferenceRow> {
+  final String externalId;
+  final String source;
+  final String kind;
+  final String nativeId;
+  final String title;
+  final String subtitle;
+  final String? artworkPath;
+  final String? permalink;
+  final int trackCount;
+  final String? continuation;
+  final bool hasMore;
+  final DateTime? syncedAt;
+  final DateTime? lastSuccessfulSyncAt;
+  final String? lastError;
+
+  /// Estado local: nunca lo toca una sincronización remota.
+  final bool isFavorite;
+  final int playCount;
+  const OnlineReferenceRow({
+    required this.externalId,
+    required this.source,
+    required this.kind,
+    required this.nativeId,
+    required this.title,
+    required this.subtitle,
+    this.artworkPath,
+    this.permalink,
+    required this.trackCount,
+    this.continuation,
+    required this.hasMore,
+    this.syncedAt,
+    this.lastSuccessfulSyncAt,
+    this.lastError,
+    required this.isFavorite,
+    required this.playCount,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['external_id'] = Variable<String>(externalId);
+    map['source'] = Variable<String>(source);
+    map['kind'] = Variable<String>(kind);
+    map['native_id'] = Variable<String>(nativeId);
+    map['title'] = Variable<String>(title);
+    map['subtitle'] = Variable<String>(subtitle);
+    if (!nullToAbsent || artworkPath != null) {
+      map['artwork_path'] = Variable<String>(artworkPath);
+    }
+    if (!nullToAbsent || permalink != null) {
+      map['permalink'] = Variable<String>(permalink);
+    }
+    map['track_count'] = Variable<int>(trackCount);
+    if (!nullToAbsent || continuation != null) {
+      map['continuation'] = Variable<String>(continuation);
+    }
+    map['has_more'] = Variable<bool>(hasMore);
+    if (!nullToAbsent || syncedAt != null) {
+      map['synced_at'] = Variable<DateTime>(syncedAt);
+    }
+    if (!nullToAbsent || lastSuccessfulSyncAt != null) {
+      map['last_successful_sync_at'] = Variable<DateTime>(lastSuccessfulSyncAt);
+    }
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
+    map['is_favorite'] = Variable<bool>(isFavorite);
+    map['play_count'] = Variable<int>(playCount);
+    return map;
+  }
+
+  OnlineReferencesCompanion toCompanion(bool nullToAbsent) {
+    return OnlineReferencesCompanion(
+      externalId: Value(externalId),
+      source: Value(source),
+      kind: Value(kind),
+      nativeId: Value(nativeId),
+      title: Value(title),
+      subtitle: Value(subtitle),
+      artworkPath: artworkPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(artworkPath),
+      permalink: permalink == null && nullToAbsent
+          ? const Value.absent()
+          : Value(permalink),
+      trackCount: Value(trackCount),
+      continuation: continuation == null && nullToAbsent
+          ? const Value.absent()
+          : Value(continuation),
+      hasMore: Value(hasMore),
+      syncedAt: syncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(syncedAt),
+      lastSuccessfulSyncAt: lastSuccessfulSyncAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSuccessfulSyncAt),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
+      isFavorite: Value(isFavorite),
+      playCount: Value(playCount),
+    );
+  }
+
+  factory OnlineReferenceRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OnlineReferenceRow(
+      externalId: serializer.fromJson<String>(json['externalId']),
+      source: serializer.fromJson<String>(json['source']),
+      kind: serializer.fromJson<String>(json['kind']),
+      nativeId: serializer.fromJson<String>(json['nativeId']),
+      title: serializer.fromJson<String>(json['title']),
+      subtitle: serializer.fromJson<String>(json['subtitle']),
+      artworkPath: serializer.fromJson<String?>(json['artworkPath']),
+      permalink: serializer.fromJson<String?>(json['permalink']),
+      trackCount: serializer.fromJson<int>(json['trackCount']),
+      continuation: serializer.fromJson<String?>(json['continuation']),
+      hasMore: serializer.fromJson<bool>(json['hasMore']),
+      syncedAt: serializer.fromJson<DateTime?>(json['syncedAt']),
+      lastSuccessfulSyncAt: serializer.fromJson<DateTime?>(
+        json['lastSuccessfulSyncAt'],
+      ),
+      lastError: serializer.fromJson<String?>(json['lastError']),
+      isFavorite: serializer.fromJson<bool>(json['isFavorite']),
+      playCount: serializer.fromJson<int>(json['playCount']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'externalId': serializer.toJson<String>(externalId),
+      'source': serializer.toJson<String>(source),
+      'kind': serializer.toJson<String>(kind),
+      'nativeId': serializer.toJson<String>(nativeId),
+      'title': serializer.toJson<String>(title),
+      'subtitle': serializer.toJson<String>(subtitle),
+      'artworkPath': serializer.toJson<String?>(artworkPath),
+      'permalink': serializer.toJson<String?>(permalink),
+      'trackCount': serializer.toJson<int>(trackCount),
+      'continuation': serializer.toJson<String?>(continuation),
+      'hasMore': serializer.toJson<bool>(hasMore),
+      'syncedAt': serializer.toJson<DateTime?>(syncedAt),
+      'lastSuccessfulSyncAt': serializer.toJson<DateTime?>(
+        lastSuccessfulSyncAt,
+      ),
+      'lastError': serializer.toJson<String?>(lastError),
+      'isFavorite': serializer.toJson<bool>(isFavorite),
+      'playCount': serializer.toJson<int>(playCount),
+    };
+  }
+
+  OnlineReferenceRow copyWith({
+    String? externalId,
+    String? source,
+    String? kind,
+    String? nativeId,
+    String? title,
+    String? subtitle,
+    Value<String?> artworkPath = const Value.absent(),
+    Value<String?> permalink = const Value.absent(),
+    int? trackCount,
+    Value<String?> continuation = const Value.absent(),
+    bool? hasMore,
+    Value<DateTime?> syncedAt = const Value.absent(),
+    Value<DateTime?> lastSuccessfulSyncAt = const Value.absent(),
+    Value<String?> lastError = const Value.absent(),
+    bool? isFavorite,
+    int? playCount,
+  }) => OnlineReferenceRow(
+    externalId: externalId ?? this.externalId,
+    source: source ?? this.source,
+    kind: kind ?? this.kind,
+    nativeId: nativeId ?? this.nativeId,
+    title: title ?? this.title,
+    subtitle: subtitle ?? this.subtitle,
+    artworkPath: artworkPath.present ? artworkPath.value : this.artworkPath,
+    permalink: permalink.present ? permalink.value : this.permalink,
+    trackCount: trackCount ?? this.trackCount,
+    continuation: continuation.present ? continuation.value : this.continuation,
+    hasMore: hasMore ?? this.hasMore,
+    syncedAt: syncedAt.present ? syncedAt.value : this.syncedAt,
+    lastSuccessfulSyncAt: lastSuccessfulSyncAt.present
+        ? lastSuccessfulSyncAt.value
+        : this.lastSuccessfulSyncAt,
+    lastError: lastError.present ? lastError.value : this.lastError,
+    isFavorite: isFavorite ?? this.isFavorite,
+    playCount: playCount ?? this.playCount,
+  );
+  OnlineReferenceRow copyWithCompanion(OnlineReferencesCompanion data) {
+    return OnlineReferenceRow(
+      externalId: data.externalId.present
+          ? data.externalId.value
+          : this.externalId,
+      source: data.source.present ? data.source.value : this.source,
+      kind: data.kind.present ? data.kind.value : this.kind,
+      nativeId: data.nativeId.present ? data.nativeId.value : this.nativeId,
+      title: data.title.present ? data.title.value : this.title,
+      subtitle: data.subtitle.present ? data.subtitle.value : this.subtitle,
+      artworkPath: data.artworkPath.present
+          ? data.artworkPath.value
+          : this.artworkPath,
+      permalink: data.permalink.present ? data.permalink.value : this.permalink,
+      trackCount: data.trackCount.present
+          ? data.trackCount.value
+          : this.trackCount,
+      continuation: data.continuation.present
+          ? data.continuation.value
+          : this.continuation,
+      hasMore: data.hasMore.present ? data.hasMore.value : this.hasMore,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      lastSuccessfulSyncAt: data.lastSuccessfulSyncAt.present
+          ? data.lastSuccessfulSyncAt.value
+          : this.lastSuccessfulSyncAt,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
+      isFavorite: data.isFavorite.present
+          ? data.isFavorite.value
+          : this.isFavorite,
+      playCount: data.playCount.present ? data.playCount.value : this.playCount,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OnlineReferenceRow(')
+          ..write('externalId: $externalId, ')
+          ..write('source: $source, ')
+          ..write('kind: $kind, ')
+          ..write('nativeId: $nativeId, ')
+          ..write('title: $title, ')
+          ..write('subtitle: $subtitle, ')
+          ..write('artworkPath: $artworkPath, ')
+          ..write('permalink: $permalink, ')
+          ..write('trackCount: $trackCount, ')
+          ..write('continuation: $continuation, ')
+          ..write('hasMore: $hasMore, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('lastSuccessfulSyncAt: $lastSuccessfulSyncAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('isFavorite: $isFavorite, ')
+          ..write('playCount: $playCount')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    externalId,
+    source,
+    kind,
+    nativeId,
+    title,
+    subtitle,
+    artworkPath,
+    permalink,
+    trackCount,
+    continuation,
+    hasMore,
+    syncedAt,
+    lastSuccessfulSyncAt,
+    lastError,
+    isFavorite,
+    playCount,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OnlineReferenceRow &&
+          other.externalId == this.externalId &&
+          other.source == this.source &&
+          other.kind == this.kind &&
+          other.nativeId == this.nativeId &&
+          other.title == this.title &&
+          other.subtitle == this.subtitle &&
+          other.artworkPath == this.artworkPath &&
+          other.permalink == this.permalink &&
+          other.trackCount == this.trackCount &&
+          other.continuation == this.continuation &&
+          other.hasMore == this.hasMore &&
+          other.syncedAt == this.syncedAt &&
+          other.lastSuccessfulSyncAt == this.lastSuccessfulSyncAt &&
+          other.lastError == this.lastError &&
+          other.isFavorite == this.isFavorite &&
+          other.playCount == this.playCount);
+}
+
+class OnlineReferencesCompanion extends UpdateCompanion<OnlineReferenceRow> {
+  final Value<String> externalId;
+  final Value<String> source;
+  final Value<String> kind;
+  final Value<String> nativeId;
+  final Value<String> title;
+  final Value<String> subtitle;
+  final Value<String?> artworkPath;
+  final Value<String?> permalink;
+  final Value<int> trackCount;
+  final Value<String?> continuation;
+  final Value<bool> hasMore;
+  final Value<DateTime?> syncedAt;
+  final Value<DateTime?> lastSuccessfulSyncAt;
+  final Value<String?> lastError;
+  final Value<bool> isFavorite;
+  final Value<int> playCount;
+  final Value<int> rowid;
+  const OnlineReferencesCompanion({
+    this.externalId = const Value.absent(),
+    this.source = const Value.absent(),
+    this.kind = const Value.absent(),
+    this.nativeId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.subtitle = const Value.absent(),
+    this.artworkPath = const Value.absent(),
+    this.permalink = const Value.absent(),
+    this.trackCount = const Value.absent(),
+    this.continuation = const Value.absent(),
+    this.hasMore = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.lastSuccessfulSyncAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.isFavorite = const Value.absent(),
+    this.playCount = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OnlineReferencesCompanion.insert({
+    required String externalId,
+    required String source,
+    required String kind,
+    required String nativeId,
+    required String title,
+    this.subtitle = const Value.absent(),
+    this.artworkPath = const Value.absent(),
+    this.permalink = const Value.absent(),
+    this.trackCount = const Value.absent(),
+    this.continuation = const Value.absent(),
+    this.hasMore = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.lastSuccessfulSyncAt = const Value.absent(),
+    this.lastError = const Value.absent(),
+    this.isFavorite = const Value.absent(),
+    this.playCount = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : externalId = Value(externalId),
+       source = Value(source),
+       kind = Value(kind),
+       nativeId = Value(nativeId),
+       title = Value(title);
+  static Insertable<OnlineReferenceRow> custom({
+    Expression<String>? externalId,
+    Expression<String>? source,
+    Expression<String>? kind,
+    Expression<String>? nativeId,
+    Expression<String>? title,
+    Expression<String>? subtitle,
+    Expression<String>? artworkPath,
+    Expression<String>? permalink,
+    Expression<int>? trackCount,
+    Expression<String>? continuation,
+    Expression<bool>? hasMore,
+    Expression<DateTime>? syncedAt,
+    Expression<DateTime>? lastSuccessfulSyncAt,
+    Expression<String>? lastError,
+    Expression<bool>? isFavorite,
+    Expression<int>? playCount,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (externalId != null) 'external_id': externalId,
+      if (source != null) 'source': source,
+      if (kind != null) 'kind': kind,
+      if (nativeId != null) 'native_id': nativeId,
+      if (title != null) 'title': title,
+      if (subtitle != null) 'subtitle': subtitle,
+      if (artworkPath != null) 'artwork_path': artworkPath,
+      if (permalink != null) 'permalink': permalink,
+      if (trackCount != null) 'track_count': trackCount,
+      if (continuation != null) 'continuation': continuation,
+      if (hasMore != null) 'has_more': hasMore,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (lastSuccessfulSyncAt != null)
+        'last_successful_sync_at': lastSuccessfulSyncAt,
+      if (lastError != null) 'last_error': lastError,
+      if (isFavorite != null) 'is_favorite': isFavorite,
+      if (playCount != null) 'play_count': playCount,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OnlineReferencesCompanion copyWith({
+    Value<String>? externalId,
+    Value<String>? source,
+    Value<String>? kind,
+    Value<String>? nativeId,
+    Value<String>? title,
+    Value<String>? subtitle,
+    Value<String?>? artworkPath,
+    Value<String?>? permalink,
+    Value<int>? trackCount,
+    Value<String?>? continuation,
+    Value<bool>? hasMore,
+    Value<DateTime?>? syncedAt,
+    Value<DateTime?>? lastSuccessfulSyncAt,
+    Value<String?>? lastError,
+    Value<bool>? isFavorite,
+    Value<int>? playCount,
+    Value<int>? rowid,
+  }) {
+    return OnlineReferencesCompanion(
+      externalId: externalId ?? this.externalId,
+      source: source ?? this.source,
+      kind: kind ?? this.kind,
+      nativeId: nativeId ?? this.nativeId,
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      artworkPath: artworkPath ?? this.artworkPath,
+      permalink: permalink ?? this.permalink,
+      trackCount: trackCount ?? this.trackCount,
+      continuation: continuation ?? this.continuation,
+      hasMore: hasMore ?? this.hasMore,
+      syncedAt: syncedAt ?? this.syncedAt,
+      lastSuccessfulSyncAt: lastSuccessfulSyncAt ?? this.lastSuccessfulSyncAt,
+      lastError: lastError ?? this.lastError,
+      isFavorite: isFavorite ?? this.isFavorite,
+      playCount: playCount ?? this.playCount,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (kind.present) {
+      map['kind'] = Variable<String>(kind.value);
+    }
+    if (nativeId.present) {
+      map['native_id'] = Variable<String>(nativeId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (subtitle.present) {
+      map['subtitle'] = Variable<String>(subtitle.value);
+    }
+    if (artworkPath.present) {
+      map['artwork_path'] = Variable<String>(artworkPath.value);
+    }
+    if (permalink.present) {
+      map['permalink'] = Variable<String>(permalink.value);
+    }
+    if (trackCount.present) {
+      map['track_count'] = Variable<int>(trackCount.value);
+    }
+    if (continuation.present) {
+      map['continuation'] = Variable<String>(continuation.value);
+    }
+    if (hasMore.present) {
+      map['has_more'] = Variable<bool>(hasMore.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (lastSuccessfulSyncAt.present) {
+      map['last_successful_sync_at'] = Variable<DateTime>(
+        lastSuccessfulSyncAt.value,
+      );
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
+    if (isFavorite.present) {
+      map['is_favorite'] = Variable<bool>(isFavorite.value);
+    }
+    if (playCount.present) {
+      map['play_count'] = Variable<int>(playCount.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OnlineReferencesCompanion(')
+          ..write('externalId: $externalId, ')
+          ..write('source: $source, ')
+          ..write('kind: $kind, ')
+          ..write('nativeId: $nativeId, ')
+          ..write('title: $title, ')
+          ..write('subtitle: $subtitle, ')
+          ..write('artworkPath: $artworkPath, ')
+          ..write('permalink: $permalink, ')
+          ..write('trackCount: $trackCount, ')
+          ..write('continuation: $continuation, ')
+          ..write('hasMore: $hasMore, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('lastSuccessfulSyncAt: $lastSuccessfulSyncAt, ')
+          ..write('lastError: $lastError, ')
+          ..write('isFavorite: $isFavorite, ')
+          ..write('playCount: $playCount, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $OnlineReferenceTracksTable extends OnlineReferenceTracks
+    with TableInfo<$OnlineReferenceTracksTable, OnlineReferenceTrackRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $OnlineReferenceTracksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _referenceIdMeta = const VerificationMeta(
+    'referenceId',
+  );
+  @override
+  late final GeneratedColumn<String> referenceId = GeneratedColumn<String>(
+    'reference_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _externalIdMeta = const VerificationMeta(
+    'externalId',
+  );
+  @override
+  late final GeneratedColumn<String> externalId = GeneratedColumn<String>(
+    'external_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceMeta = const VerificationMeta('source');
+  @override
+  late final GeneratedColumn<String> source = GeneratedColumn<String>(
+    'source',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _sourceIdMeta = const VerificationMeta(
+    'sourceId',
+  );
+  @override
+  late final GeneratedColumn<String> sourceId = GeneratedColumn<String>(
+    'source_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _titleMeta = const VerificationMeta('title');
+  @override
+  late final GeneratedColumn<String> title = GeneratedColumn<String>(
+    'title',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _artistMeta = const VerificationMeta('artist');
+  @override
+  late final GeneratedColumn<String> artist = GeneratedColumn<String>(
+    'artist',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _albumMeta = const VerificationMeta('album');
+  @override
+  late final GeneratedColumn<String> album = GeneratedColumn<String>(
+    'album',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(''),
+  );
+  static const VerificationMeta _durationMsMeta = const VerificationMeta(
+    'durationMs',
+  );
+  @override
+  late final GeneratedColumn<int> durationMs = GeneratedColumn<int>(
+    'duration_ms',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  static const VerificationMeta _positionMeta = const VerificationMeta(
+    'position',
+  );
+  @override
+  late final GeneratedColumn<int> position = GeneratedColumn<int>(
+    'position',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(0),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    referenceId,
+    externalId,
+    source,
+    sourceId,
+    title,
+    artist,
+    album,
+    durationMs,
+    position,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'online_reference_tracks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<OnlineReferenceTrackRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('reference_id')) {
+      context.handle(
+        _referenceIdMeta,
+        referenceId.isAcceptableOrUnknown(
+          data['reference_id']!,
+          _referenceIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_referenceIdMeta);
+    }
+    if (data.containsKey('external_id')) {
+      context.handle(
+        _externalIdMeta,
+        externalId.isAcceptableOrUnknown(data['external_id']!, _externalIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_externalIdMeta);
+    }
+    if (data.containsKey('source')) {
+      context.handle(
+        _sourceMeta,
+        source.isAcceptableOrUnknown(data['source']!, _sourceMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceMeta);
+    }
+    if (data.containsKey('source_id')) {
+      context.handle(
+        _sourceIdMeta,
+        sourceId.isAcceptableOrUnknown(data['source_id']!, _sourceIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_sourceIdMeta);
+    }
+    if (data.containsKey('title')) {
+      context.handle(
+        _titleMeta,
+        title.isAcceptableOrUnknown(data['title']!, _titleMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_titleMeta);
+    }
+    if (data.containsKey('artist')) {
+      context.handle(
+        _artistMeta,
+        artist.isAcceptableOrUnknown(data['artist']!, _artistMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_artistMeta);
+    }
+    if (data.containsKey('album')) {
+      context.handle(
+        _albumMeta,
+        album.isAcceptableOrUnknown(data['album']!, _albumMeta),
+      );
+    }
+    if (data.containsKey('duration_ms')) {
+      context.handle(
+        _durationMsMeta,
+        durationMs.isAcceptableOrUnknown(data['duration_ms']!, _durationMsMeta),
+      );
+    }
+    if (data.containsKey('position')) {
+      context.handle(
+        _positionMeta,
+        position.isAcceptableOrUnknown(data['position']!, _positionMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {referenceId, externalId};
+  @override
+  OnlineReferenceTrackRow map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return OnlineReferenceTrackRow(
+      referenceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reference_id'],
+      )!,
+      externalId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}external_id'],
+      )!,
+      source: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source'],
+      )!,
+      sourceId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}source_id'],
+      )!,
+      title: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}title'],
+      )!,
+      artist: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}artist'],
+      )!,
+      album: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}album'],
+      )!,
+      durationMs: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}duration_ms'],
+      )!,
+      position: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}position'],
+      )!,
+    );
+  }
+
+  @override
+  $OnlineReferenceTracksTable createAlias(String alias) {
+    return $OnlineReferenceTracksTable(attachedDatabase, alias);
+  }
+}
+
+class OnlineReferenceTrackRow extends DataClass
+    implements Insertable<OnlineReferenceTrackRow> {
+  final String referenceId;
+  final String externalId;
+  final String source;
+  final String sourceId;
+  final String title;
+  final String artist;
+  final String album;
+  final int durationMs;
+  final int position;
+  const OnlineReferenceTrackRow({
+    required this.referenceId,
+    required this.externalId,
+    required this.source,
+    required this.sourceId,
+    required this.title,
+    required this.artist,
+    required this.album,
+    required this.durationMs,
+    required this.position,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['reference_id'] = Variable<String>(referenceId);
+    map['external_id'] = Variable<String>(externalId);
+    map['source'] = Variable<String>(source);
+    map['source_id'] = Variable<String>(sourceId);
+    map['title'] = Variable<String>(title);
+    map['artist'] = Variable<String>(artist);
+    map['album'] = Variable<String>(album);
+    map['duration_ms'] = Variable<int>(durationMs);
+    map['position'] = Variable<int>(position);
+    return map;
+  }
+
+  OnlineReferenceTracksCompanion toCompanion(bool nullToAbsent) {
+    return OnlineReferenceTracksCompanion(
+      referenceId: Value(referenceId),
+      externalId: Value(externalId),
+      source: Value(source),
+      sourceId: Value(sourceId),
+      title: Value(title),
+      artist: Value(artist),
+      album: Value(album),
+      durationMs: Value(durationMs),
+      position: Value(position),
+    );
+  }
+
+  factory OnlineReferenceTrackRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return OnlineReferenceTrackRow(
+      referenceId: serializer.fromJson<String>(json['referenceId']),
+      externalId: serializer.fromJson<String>(json['externalId']),
+      source: serializer.fromJson<String>(json['source']),
+      sourceId: serializer.fromJson<String>(json['sourceId']),
+      title: serializer.fromJson<String>(json['title']),
+      artist: serializer.fromJson<String>(json['artist']),
+      album: serializer.fromJson<String>(json['album']),
+      durationMs: serializer.fromJson<int>(json['durationMs']),
+      position: serializer.fromJson<int>(json['position']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'referenceId': serializer.toJson<String>(referenceId),
+      'externalId': serializer.toJson<String>(externalId),
+      'source': serializer.toJson<String>(source),
+      'sourceId': serializer.toJson<String>(sourceId),
+      'title': serializer.toJson<String>(title),
+      'artist': serializer.toJson<String>(artist),
+      'album': serializer.toJson<String>(album),
+      'durationMs': serializer.toJson<int>(durationMs),
+      'position': serializer.toJson<int>(position),
+    };
+  }
+
+  OnlineReferenceTrackRow copyWith({
+    String? referenceId,
+    String? externalId,
+    String? source,
+    String? sourceId,
+    String? title,
+    String? artist,
+    String? album,
+    int? durationMs,
+    int? position,
+  }) => OnlineReferenceTrackRow(
+    referenceId: referenceId ?? this.referenceId,
+    externalId: externalId ?? this.externalId,
+    source: source ?? this.source,
+    sourceId: sourceId ?? this.sourceId,
+    title: title ?? this.title,
+    artist: artist ?? this.artist,
+    album: album ?? this.album,
+    durationMs: durationMs ?? this.durationMs,
+    position: position ?? this.position,
+  );
+  OnlineReferenceTrackRow copyWithCompanion(
+    OnlineReferenceTracksCompanion data,
+  ) {
+    return OnlineReferenceTrackRow(
+      referenceId: data.referenceId.present
+          ? data.referenceId.value
+          : this.referenceId,
+      externalId: data.externalId.present
+          ? data.externalId.value
+          : this.externalId,
+      source: data.source.present ? data.source.value : this.source,
+      sourceId: data.sourceId.present ? data.sourceId.value : this.sourceId,
+      title: data.title.present ? data.title.value : this.title,
+      artist: data.artist.present ? data.artist.value : this.artist,
+      album: data.album.present ? data.album.value : this.album,
+      durationMs: data.durationMs.present
+          ? data.durationMs.value
+          : this.durationMs,
+      position: data.position.present ? data.position.value : this.position,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OnlineReferenceTrackRow(')
+          ..write('referenceId: $referenceId, ')
+          ..write('externalId: $externalId, ')
+          ..write('source: $source, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('title: $title, ')
+          ..write('artist: $artist, ')
+          ..write('album: $album, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('position: $position')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    referenceId,
+    externalId,
+    source,
+    sourceId,
+    title,
+    artist,
+    album,
+    durationMs,
+    position,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is OnlineReferenceTrackRow &&
+          other.referenceId == this.referenceId &&
+          other.externalId == this.externalId &&
+          other.source == this.source &&
+          other.sourceId == this.sourceId &&
+          other.title == this.title &&
+          other.artist == this.artist &&
+          other.album == this.album &&
+          other.durationMs == this.durationMs &&
+          other.position == this.position);
+}
+
+class OnlineReferenceTracksCompanion
+    extends UpdateCompanion<OnlineReferenceTrackRow> {
+  final Value<String> referenceId;
+  final Value<String> externalId;
+  final Value<String> source;
+  final Value<String> sourceId;
+  final Value<String> title;
+  final Value<String> artist;
+  final Value<String> album;
+  final Value<int> durationMs;
+  final Value<int> position;
+  final Value<int> rowid;
+  const OnlineReferenceTracksCompanion({
+    this.referenceId = const Value.absent(),
+    this.externalId = const Value.absent(),
+    this.source = const Value.absent(),
+    this.sourceId = const Value.absent(),
+    this.title = const Value.absent(),
+    this.artist = const Value.absent(),
+    this.album = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.position = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  OnlineReferenceTracksCompanion.insert({
+    required String referenceId,
+    required String externalId,
+    required String source,
+    required String sourceId,
+    required String title,
+    required String artist,
+    this.album = const Value.absent(),
+    this.durationMs = const Value.absent(),
+    this.position = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : referenceId = Value(referenceId),
+       externalId = Value(externalId),
+       source = Value(source),
+       sourceId = Value(sourceId),
+       title = Value(title),
+       artist = Value(artist);
+  static Insertable<OnlineReferenceTrackRow> custom({
+    Expression<String>? referenceId,
+    Expression<String>? externalId,
+    Expression<String>? source,
+    Expression<String>? sourceId,
+    Expression<String>? title,
+    Expression<String>? artist,
+    Expression<String>? album,
+    Expression<int>? durationMs,
+    Expression<int>? position,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (referenceId != null) 'reference_id': referenceId,
+      if (externalId != null) 'external_id': externalId,
+      if (source != null) 'source': source,
+      if (sourceId != null) 'source_id': sourceId,
+      if (title != null) 'title': title,
+      if (artist != null) 'artist': artist,
+      if (album != null) 'album': album,
+      if (durationMs != null) 'duration_ms': durationMs,
+      if (position != null) 'position': position,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  OnlineReferenceTracksCompanion copyWith({
+    Value<String>? referenceId,
+    Value<String>? externalId,
+    Value<String>? source,
+    Value<String>? sourceId,
+    Value<String>? title,
+    Value<String>? artist,
+    Value<String>? album,
+    Value<int>? durationMs,
+    Value<int>? position,
+    Value<int>? rowid,
+  }) {
+    return OnlineReferenceTracksCompanion(
+      referenceId: referenceId ?? this.referenceId,
+      externalId: externalId ?? this.externalId,
+      source: source ?? this.source,
+      sourceId: sourceId ?? this.sourceId,
+      title: title ?? this.title,
+      artist: artist ?? this.artist,
+      album: album ?? this.album,
+      durationMs: durationMs ?? this.durationMs,
+      position: position ?? this.position,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (referenceId.present) {
+      map['reference_id'] = Variable<String>(referenceId.value);
+    }
+    if (externalId.present) {
+      map['external_id'] = Variable<String>(externalId.value);
+    }
+    if (source.present) {
+      map['source'] = Variable<String>(source.value);
+    }
+    if (sourceId.present) {
+      map['source_id'] = Variable<String>(sourceId.value);
+    }
+    if (title.present) {
+      map['title'] = Variable<String>(title.value);
+    }
+    if (artist.present) {
+      map['artist'] = Variable<String>(artist.value);
+    }
+    if (album.present) {
+      map['album'] = Variable<String>(album.value);
+    }
+    if (durationMs.present) {
+      map['duration_ms'] = Variable<int>(durationMs.value);
+    }
+    if (position.present) {
+      map['position'] = Variable<int>(position.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('OnlineReferenceTracksCompanion(')
+          ..write('referenceId: $referenceId, ')
+          ..write('externalId: $externalId, ')
+          ..write('source: $source, ')
+          ..write('sourceId: $sourceId, ')
+          ..write('title: $title, ')
+          ..write('artist: $artist, ')
+          ..write('album: $album, ')
+          ..write('durationMs: $durationMs, ')
+          ..write('position: $position, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -4646,6 +6143,11 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ProfilesTable profiles = $ProfilesTable(this);
   late final $LyricsTable lyrics = $LyricsTable(this);
   late final $PluginsTable plugins = $PluginsTable(this);
+  late final $OnlineReferencesTable onlineReferences = $OnlineReferencesTable(
+    this,
+  );
+  late final $OnlineReferenceTracksTable onlineReferenceTracks =
+      $OnlineReferenceTracksTable(this);
   late final TrackDao trackDao = TrackDao(this as AppDatabase);
   late final FolderDao folderDao = FolderDao(this as AppDatabase);
   late final PlaylistDao playlistDao = PlaylistDao(this as AppDatabase);
@@ -4654,6 +6156,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final SettingsDao settingsDao = SettingsDao(this as AppDatabase);
   late final ProfileDao profileDao = ProfileDao(this as AppDatabase);
   late final LyricsDao lyricsDao = LyricsDao(this as AppDatabase);
+  late final OnlineSyncDao onlineSyncDao = OnlineSyncDao(this as AppDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4669,6 +6172,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     profiles,
     lyrics,
     plugins,
+    onlineReferences,
+    onlineReferenceTracks,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -7955,6 +9460,761 @@ typedef $$PluginsTableProcessedTableManager =
       PluginRow,
       PrefetchHooks Function()
     >;
+typedef $$OnlineReferencesTableCreateCompanionBuilder =
+    OnlineReferencesCompanion Function({
+      required String externalId,
+      required String source,
+      required String kind,
+      required String nativeId,
+      required String title,
+      Value<String> subtitle,
+      Value<String?> artworkPath,
+      Value<String?> permalink,
+      Value<int> trackCount,
+      Value<String?> continuation,
+      Value<bool> hasMore,
+      Value<DateTime?> syncedAt,
+      Value<DateTime?> lastSuccessfulSyncAt,
+      Value<String?> lastError,
+      Value<bool> isFavorite,
+      Value<int> playCount,
+      Value<int> rowid,
+    });
+typedef $$OnlineReferencesTableUpdateCompanionBuilder =
+    OnlineReferencesCompanion Function({
+      Value<String> externalId,
+      Value<String> source,
+      Value<String> kind,
+      Value<String> nativeId,
+      Value<String> title,
+      Value<String> subtitle,
+      Value<String?> artworkPath,
+      Value<String?> permalink,
+      Value<int> trackCount,
+      Value<String?> continuation,
+      Value<bool> hasMore,
+      Value<DateTime?> syncedAt,
+      Value<DateTime?> lastSuccessfulSyncAt,
+      Value<String?> lastError,
+      Value<bool> isFavorite,
+      Value<int> playCount,
+      Value<int> rowid,
+    });
+
+class $$OnlineReferencesTableFilterComposer
+    extends Composer<_$AppDatabase, $OnlineReferencesTable> {
+  $$OnlineReferencesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get nativeId => $composableBuilder(
+    column: $table.nativeId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get subtitle => $composableBuilder(
+    column: $table.subtitle,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get artworkPath => $composableBuilder(
+    column: $table.artworkPath,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get permalink => $composableBuilder(
+    column: $table.permalink,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get trackCount => $composableBuilder(
+    column: $table.trackCount,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get continuation => $composableBuilder(
+    column: $table.continuation,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get hasMore => $composableBuilder(
+    column: $table.hasMore,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastSuccessfulSyncAt => $composableBuilder(
+    column: $table.lastSuccessfulSyncAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get playCount => $composableBuilder(
+    column: $table.playCount,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OnlineReferencesTableOrderingComposer
+    extends Composer<_$AppDatabase, $OnlineReferencesTable> {
+  $$OnlineReferencesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get kind => $composableBuilder(
+    column: $table.kind,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get nativeId => $composableBuilder(
+    column: $table.nativeId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get subtitle => $composableBuilder(
+    column: $table.subtitle,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get artworkPath => $composableBuilder(
+    column: $table.artworkPath,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get permalink => $composableBuilder(
+    column: $table.permalink,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get trackCount => $composableBuilder(
+    column: $table.trackCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get continuation => $composableBuilder(
+    column: $table.continuation,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get hasMore => $composableBuilder(
+    column: $table.hasMore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastSuccessfulSyncAt => $composableBuilder(
+    column: $table.lastSuccessfulSyncAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+    column: $table.lastError,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get playCount => $composableBuilder(
+    column: $table.playCount,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OnlineReferencesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OnlineReferencesTable> {
+  $$OnlineReferencesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get kind =>
+      $composableBuilder(column: $table.kind, builder: (column) => column);
+
+  GeneratedColumn<String> get nativeId =>
+      $composableBuilder(column: $table.nativeId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get subtitle =>
+      $composableBuilder(column: $table.subtitle, builder: (column) => column);
+
+  GeneratedColumn<String> get artworkPath => $composableBuilder(
+    column: $table.artworkPath,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get permalink =>
+      $composableBuilder(column: $table.permalink, builder: (column) => column);
+
+  GeneratedColumn<int> get trackCount => $composableBuilder(
+    column: $table.trackCount,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get continuation => $composableBuilder(
+    column: $table.continuation,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get hasMore =>
+      $composableBuilder(column: $table.hasMore, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastSuccessfulSyncAt => $composableBuilder(
+    column: $table.lastSuccessfulSyncAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
+
+  GeneratedColumn<bool> get isFavorite => $composableBuilder(
+    column: $table.isFavorite,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get playCount =>
+      $composableBuilder(column: $table.playCount, builder: (column) => column);
+}
+
+class $$OnlineReferencesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OnlineReferencesTable,
+          OnlineReferenceRow,
+          $$OnlineReferencesTableFilterComposer,
+          $$OnlineReferencesTableOrderingComposer,
+          $$OnlineReferencesTableAnnotationComposer,
+          $$OnlineReferencesTableCreateCompanionBuilder,
+          $$OnlineReferencesTableUpdateCompanionBuilder,
+          (
+            OnlineReferenceRow,
+            BaseReferences<
+              _$AppDatabase,
+              $OnlineReferencesTable,
+              OnlineReferenceRow
+            >,
+          ),
+          OnlineReferenceRow,
+          PrefetchHooks Function()
+        > {
+  $$OnlineReferencesTableTableManager(
+    _$AppDatabase db,
+    $OnlineReferencesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OnlineReferencesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$OnlineReferencesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$OnlineReferencesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> externalId = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> kind = const Value.absent(),
+                Value<String> nativeId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> subtitle = const Value.absent(),
+                Value<String?> artworkPath = const Value.absent(),
+                Value<String?> permalink = const Value.absent(),
+                Value<int> trackCount = const Value.absent(),
+                Value<String?> continuation = const Value.absent(),
+                Value<bool> hasMore = const Value.absent(),
+                Value<DateTime?> syncedAt = const Value.absent(),
+                Value<DateTime?> lastSuccessfulSyncAt = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<bool> isFavorite = const Value.absent(),
+                Value<int> playCount = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OnlineReferencesCompanion(
+                externalId: externalId,
+                source: source,
+                kind: kind,
+                nativeId: nativeId,
+                title: title,
+                subtitle: subtitle,
+                artworkPath: artworkPath,
+                permalink: permalink,
+                trackCount: trackCount,
+                continuation: continuation,
+                hasMore: hasMore,
+                syncedAt: syncedAt,
+                lastSuccessfulSyncAt: lastSuccessfulSyncAt,
+                lastError: lastError,
+                isFavorite: isFavorite,
+                playCount: playCount,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String externalId,
+                required String source,
+                required String kind,
+                required String nativeId,
+                required String title,
+                Value<String> subtitle = const Value.absent(),
+                Value<String?> artworkPath = const Value.absent(),
+                Value<String?> permalink = const Value.absent(),
+                Value<int> trackCount = const Value.absent(),
+                Value<String?> continuation = const Value.absent(),
+                Value<bool> hasMore = const Value.absent(),
+                Value<DateTime?> syncedAt = const Value.absent(),
+                Value<DateTime?> lastSuccessfulSyncAt = const Value.absent(),
+                Value<String?> lastError = const Value.absent(),
+                Value<bool> isFavorite = const Value.absent(),
+                Value<int> playCount = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OnlineReferencesCompanion.insert(
+                externalId: externalId,
+                source: source,
+                kind: kind,
+                nativeId: nativeId,
+                title: title,
+                subtitle: subtitle,
+                artworkPath: artworkPath,
+                permalink: permalink,
+                trackCount: trackCount,
+                continuation: continuation,
+                hasMore: hasMore,
+                syncedAt: syncedAt,
+                lastSuccessfulSyncAt: lastSuccessfulSyncAt,
+                lastError: lastError,
+                isFavorite: isFavorite,
+                playCount: playCount,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$OnlineReferencesTable, OnlineReferenceRow>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $OnlineReferencesTable,
+                    OnlineReferenceRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OnlineReferencesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OnlineReferencesTable,
+      OnlineReferenceRow,
+      $$OnlineReferencesTableFilterComposer,
+      $$OnlineReferencesTableOrderingComposer,
+      $$OnlineReferencesTableAnnotationComposer,
+      $$OnlineReferencesTableCreateCompanionBuilder,
+      $$OnlineReferencesTableUpdateCompanionBuilder,
+      (
+        OnlineReferenceRow,
+        BaseReferences<
+          _$AppDatabase,
+          $OnlineReferencesTable,
+          OnlineReferenceRow
+        >,
+      ),
+      OnlineReferenceRow,
+      PrefetchHooks Function()
+    >;
+typedef $$OnlineReferenceTracksTableCreateCompanionBuilder =
+    OnlineReferenceTracksCompanion Function({
+      required String referenceId,
+      required String externalId,
+      required String source,
+      required String sourceId,
+      required String title,
+      required String artist,
+      Value<String> album,
+      Value<int> durationMs,
+      Value<int> position,
+      Value<int> rowid,
+    });
+typedef $$OnlineReferenceTracksTableUpdateCompanionBuilder =
+    OnlineReferenceTracksCompanion Function({
+      Value<String> referenceId,
+      Value<String> externalId,
+      Value<String> source,
+      Value<String> sourceId,
+      Value<String> title,
+      Value<String> artist,
+      Value<String> album,
+      Value<int> durationMs,
+      Value<int> position,
+      Value<int> rowid,
+    });
+
+class $$OnlineReferenceTracksTableFilterComposer
+    extends Composer<_$AppDatabase, $OnlineReferenceTracksTable> {
+  $$OnlineReferenceTracksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get referenceId => $composableBuilder(
+    column: $table.referenceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get artist => $composableBuilder(
+    column: $table.artist,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get album => $composableBuilder(
+    column: $table.album,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$OnlineReferenceTracksTableOrderingComposer
+    extends Composer<_$AppDatabase, $OnlineReferenceTracksTable> {
+  $$OnlineReferenceTracksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get referenceId => $composableBuilder(
+    column: $table.referenceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get source => $composableBuilder(
+    column: $table.source,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get sourceId => $composableBuilder(
+    column: $table.sourceId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get title => $composableBuilder(
+    column: $table.title,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get artist => $composableBuilder(
+    column: $table.artist,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get album => $composableBuilder(
+    column: $table.album,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get position => $composableBuilder(
+    column: $table.position,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$OnlineReferenceTracksTableAnnotationComposer
+    extends Composer<_$AppDatabase, $OnlineReferenceTracksTable> {
+  $$OnlineReferenceTracksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get referenceId => $composableBuilder(
+    column: $table.referenceId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get externalId => $composableBuilder(
+    column: $table.externalId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get source =>
+      $composableBuilder(column: $table.source, builder: (column) => column);
+
+  GeneratedColumn<String> get sourceId =>
+      $composableBuilder(column: $table.sourceId, builder: (column) => column);
+
+  GeneratedColumn<String> get title =>
+      $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<String> get artist =>
+      $composableBuilder(column: $table.artist, builder: (column) => column);
+
+  GeneratedColumn<String> get album =>
+      $composableBuilder(column: $table.album, builder: (column) => column);
+
+  GeneratedColumn<int> get durationMs => $composableBuilder(
+    column: $table.durationMs,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get position =>
+      $composableBuilder(column: $table.position, builder: (column) => column);
+}
+
+class $$OnlineReferenceTracksTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $OnlineReferenceTracksTable,
+          OnlineReferenceTrackRow,
+          $$OnlineReferenceTracksTableFilterComposer,
+          $$OnlineReferenceTracksTableOrderingComposer,
+          $$OnlineReferenceTracksTableAnnotationComposer,
+          $$OnlineReferenceTracksTableCreateCompanionBuilder,
+          $$OnlineReferenceTracksTableUpdateCompanionBuilder,
+          (
+            OnlineReferenceTrackRow,
+            BaseReferences<
+              _$AppDatabase,
+              $OnlineReferenceTracksTable,
+              OnlineReferenceTrackRow
+            >,
+          ),
+          OnlineReferenceTrackRow,
+          PrefetchHooks Function()
+        > {
+  $$OnlineReferenceTracksTableTableManager(
+    _$AppDatabase db,
+    $OnlineReferenceTracksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$OnlineReferenceTracksTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$OnlineReferenceTracksTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$OnlineReferenceTracksTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> referenceId = const Value.absent(),
+                Value<String> externalId = const Value.absent(),
+                Value<String> source = const Value.absent(),
+                Value<String> sourceId = const Value.absent(),
+                Value<String> title = const Value.absent(),
+                Value<String> artist = const Value.absent(),
+                Value<String> album = const Value.absent(),
+                Value<int> durationMs = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OnlineReferenceTracksCompanion(
+                referenceId: referenceId,
+                externalId: externalId,
+                source: source,
+                sourceId: sourceId,
+                title: title,
+                artist: artist,
+                album: album,
+                durationMs: durationMs,
+                position: position,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String referenceId,
+                required String externalId,
+                required String source,
+                required String sourceId,
+                required String title,
+                required String artist,
+                Value<String> album = const Value.absent(),
+                Value<int> durationMs = const Value.absent(),
+                Value<int> position = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => OnlineReferenceTracksCompanion.insert(
+                referenceId: referenceId,
+                externalId: externalId,
+                source: source,
+                sourceId: sourceId,
+                title: title,
+                artist: artist,
+                album: album,
+                durationMs: durationMs,
+                position: position,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<
+                    $OnlineReferenceTracksTable,
+                    OnlineReferenceTrackRow
+                  >(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $OnlineReferenceTracksTable,
+                    OnlineReferenceTrackRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$OnlineReferenceTracksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $OnlineReferenceTracksTable,
+      OnlineReferenceTrackRow,
+      $$OnlineReferenceTracksTableFilterComposer,
+      $$OnlineReferenceTracksTableOrderingComposer,
+      $$OnlineReferenceTracksTableAnnotationComposer,
+      $$OnlineReferenceTracksTableCreateCompanionBuilder,
+      $$OnlineReferenceTracksTableUpdateCompanionBuilder,
+      (
+        OnlineReferenceTrackRow,
+        BaseReferences<
+          _$AppDatabase,
+          $OnlineReferenceTracksTable,
+          OnlineReferenceTrackRow
+        >,
+      ),
+      OnlineReferenceTrackRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -7979,6 +10239,10 @@ class $AppDatabaseManager {
       $$LyricsTableTableManager(_db, _db.lyrics);
   $$PluginsTableTableManager get plugins =>
       $$PluginsTableTableManager(_db, _db.plugins);
+  $$OnlineReferencesTableTableManager get onlineReferences =>
+      $$OnlineReferencesTableTableManager(_db, _db.onlineReferences);
+  $$OnlineReferenceTracksTableTableManager get onlineReferenceTracks =>
+      $$OnlineReferenceTracksTableTableManager(_db, _db.onlineReferenceTracks);
 }
 
 mixin _$TrackDaoMixin on DatabaseAccessor<AppDatabase> {
@@ -8090,4 +10354,27 @@ class LyricsDaoManager {
       $$TracksTableTableManager(_db.attachedDatabase, _db.tracks);
   $$LyricsTableTableManager get lyrics =>
       $$LyricsTableTableManager(_db.attachedDatabase, _db.lyrics);
+}
+
+mixin _$OnlineSyncDaoMixin on DatabaseAccessor<AppDatabase> {
+  $OnlineReferencesTable get onlineReferences =>
+      attachedDatabase.onlineReferences;
+  $OnlineReferenceTracksTable get onlineReferenceTracks =>
+      attachedDatabase.onlineReferenceTracks;
+  OnlineSyncDaoManager get managers => OnlineSyncDaoManager(this);
+}
+
+class OnlineSyncDaoManager {
+  final _$OnlineSyncDaoMixin _db;
+  OnlineSyncDaoManager(this._db);
+  $$OnlineReferencesTableTableManager get onlineReferences =>
+      $$OnlineReferencesTableTableManager(
+        _db.attachedDatabase,
+        _db.onlineReferences,
+      );
+  $$OnlineReferenceTracksTableTableManager get onlineReferenceTracks =>
+      $$OnlineReferenceTracksTableTableManager(
+        _db.attachedDatabase,
+        _db.onlineReferenceTracks,
+      );
 }

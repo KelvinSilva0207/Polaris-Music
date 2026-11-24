@@ -9,11 +9,14 @@ import '../../../core/utils/formatters.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/polaris_surface.dart';
 import '../../player/presentation/player_providers.dart';
+import '../data/online_diagnostics.dart';
+import '../data/online_sync_repository.dart';
 import '../data/source_helpers.dart';
 import '../domain/download_task.dart';
 import '../domain/music_source.dart';
 import '../domain/online_catalog_items.dart';
 import '../domain/online_track.dart';
+import '../domain/request_cancellation.dart';
 import 'online_music_providers.dart';
 import 'source_settings_dialog.dart';
 import 'source_status_ui.dart';
@@ -145,35 +148,153 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
     _notice('“${track.title}” añadida a la cola de descargas.');
   }
 
-  /// Resuelve y reproduce todas las pistas de la colección abierta en orden.
-  /// Se hace en secuencia para no saturar los endpoints anónimos.
+  List<OnlineTrack> _playableTracks() => ref
+      .read(onlineSearchProvider)
+      .tracks
+      .where(_canPlay)
+      .toList(growable: false);
+
+  /// Resuelve el audio en secuencia para no saturar los endpoints anónimos.
+  Future<List<Track>> _resolvePlayable(List<OnlineTrack> tracks) async {
+    final List<Track> resolved = <Track>[];
+    for (final OnlineTrack item in tracks) {
+      resolved.add(await ref.read(streamTrackUseCaseProvider)(item));
+    }
+    return resolved;
+  }
+
+  /// Resuelve y reproduce todas las pistas visibles en orden.
   Future<void> _playAll() async {
     if (_bulkPlaying || _resolvingId != null) return;
-    final List<OnlineTrack> candidates = ref
-        .read(onlineSearchProvider)
-        .tracks
-        .where(_canPlay)
-        .toList(growable: false);
+    final List<OnlineTrack> candidates = _playableTracks();
     if (candidates.isEmpty) {
-      _notice('No hay pistas reproducibles en esta colección.');
+      _notice('No hay pistas reproducibles aquí.');
       return;
     }
     setState(() => _bulkPlaying = true);
-    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
     try {
-      final List<Track> resolved = <Track>[];
-      for (final OnlineTrack item in candidates) {
-        resolved.add(await ref.read(streamTrackUseCaseProvider)(item));
-      }
+      final List<Track> resolved = await _resolvePlayable(candidates);
       if (!mounted) return;
       await ref
           .read(playerControllerProvider.notifier)
           .playQueue(resolved, startIndex: 0);
       if (mounted) _notice('${resolved.length} pistas en la cola.');
     } catch (error) {
-      if (mounted) messenger.showSnackBar(SnackBar(content: Text('$error')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          _errorSnack(AudioEngineService.sanitizePlaybackError(error)),
+        );
+      }
     } finally {
       if (mounted) setState(() => _bulkPlaying = false);
+    }
+  }
+
+  /// Baraja las pistas resueltas sin alterar el orden canónico del motor.
+  Future<void> _shuffleAll() async {
+    if (_bulkPlaying || _resolvingId != null) return;
+    final List<OnlineTrack> candidates = _playableTracks();
+    if (candidates.isEmpty) {
+      _notice('No hay pistas reproducibles aquí.');
+      return;
+    }
+    setState(() => _bulkPlaying = true);
+    try {
+      final List<Track> resolved = await _resolvePlayable(candidates);
+      if (!mounted) return;
+      final List<Track> shuffled = <Track>[...resolved]..shuffle();
+      await ref
+          .read(playerControllerProvider.notifier)
+          .playQueue(shuffled, startIndex: 0);
+      if (mounted) _notice('${shuffled.length} pistas en orden aleatorio.');
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          _errorSnack(AudioEngineService.sanitizePlaybackError(error)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _bulkPlaying = false);
+    }
+  }
+
+  /// Encola el bloque sin interrumpir la reproducción actual.
+  Future<void> _enqueueAll() async {
+    if (_bulkPlaying || _resolvingId != null) return;
+    final List<OnlineTrack> candidates = _playableTracks();
+    if (candidates.isEmpty) {
+      _notice('No hay pistas que se puedan añadir a la cola.');
+      return;
+    }
+    setState(() => _bulkPlaying = true);
+    try {
+      final List<Track> resolved = await _resolvePlayable(candidates);
+      if (!mounted) return;
+      await ref.read(playerControllerProvider.notifier).enqueueQueue(resolved);
+      if (mounted) {
+        _notice('${resolved.length} pistas añadidas a la cola sin autoplay.');
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          _errorSnack(AudioEngineService.sanitizePlaybackError(error)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _bulkPlaying = false);
+    }
+  }
+
+  /// Guarda referencias online (y metadatos de pistas) para uso sin red.
+  /// Nunca escribe URLs firmadas ni crea filas falsas en la biblioteca local.
+  Future<void> _saveReferences() async {
+    final OnlineSearchState state = ref.read(onlineSearchProvider);
+    final OnlineSyncRepository repository = ref.read(
+      onlineSyncRepositoryProvider,
+    );
+    final OnlineCollectionRef? collection = state.openedCollection;
+    try {
+      if (collection != null) {
+        final OnlineSyncOutcome outcome = await repository.syncReference(
+          collection,
+          fetchPage: (String? continuation) async {
+            final CollectionPage page = await ref
+                .read(musicSourceCatalogProvider)
+                .loadCollectionPage(
+                  collection,
+                  token: const NoOpOnlineRequestToken(),
+                );
+            return page.tracks;
+          },
+        );
+        if (!mounted) return;
+        _notice(switch (outcome) {
+          OnlineSyncOutcome.synced =>
+            '“${collection.title}” se guardó para uso sin red.',
+          OnlineSyncOutcome.savedOffline =>
+            'Sin conexión: se conservaron los datos guardados de “${collection.title}”.',
+          OnlineSyncOutcome.failed =>
+            'No se pudo actualizar “${collection.title}”, pero se conservaron los datos guardados.',
+        });
+        return;
+      }
+      if (state.collections.isEmpty) {
+        _notice('Abre una colección para guardarla sin conexión.');
+        return;
+      }
+      await repository.saveReferences(state.collections);
+      if (!mounted) return;
+      _notice(
+        '${state.collections.length} referencias guardadas para uso sin red.',
+      );
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        'OnlineUI',
+        'No se pudieron guardar las referencias online',
+        error: error,
+        stack: stack,
+      );
+      if (mounted) _notice('No se pudieron guardar las referencias.');
     }
   }
 
@@ -292,6 +413,9 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
             ref.read(onlineSearchProvider.notifier).closeCollection();
           },
           onPlayAll: _playAll,
+          onShuffleAll: _shuffleAll,
+          onEnqueueAll: _enqueueAll,
+          onSave: _saveReferences,
           onDownloadAll: _downloadAll,
           onOpenOriginal: () => _openUrl(collection.permalink),
         )
@@ -343,20 +467,6 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
       const SizedBox(height: 22),
       _ResultsHeader(state: state),
       const SizedBox(height: 10),
-      if (showCollections && state.collections.isNotEmpty) ...<Widget>[
-        for (final OnlineCollectionRef item in state.collections)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _CollectionTile(
-              collection: item,
-              onOpen: () {
-                ref.read(onlineSearchProvider.notifier).openCollection(item);
-              },
-              onOpenOriginal: () => _openUrl(item.permalink),
-            ),
-          ),
-        const SizedBox(height: 8),
-      ],
     ];
 
     final Widget? statusWidget = state.collectionError != null
@@ -416,21 +526,97 @@ class _OnlineMusicScreenState extends ConsumerState<OnlineMusicScreen> {
       );
     }
 
+    Widget collectionTile(OnlineCollectionRef item) => Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: _CollectionTile(
+        collection: item,
+        onOpen: () {
+          ref.read(onlineSearchProvider.notifier).openCollection(item);
+        },
+        onOpenOriginal: () => _openUrl(item.permalink),
+      ),
+    );
+
+    final List<Widget> body = <Widget>[];
+    if (statusWidget != null) body.add(statusWidget);
+
+    if (inCollection) {
+      body.addAll(state.tracks.map(trackTile));
+      if (state.loadMoreError != null) {
+        body.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: _InlineNotice(
+              message: state.loadMoreError!,
+              actionLabel: 'Reintentar',
+              onAction: () =>
+                  ref.read(onlineSearchProvider.notifier).loadMoreCollection(),
+            ),
+          ),
+        );
+      }
+      if (state.collectionHasMore) {
+        body.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Center(
+              child: OutlinedButton.icon(
+                onPressed: state.loadingMore
+                    ? null
+                    : () => ref
+                          .read(onlineSearchProvider.notifier)
+                          .loadMoreCollection(),
+                icon: state.loadingMore
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.expand_more_rounded),
+                label: Text(state.loadingMore ? 'Cargando…' : 'Cargar más'),
+              ),
+            ),
+          ),
+        );
+      }
+    } else if (state.resultType == OnlineSearchType.all) {
+      if (state.tracks.isNotEmpty) {
+        body.add(
+          _SectionHeader(
+            icon: Icons.music_note_rounded,
+            title: 'Canciones',
+            count: state.tracks.length,
+          ),
+        );
+        body.addAll(state.tracks.map(trackTile));
+      }
+      for (final OnlineSearchType kind in OnlineSearchType.collectionTypes) {
+        final List<OnlineCollectionRef> section = state.collectionsOf(kind);
+        if (section.isEmpty) continue;
+        body.add(
+          _SectionHeader(
+            icon: kind.icon,
+            title: kind == OnlineSearchType.playlists
+                ? 'Playlists y vídeos'
+                : kind.label,
+            count: section.length,
+          ),
+        );
+        body.addAll(section.map(collectionTile));
+      }
+    } else if (showCollections) {
+      body.addAll(state.collections.map(collectionTile));
+    } else {
+      body.addAll(state.tracks.map(trackTile));
+    }
+
     return SafeArea(
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 20, 24, 150),
-        itemCount:
-            header.length +
-            (statusWidget == null ? 0 : 1) +
-            state.tracks.length,
+        itemCount: header.length + body.length,
         itemBuilder: (BuildContext context, int index) {
           if (index < header.length) return header[index];
-          int offset = index - header.length;
-          if (statusWidget != null) {
-            if (offset == 0) return statusWidget;
-            offset--;
-          }
-          return trackTile(state.tracks[offset]);
+          return body[index - header.length];
         },
       ),
     );
@@ -591,7 +777,7 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-/// Filtros Canciones / Álbumes / Artistas / Playlists.
+/// Filtros Todos / Canciones / Álbumes / Artistas / Playlists.
 class _ResultTypeBar extends StatelessWidget {
   const _ResultTypeBar({required this.selected, required this.onChanged});
 
@@ -636,6 +822,9 @@ class _CollectionHeader extends StatelessWidget {
     required this.bulkPlaying,
     required this.onBack,
     required this.onPlayAll,
+    required this.onShuffleAll,
+    required this.onEnqueueAll,
+    required this.onSave,
     required this.onDownloadAll,
     required this.onOpenOriginal,
   });
@@ -646,6 +835,9 @@ class _CollectionHeader extends StatelessWidget {
   final bool bulkPlaying;
   final VoidCallback onBack;
   final VoidCallback onPlayAll;
+  final VoidCallback onShuffleAll;
+  final VoidCallback onEnqueueAll;
+  final VoidCallback onSave;
   final VoidCallback onDownloadAll;
   final VoidCallback onOpenOriginal;
 
@@ -713,27 +905,42 @@ class _CollectionHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          Row(
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              Flexible(
-                child: FilledButton.icon(
-                  onPressed: busy || trackCount == 0 ? null : onPlayAll,
-                  icon: Icon(Icons.play_arrow_rounded, size: 18),
-                  label: Text('Reproducir todo'),
-                ),
+              FilledButton.icon(
+                onPressed: busy || trackCount == 0 ? null : onPlayAll,
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: const Text('Reproducir todo'),
               ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: OutlinedButton.icon(
-                  onPressed: busy || trackCount == 0 ? null : onDownloadAll,
-                  icon: Icon(Icons.cloud_download_outlined, size: 18),
-                  label: Text('Descargar todo'),
-                ),
+              OutlinedButton.icon(
+                onPressed: busy || trackCount == 0 ? null : onShuffleAll,
+                icon: const Icon(Icons.shuffle_rounded, size: 17),
+                label: const Text('Aleatorio'),
               ),
-              const SizedBox(width: 8),
-              Text(
-                '$trackCount pistas',
-                style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
+              OutlinedButton.icon(
+                onPressed: busy || trackCount == 0 ? null : onEnqueueAll,
+                icon: const Icon(Icons.queue_music_rounded, size: 17),
+                label: const Text('Encolar sin autoplay'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy || loading ? null : onSave,
+                icon: const Icon(Icons.bookmark_add_outlined, size: 17),
+                label: const Text('Guardar referencia'),
+              ),
+              OutlinedButton.icon(
+                onPressed: busy || trackCount == 0 ? null : onDownloadAll,
+                icon: const Icon(Icons.cloud_download_outlined, size: 17),
+                label: const Text('Descargar copias locales'),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(left: 2),
+                child: Text(
+                  '$trackCount pistas',
+                  style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
+                ),
               ),
             ],
           ),
@@ -949,10 +1156,13 @@ class _ResultsHeader extends StatelessWidget {
         : state.isTrending
         ? 'Tendencias'
         : 'Resultados para “${state.query}”';
-    final int count = showCollections
+    final bool grouped = state.resultType == OnlineSearchType.all;
+    final int count = grouped
+        ? state.tracks.length + state.collections.length
+        : showCollections
         ? state.collections.length
         : state.tracks.length;
-    final String unit = showCollections ? 'resultados' : 'pistas';
+    final String unit = grouped || showCollections ? 'resultados' : 'pistas';
     return Row(
       children: <Widget>[
         Icon(
@@ -978,6 +1188,77 @@ class _ResultsHeader extends StatelessWidget {
           style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
         ),
       ],
+    );
+  }
+}
+
+/// Rótulo de una sección de la vista agrupada “Todos”.
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.icon,
+    required this.title,
+    required this.count,
+  });
+
+  final IconData icon;
+  final String title;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final PolarisTokens tokens = context.tokens;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(2, 14, 2, 8),
+      child: Row(
+        children: <Widget>[
+          Icon(icon, size: 17, color: tokens.accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+            ),
+          ),
+          Text(
+            '$count',
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Aviso inline (sin diálogo modal) para errores recuperables de paginación.
+class _InlineNotice extends StatelessWidget {
+  const _InlineNotice({required this.message, this.actionLabel, this.onAction});
+
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.errorContainer
+            .withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: <Widget>[
+          Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: Theme.of(context).colorScheme.error,
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Text(message, style: const TextStyle(fontSize: 12))),
+          if (onAction != null && actionLabel != null)
+            TextButton(onPressed: onAction, child: Text(actionLabel!)),
+        ],
+      ),
     );
   }
 }

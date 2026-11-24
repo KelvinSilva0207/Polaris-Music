@@ -21,6 +21,7 @@ import '../../../core/providers/theme_provider.dart';
 import '../../../core/services/app_shutdown.dart';
 import '../../../core/services/app_updater_service.dart';
 import '../../../core/services/audio_device_profile_service.dart';
+import '../../../core/services/beta_crash_logger.dart';
 import '../../../core/services/backup_service.dart';
 import '../../../core/services/global_hotkey_service.dart';
 import '../../../core/services/scrobble_service.dart';
@@ -501,9 +502,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         ],
       ),
       _Section(
-        title: 'Diagnóstico',
+        title: 'Diagnóstico Beta',
         icon: Icons.bug_report_outlined,
         children: <Widget>[
+          const _BetaDiagnosticsCard(),
+          const SizedBox(height: 10),
           ListTile(
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.copy_all_rounded),
@@ -710,8 +713,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
     if (confirmed != true) return;
 
-    await ServiceLocator.shutdownAndroid();
-    exit(0);
+    await AppShutdown.quit('Ajustes');
   }
 
   void _showCredits(BuildContext context) {
@@ -869,92 +871,161 @@ Future<void> _configureScrobbling(
     return;
   }
 
-  final TextEditingController key = TextEditingController(text: current.apiKey);
-  final TextEditingController secret = TextEditingController(
-    text: current.apiSecret,
+  final String? token = await showDialog<String>(
+    context: context,
+    builder: (BuildContext context) =>
+        _ScrobbleCredentialsDialog(config: current),
   );
-  final TextEditingController endpoint = TextEditingController(
-    text: current.endpoint,
+  if (token == null || !context.mounted) return;
+
+  final bool? authorized = await _askScrobbleAuthorization(
+    context,
+    scrobbler,
+    token,
   );
-  try {
-    final bool? accepted = await showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('Conectar Last.fm'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const Text(
-                'Usa tu API key de Last.fm. También admite servidores '
-                'compatibles indicando su endpoint.',
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: key,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'API key',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: secret,
-                autocorrect: false,
-                obscureText: true,
-                decoration: const InputDecoration(
-                  labelText: 'API secret',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: endpoint,
-                autocorrect: false,
-                decoration: const InputDecoration(
-                  labelText: 'Endpoint (opcional)',
-                  hintText: ScrobbleService.defaultEndpoint,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+  if (authorized != true || !context.mounted) return;
+  await _finishScrobbleLogin(context, scrobbler);
+}
+
+/// Diálogo de credenciales con estado de espera y errores en línea.
+///
+/// La cuenta es opcional: si la región bloquea Last.fm o la red falla, el
+/// diálogo se cierra sin tocar la configuración local y la reproducción sigue.
+class _ScrobbleCredentialsDialog extends StatefulWidget {
+  const _ScrobbleCredentialsDialog({required this.config});
+
+  final ScrobbleConfig config;
+
+  @override
+  State<_ScrobbleCredentialsDialog> createState() =>
+      _ScrobbleCredentialsDialogState();
+}
+
+class _ScrobbleCredentialsDialogState
+    extends State<_ScrobbleCredentialsDialog> {
+  late final TextEditingController _key = TextEditingController(
+    text: widget.config.apiKey,
+  );
+  late final TextEditingController _secret = TextEditingController(
+    text: widget.config.apiSecret,
+  );
+  late final TextEditingController _endpoint = TextEditingController(
+    text: widget.config.endpoint,
+  );
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _key.dispose();
+    _secret.dispose();
+    _endpoint.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_busy) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final String token = await sl<ScrobbleService>().beginLogin(
+        apiKey: _key.text,
+        apiSecret: _secret.text,
+        endpoint: _endpoint.text,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop<String>(token);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = 'No se pudo conectar: $error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Conectar Last.fm (opcional)'),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          const Text(
+            'Polaris funciona por completo sin cuenta. Si la conexión falla, '
+            'tu biblioteca, ajustes y reproducción siguen igual.',
           ),
-        ),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar'),
+          const SizedBox(height: 6),
+          const Text(
+            'Usa tu API key de Last.fm. También admite servidores '
+            'compatibles indicando su endpoint.',
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Continuar'),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _key,
+            enabled: !_busy,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'API key',
+              border: OutlineInputBorder(),
+            ),
           ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _secret,
+            enabled: !_busy,
+            autocorrect: false,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'API secret',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _endpoint,
+            enabled: !_busy,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              labelText: 'Endpoint (opcional)',
+              hintText: ScrobbleService.defaultEndpoint,
+              border: OutlineInputBorder(),
+            ),
+          ),
+          if (_error != null) ...<Widget>[
+            const SizedBox(height: 10),
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+          if (_busy) ...<Widget>[
+            const SizedBox(height: 12),
+            const LinearProgressIndicator(minHeight: 2),
+          ],
         ],
       ),
-    );
-    if (accepted != true || !context.mounted) return;
-
-    final String token = await scrobbler.beginLogin(
-      apiKey: key.text,
-      apiSecret: secret.text,
-      endpoint: endpoint.text,
-    );
-    if (!context.mounted) return;
-    final bool? authorized = await _askScrobbleAuthorization(
-      context,
-      scrobbler,
-      token,
-    );
-    if (authorized != true || !context.mounted) return;
-    await _finishScrobbleLogin(context, scrobbler);
-  } catch (error) {
-    if (context.mounted) _scrobbleToast(context, 'No se pudo conectar: $error');
-  } finally {
-    key.dispose();
-    secret.dispose();
-    endpoint.dispose();
-  }
+    ),
+    actions: <Widget>[
+      TextButton(
+        onPressed: _busy ? null : () => Navigator.pop(context),
+        child: const Text('Cancelar'),
+      ),
+      FilledButton(
+        onPressed: _busy ? null : _submit,
+        child: _busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Text('Continuar'),
+      ),
+    ],
+  );
 }
 
 Future<bool?> _askScrobbleAuthorization(
@@ -977,9 +1048,18 @@ Future<bool?> _askScrobbleAuthorization(
         ),
         TextButton(
           onPressed: () async {
-            final Uri url = scrobbler.authorizationUrl(token);
-            if (await canLaunchUrl(url)) {
-              await launchUrl(url, mode: LaunchMode.externalApplication);
+            try {
+              final Uri url = scrobbler.authorizationUrl(token);
+              final bool launched =
+                  await canLaunchUrl(url) &&
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+              if (!launched && context.mounted) {
+                _scrobbleToast(context, 'No se pudo abrir el navegador');
+              }
+            } catch (_) {
+              if (context.mounted) {
+                _scrobbleToast(context, 'No se pudo abrir el navegador');
+              }
             }
           },
           child: const Text('Abrir Last.fm'),
@@ -1121,6 +1201,183 @@ class _SettingCard extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Tarjeta de diagnóstico Beta: ruta del registro, contador de errores y
+/// acciones de compartir/exportar/limpiar. Reutiliza los estilos de Ajustes.
+class _BetaDiagnosticsCard extends ConsumerWidget {
+  const _BetaDiagnosticsCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ValueListenableBuilder<int>(
+      valueListenable: BetaCrashLogger.errorCount,
+      builder: (BuildContext context, int count, Widget? _) {
+        final String? directory = BetaCrashLogger.logDirectory;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              children: <Widget>[
+                Icon(
+                  Icons.bug_report_outlined,
+                  size: 18,
+                  color: context.accent,
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'Registro de errores',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Errores registrados: $count',
+              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.75)),
+            ),
+            const SizedBox(height: 4),
+            if (directory != null)
+              SelectableText(
+                directory,
+                style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
+              )
+            else
+              Text(
+                'La carpeta de registros no está disponible',
+                style: TextStyle(fontSize: 11, color: Colors.orangeAccent),
+              ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                OutlinedButton.icon(
+                  onPressed: () => unawaited(_share(context, ref)),
+                  icon: const Icon(Icons.ios_share_rounded, size: 18),
+                  label: const Text('Compartir'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => unawaited(_export(context, ref)),
+                  icon: const Icon(Icons.archive_outlined, size: 18),
+                  label: const Text('Exportar'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => unawaited(_confirmClear(context)),
+                  icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  label: const Text('Limpiar Logs'),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// Texto de versión/firma para el ZIP. Si falla, el informe Beta sigue siendo
+  /// útil; por eso el error no bloquea la exportación.
+  Future<String> _diagnostics(WidgetRef ref) async {
+    try {
+      return await buildDiagnosticsReport(ref.read(appUpdaterServiceProvider));
+    } catch (_) {
+      return 'Polaris Music — diagnóstico Beta';
+    }
+  }
+
+  Future<void> _share(BuildContext context, WidgetRef ref) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    try {
+      await BetaCrashLogger.shareLogs(diagnostics: await _diagnostics(ref));
+    } catch (error) {
+      if (messenger.mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('No se pudo compartir: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _export(BuildContext context, WidgetRef ref) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    try {
+      final String path = await BetaCrashLogger.exportLogs(
+        diagnostics: await _diagnostics(ref),
+      );
+      if (!context.mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (BuildContext context) => AlertDialog(
+          title: const Text('Diagnóstico exportado'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              const Text('Archivo guardado en:'),
+              const SizedBox(height: 8),
+              SelectableText(path, style: const TextStyle(fontSize: 12)),
+            ],
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      if (messenger.mounted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('No se pudo exportar: $error')),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmClear(BuildContext context) async {
+    final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) => AlertDialog(
+        title: const Text('Limpiar registros Beta'),
+        content: const Text(
+          'Se borrarán los archivos de registro de esta carpeta y se pondrá '
+          'el contador de errores a cero. Tu biblioteca y tus ajustes no se '
+          'tocan.',
+        ),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Limpiar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    try {
+      final int removed = await BetaCrashLogger.clearLogs();
+      if (messenger.mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('$removed archivo(s) de registro eliminado(s)'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (messenger.mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('No se pudieron limpiar los registros: $error'),
+          ),
+        );
+      }
+    }
   }
 }
 

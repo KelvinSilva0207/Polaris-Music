@@ -10,6 +10,7 @@ import '../../core/theme/theme_tokens.dart';
 import '../../core/utils/formatters.dart';
 import '../../features/player/domain/player_controller.dart';
 import '../../features/player/presentation/player_providers.dart';
+import 'light_motion.dart';
 import 'motion_scope.dart';
 
 /// Barra de progreso de la música.
@@ -192,27 +193,28 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                             ),
                           ),
                         ),
-                        // Pulgar: la posición salta con la pista (sin animar),
-                        // solo tamaño y color se interpolan al interactuar.
-                        // AnimatedContainer con `left` reiniciaba su controlador
-                        // cada tick y generaba interpolaciones innecesarias.
+                        // Pulgar: la posición salta con la pista (sin animar);
+                        // solo crece al interactuar. Un `Transform.scale` sobre
+                        // una caja fija evita interpolar `width`/`height` y
+                        // reconstruir la decoración en cada frame.
                         Positioned(
                           left: thumbLeft,
-                          top: railTop + (railHeight - thumbHeight) / 2,
-                          child: AnimatedContainer(
-                            duration: context.motion.duration(
-                              const Duration(milliseconds: 160),
-                              category: MotionCategory.gestures,
-                            ),
-                            curve: Curves.easeOutCubic,
-                            width: thumbWidth,
-                            height: thumbHeight,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(thumbWidth),
-                              color: context.ink,
-                              border: Border.all(
-                                color: accent.withValues(alpha: 0.65),
-                                width: _interacting ? 2 : 1,
+                          top: railTop + (railHeight - 18) / 2,
+                          child: MotionScale(
+                            scale: thumbHeight / 18,
+                            category: MotionCategory.gestures,
+                            duration: const Duration(milliseconds: 160),
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              width: 5,
+                              height: 18,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(3),
+                                color: context.ink,
+                                border: Border.all(
+                                  color: accent.withValues(alpha: 0.65),
+                                  width: _interacting ? 2 : 1,
+                                ),
                               ),
                             ),
                           ),
@@ -464,42 +466,27 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
                       child: Stack(
                         alignment: Alignment.centerLeft,
                         children: <Widget>[
-                          Row(
-                            children: List<Widget>.generate(_segments, (
-                              int index,
-                            ) {
-                              final bool lit = index < litSegments;
-                              return Expanded(
-                                child: AnimatedContainer(
-                                  duration: context.motion.duration(
-                                    const Duration(milliseconds: 140),
-                                    category: MotionCategory.gestures,
+                          // 28 AnimatedContainer (cada uno con BoxShadow) se
+                          // sustituyen por un único painter aislado. Solo se
+                          // interpola el número de segmentos encendidos.
+                          Positioned.fill(
+                            child: MotionValue(
+                              value: litSegments.toDouble(),
+                              category: MotionCategory.gestures,
+                              duration: const Duration(milliseconds: 140),
+                              builder: (BuildContext context, double lit) {
+                                return MotionPaint(
+                                  painter: _VolumeSegmentsPainter(
+                                    lit: lit,
+                                    segments: _segments,
+                                    accent: accent,
+                                    offColor: context.inkAlpha(
+                                      _hovering ? 0.22 : 0.12,
+                                    ),
                                   ),
-                                  height: lit ? 7 : 3,
-                                  margin: const EdgeInsets.symmetric(
-                                    horizontal: 1,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(3),
-                                    color: lit
-                                        ? accent.withValues(alpha: 0.85)
-                                        : context.inkAlpha(
-                                            _hovering ? 0.22 : 0.12,
-                                          ),
-                                    boxShadow: lit
-                                        ? <BoxShadow>[
-                                            BoxShadow(
-                                              color: accent.withValues(
-                                                alpha: 0.30,
-                                              ),
-                                              blurRadius: 5,
-                                            ),
-                                          ]
-                                        : null,
-                                  ),
-                                ),
-                              );
-                            }),
+                                );
+                              },
+                            ),
                           ),
                           // Punto de referencia minimalista.
                           if (_hovering)
@@ -550,4 +537,57 @@ class _VolumeSliderState extends ConsumerState<VolumeSlider> {
       ],
     );
   }
+}
+
+/// Riel segmentado de volumen en una sola capa.
+///
+/// Dibuja los segmentos con `Canvas` en vez de 28 decoraciones con sombra;
+/// el resplandor es un rectángulo translúcido, no un `BoxShadow` con blur.
+class _VolumeSegmentsPainter extends CustomPainter {
+  const _VolumeSegmentsPainter({
+    required this.lit,
+    required this.segments,
+    required this.accent,
+    required this.offColor,
+  });
+
+  /// Número de segmentos encendidos; puede ser fraccionario durante la transición.
+  final double lit;
+  final int segments;
+  final Color accent;
+  final Color offColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (segments <= 0 || size.width <= 0) return;
+    final double step = size.width / segments;
+    for (int index = 0; index < segments; index++) {
+      final double fill = (lit - index).clamp(0.0, 1.0).toDouble();
+      final double height = 3 + 4 * fill;
+      final Rect rect = Rect.fromLTWH(
+        index * step + 1,
+        (size.height - height) / 2,
+        math.max(0, step - 2),
+        height,
+      );
+      final RRect rounded = RRect.fromRectXY(rect, 3, 3);
+      if (fill > 0) {
+        canvas.drawRRect(
+          RRect.fromRectXY(rect.inflate(1), 4, 4),
+          Paint()..color = accent.withValues(alpha: 0.16 * fill),
+        );
+      }
+      canvas.drawRRect(
+        rounded,
+        Paint()..color = fill > 0 ? accent.withValues(alpha: 0.85) : offColor,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _VolumeSegmentsPainter old) =>
+      old.lit != lit ||
+      old.segments != segments ||
+      old.accent != accent ||
+      old.offColor != offColor;
 }

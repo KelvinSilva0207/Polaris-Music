@@ -16,6 +16,7 @@ abstract final class SourceStatusUi {
       MusicSourceIssue.offline => const Color(0xFF94A3B8),
       MusicSourceIssue.unsupported => context.inkAlpha(0.38),
       MusicSourceIssue.unavailable => const Color(0xFFF87171),
+      MusicSourceIssue.canceled => muted,
       null => muted,
     };
   }
@@ -30,6 +31,7 @@ abstract final class SourceStatusUi {
       MusicSourceIssue.offline => 'Sin red',
       MusicSourceIssue.unsupported => 'No disponible',
       MusicSourceIssue.unavailable => 'Error',
+      MusicSourceIssue.canceled => 'Cancelada',
       null => 'Error',
     };
   }
@@ -44,6 +46,7 @@ abstract final class SourceStatusUi {
     MusicSourceIssue.offline => 'No hay conexión con el proveedor.',
     MusicSourceIssue.unsupported => 'El proveedor no ofrece esta función.',
     MusicSourceIssue.unavailable => 'El servicio no responde correctamente.',
+    MusicSourceIssue.canceled => 'Consulta reemplazada por una más reciente.',
     null => 'Estado desconocido.',
   };
 
@@ -55,6 +58,7 @@ abstract final class SourceStatusUi {
     MusicSourceIssue.unavailable => true,
     MusicSourceIssue.notConfigured ||
     MusicSourceIssue.unsupported ||
+    MusicSourceIssue.canceled ||
     null => false,
   };
 }

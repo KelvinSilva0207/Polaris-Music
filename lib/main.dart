@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io' show exit;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,10 +9,14 @@ import 'app/app.dart';
 import 'core/constants/app_constants.dart';
 import 'core/di/service_locator.dart';
 import 'core/services/app_mutex.dart';
+import 'core/services/app_shutdown.dart';
+import 'core/services/beta_crash_logger.dart';
+import 'core/services/media_session_service.dart';
 import 'core/services/tray_service.dart';
 import 'core/services/window_service.dart';
 import 'core/theme/theme_tokens.dart';
 import 'core/utils/logger.dart';
+import 'features/online_music/data/online_diagnostics.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,19 +31,18 @@ Future<void> main() async {
 
   await AppLog.initialize();
 
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    AppLog.e(
-      'Flutter',
-      details.exceptionAsString(),
-      details.exception,
-      details.stack,
-    );
-  };
-  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    AppLog.e('Platform', error, error, stack);
-    return true;
-  };
+  // Diagnóstico Beta: un único par de handlers globales. BetaCrashLogger
+  // encadena los callbacks previos y es el único que llama a AppLog.e, así no
+  // se duplican líneas ni se presenta dos veces el mismo error.
+  try {
+    await BetaCrashLogger.initialize();
+    BetaCrashLogger.install();
+    // Los avisos de red/sincronización parcial de YouTube Music llegan al
+    // registro Beta sin aumentar el contador de errores (no son crashes).
+    OnlineDiagnostics.setReporter(BetaCrashLogger.logWarning);
+  } catch (error, stack) {
+    AppLog.w('Startup', 'No se pudo activar el diagnóstico Beta', error, stack);
+  }
 
   try {
     await _start();
@@ -73,6 +75,26 @@ Future<void> _start() async {
       await ServiceLocator.shutdown();
       await window.quit();
     });
+  }
+
+  // El botón X de la notificación de Android publica un evento desde el
+  // handler de audio_service. Aquí, en el isolate de la interfaz, se ejecuta
+  // el apagado completo. Solo así se pueden cerrar Drift, bandeja y motor
+  // antes de terminar el proceso.
+  if (sl.isRegistered<MediaSessionService>()) {
+    final MediaSessionService mediaSession = sl<MediaSessionService>();
+    bool handled = false;
+    Future<void> handleQuit() async {
+      if (handled) return;
+      handled = true;
+      AppLog.i('App', 'Salida solicitada desde la notificación multimedia');
+      await AppShutdown.forMediaNotification();
+    }
+
+    mediaSession.quitRequests.listen((void _) => unawaited(handleQuit()));
+    if (mediaSession.takePendingQuitRequest()) {
+      unawaited(handleQuit());
+    }
   }
 
   runApp(const ProviderScope(child: PolarisApp()));

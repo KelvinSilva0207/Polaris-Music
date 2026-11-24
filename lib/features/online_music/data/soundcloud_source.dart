@@ -5,6 +5,8 @@ import '../domain/music_source.dart';
 import '../domain/online_catalog_items.dart';
 import '../domain/online_source_settings.dart';
 import '../domain/online_track.dart';
+import '../domain/request_cancellation.dart';
+import 'dio_request_cancellation.dart';
 import 'source_helpers.dart';
 
 /// Proveedor de SoundCloud usando la API v2 oficial.
@@ -13,7 +15,8 @@ import 'source_helpers.dart';
 /// no se distribuye con la app. El usuario pega su token en ajustes y esta
 /// clase lo usa solo en memoria persistida localmente. Las pistas `blocked`
 /// (región, suscripción o autor) se descartan o se informan como estado.
-class SoundCloudSource implements MusicSourceProvider {
+class SoundCloudSource
+    implements MusicSourceProvider, CancellableMusicSourceProvider {
   SoundCloudSource({
     required this.settings,
     Dio? dio,
@@ -104,7 +107,24 @@ class SoundCloudSource implements MusicSourceProvider {
   }
 
   @override
-  Future<SourceResult> search(String query, {int limit = 25}) async {
+  Future<SourceResult> search(String query, {int limit = 25}) =>
+      _search(query, limit: limit);
+
+  @override
+  Future<SourceResult> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _search(query, limit: limit, token: token);
+  }
+
+  Future<SourceResult> _search(
+    String query, {
+    int limit = 25,
+    OnlineRequestToken? token,
+  }) async {
     final MusicSourceStatus current = status;
     if (!current.available && current.issue == MusicSourceIssue.notConfigured) {
       return SourceResult(source: id, status: current);
@@ -117,6 +137,7 @@ class SoundCloudSource implements MusicSourceProvider {
           'access': 'playable',
           'limit': limit,
         },
+        dioCancelTokenOf(token),
       );
       return SourceResult(
         source: id,
@@ -131,7 +152,21 @@ class SoundCloudSource implements MusicSourceProvider {
   }
 
   @override
-  Future<SourceResult> trending({int limit = 25}) async {
+  Future<SourceResult> trending({int limit = 25}) => _trending(limit: limit);
+
+  @override
+  Future<SourceResult> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _trending(limit: limit, token: token);
+  }
+
+  Future<SourceResult> _trending({
+    int limit = 25,
+    OnlineRequestToken? token,
+  }) async {
     final MusicSourceStatus current = status;
     if (!current.available && current.issue == MusicSourceIssue.notConfigured) {
       return SourceResult(source: id, status: current);
@@ -142,7 +177,7 @@ class SoundCloudSource implements MusicSourceProvider {
         response = await _get('/charts/tracks', <String, dynamic>{
           'limit': limit,
           'access': 'playable',
-        });
+        }, dioCancelTokenOf(token));
       } on DioException catch (error) {
         // Algunas cuentas no tienen acceso al género "charts"; se usa el
         // catálogo reproducible ordinario como lista de descubrimiento.
@@ -150,7 +185,7 @@ class SoundCloudSource implements MusicSourceProvider {
         response = await _get('/tracks', <String, dynamic>{
           'access': 'playable',
           'limit': limit,
-        });
+        }, dioCancelTokenOf(token));
       }
       return SourceResult(
         source: id,
@@ -171,8 +206,28 @@ class SoundCloudSource implements MusicSourceProvider {
     String query, {
     required OnlineSearchType type,
     int limit = 25,
+  }) => _searchCollections(query, type: type, limit: limit);
+
+  @override
+  Future<List<OnlineCollectionRef>> searchCollectionsCancellable(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return _searchCollections(query, type: type, limit: limit, token: token);
+  }
+
+  Future<List<OnlineCollectionRef>> _searchCollections(
+    String query, {
+    required OnlineSearchType type,
+    int limit = 25,
+    OnlineRequestToken? token,
   }) async {
-    if (query.trim().isEmpty || type == OnlineSearchType.songs) {
+    if (query.trim().isEmpty ||
+        type == OnlineSearchType.songs ||
+        type == OnlineSearchType.all) {
       return const <OnlineCollectionRef>[];
     }
     final MusicSourceStatus current = status;
@@ -183,6 +238,7 @@ class SoundCloudSource implements MusicSourceProvider {
       final Response<dynamic> response = await _get(
         type == OnlineSearchType.artists ? '/users' : '/playlists',
         <String, dynamic>{'q': query.trim(), 'limit': limit},
+        dioCancelTokenOf(token),
       );
       return _parseCollections(response.data, type, limit);
     } on Object {
@@ -194,6 +250,26 @@ class SoundCloudSource implements MusicSourceProvider {
   Future<List<OnlineTrack>> collectionTracks(
     OnlineCollectionRef collection, {
     int limit = 50,
+  }) => _collectionTracks(collection, limit: limit);
+
+  @override
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  }) async {
+    token.throwIfCancelled();
+    // SoundCloud no expone continuación: una sola respuesta trae la colección.
+    return CollectionPage.only(
+      await _collectionTracks(collection, limit: limit, token: token),
+    );
+  }
+
+  Future<List<OnlineTrack>> _collectionTracks(
+    OnlineCollectionRef collection, {
+    int limit = 50,
+    OnlineRequestToken? token,
   }) async {
     if (collection.id.isEmpty) return const <OnlineTrack>[];
     try {
@@ -202,6 +278,7 @@ class SoundCloudSource implements MusicSourceProvider {
             ? '/users/${Uri.encodeComponent(collection.id)}/tracks'
             : '/playlists/${Uri.encodeComponent(collection.id)}',
         <String, dynamic>{'limit': limit, 'access': 'playable'},
+        dioCancelTokenOf(token),
       );
       return _parseTracks(response.data, limit);
     } on Object {
@@ -325,7 +402,11 @@ class SoundCloudSource implements MusicSourceProvider {
   Future<String?> cacheArtwork(String? artworkUrl) =>
       _artworkCache.cache(artworkUrl, id);
 
-  Future<Response<dynamic>> _get(String path, [Map<String, dynamic>? query]) {
+  Future<Response<dynamic>> _get(
+    String path, [
+    Map<String, dynamic>? query,
+    CancelToken? cancel,
+  ]) {
     final String? token = _token;
     if (token == null) {
       throw const MusicSourceException(
@@ -342,6 +423,7 @@ class SoundCloudSource implements MusicSourceProvider {
     }
     return _dio.getUri<dynamic>(
       uri,
+      cancelToken: cancel,
       options: Options(
         headers: <String, String>{
           'Authorization': 'OAuth $token',

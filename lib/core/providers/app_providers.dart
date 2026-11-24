@@ -6,7 +6,6 @@ import '../di/service_locator.dart';
 import '../models/update_info.dart';
 import '../services/app_updater_service.dart';
 import '../services/audio_engine_service.dart';
-import '../services/brightness_service.dart';
 import '../services/global_hotkey_service.dart';
 import '../services/permission_service.dart';
 import '../services/settings_service.dart';
@@ -45,9 +44,6 @@ final Provider<StoragePathsService> storagePathsServiceProvider =
 
 final Provider<PermissionService> permissionServiceProvider =
     Provider<PermissionService>((Ref ref) => sl<PermissionService>());
-
-final Provider<BrightnessService> brightnessServiceProvider =
-    Provider<BrightnessService>((Ref ref) => sl<BrightnessService>());
 
 final Provider<UpdateService> updateServiceProvider = Provider<UpdateService>(
   (Ref ref) => sl<UpdateService>(),

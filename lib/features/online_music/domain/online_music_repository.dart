@@ -1,5 +1,6 @@
 import 'online_catalog_items.dart';
 import 'online_track.dart';
+import 'request_cancellation.dart';
 
 /// Contrato del catálogo online.
 ///
@@ -35,4 +36,30 @@ abstract interface class OnlineMusicRepository {
     OnlineCollectionRef collection, {
     int limit = 50,
   });
+
+  /// Variantes cancelables: el dominio nunca conoce el mecanismo HTTP real.
+  ///
+  /// Las implementaciones que aún no soportan cancelación heredan estos
+  /// defaults y siguen funcionando; las que consultan fuentes remotas deben
+  /// propagar el token hasta la capa de datos.
+  Future<List<OnlineTrack>> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) => search(query, limit: limit);
+
+  Future<List<OnlineTrack>> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) => trending(limit: limit);
+
+  /// Página de una colección. [continuation] viene de la respuesta anterior;
+  /// [token] permite abortar la petición al cambiar de vista.
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  }) async =>
+      CollectionPage.only(await collectionTracks(collection, limit: limit));
 }

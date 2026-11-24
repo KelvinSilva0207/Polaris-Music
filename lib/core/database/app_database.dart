@@ -13,6 +13,7 @@ part 'daos/eq_dao.dart';
 part 'daos/folder_dao.dart';
 part 'daos/history_dao.dart';
 part 'daos/lyrics_dao.dart';
+part 'daos/online_sync_dao.dart';
 part 'daos/playlist_dao.dart';
 part 'daos/profile_dao.dart';
 part 'daos/settings_dao.dart';
@@ -34,6 +35,8 @@ part 'daos/track_dao.dart';
     Profiles,
     Lyrics,
     Plugins,
+    OnlineReferences,
+    OnlineReferenceTracks,
   ],
   daos: [
     TrackDao,
@@ -44,6 +47,7 @@ part 'daos/track_dao.dart';
     SettingsDao,
     ProfileDao,
     LyricsDao,
+    OnlineSyncDao,
   ],
 )
 class AppDatabase extends _$AppDatabase {
@@ -65,9 +69,10 @@ class AppDatabase extends _$AppDatabase {
 
   final bool _manageBackups;
 
-  /// v4 añade la configuración completa de los presets de ecualización.
+  /// v5 añade tablas propias para referencias online (sin filas falsas en
+  /// `Tracks`). La migración es aditiva y no toca biblioteca ni historial.
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   static final List<Index> _libraryIndexes = <Index>[
     Index(
@@ -134,6 +139,13 @@ class AppDatabase extends _$AppDatabase {
         // v4: preset de ecualizador con modo, bandas y filtros paramétricos.
         // Los presets antiguos siguen leyéndose desde bandsJson/preampDb.
         await m.addColumn(eqPresets, eqPresets.configJson);
+      }
+      if (from < 5) {
+        // v5: tablas de referencias online. `m.create` usa CREATE TABLE IF NOT
+        // EXISTS: no se borra ni se reescribe Tracks, PlaylistEntries ni
+        // PlayHistory. Los favoritos/contadores locales nunca se tocan.
+        await m.create(onlineReferences);
+        await m.create(onlineReferenceTracks);
       }
     },
     beforeOpen: (details) async {

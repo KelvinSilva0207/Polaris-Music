@@ -8,10 +8,11 @@ import '../../../core/constants/app_paths.dart';
 import '../../../core/utils/file_utils.dart';
 import '../../../core/utils/logger.dart';
 import '../domain/music_source.dart';
+import '../domain/request_cancellation.dart';
 
 /// Error de dominio lanzado por un proveedor cuando no puede resolver audio.
 @immutable
-class MusicSourceException implements Exception {
+class MusicSourceException implements Exception, MusicSourceFailure {
   const MusicSourceException(
     this.message, {
     required this.source,
@@ -20,6 +21,8 @@ class MusicSourceException implements Exception {
 
   final String message;
   final MusicSourceId source;
+
+  @override
   final MusicSourceIssue issue;
 
   @override
@@ -31,6 +34,13 @@ class MusicSourceErrorMapper {
   const MusicSourceErrorMapper._();
 
   static MusicSourceStatus map(Object error, MusicSourceId source) {
+    if (error is RequestCanceledException ||
+        (error is DioException && CancelToken.isCancel(error))) {
+      return _status(
+        MusicSourceIssue.canceled,
+        'Consulta reemplazada por una búsqueda más reciente.',
+      );
+    }
     if (error is MusicSourceException) {
       return MusicSourceStatus(
         available: false,

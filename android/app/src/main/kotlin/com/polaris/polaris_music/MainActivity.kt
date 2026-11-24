@@ -1,7 +1,6 @@
 package com.polaris.polaris_music
 
 import android.app.Activity
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
@@ -21,7 +20,6 @@ class MainActivity : AudioServiceActivity() {
         private const val UPDATER_CHANNEL = "com.polaris.polaris_music/updater"
         private const val UPDATER_EVENTS_CHANNEL =
             "com.polaris.polaris_music/updater_events"
-        private const val BRIGHTNESS_CHANNEL = "com.polaris.polaris_music/brightness"
         private const val WIDGET_CHANNEL = "com.polaris.polaris_music/widget"
         private const val LOG_TAG = "PolarisUpdater"
         private const val REQUEST_INSTALL_APK = 4242
@@ -86,75 +84,36 @@ class MainActivity : AudioServiceActivity() {
                 }
             }
 
-        // Gestos laterales de la carátula: brillo de la ventana (Android).
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BRIGHTNESS_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "getBrightness" -> result.success(currentBrightness())
-
-                    "setBrightness" -> {
-                        val value = call.argument<Double>("value")
-                        if (value == null) {
-                            result.error("INVALID_VALUE", "Brillo ausente", null)
-                            return@setMethodCallHandler
-                        }
-                        val attributes = window.attributes
-                        attributes.screenBrightness = value.toFloat().coerceIn(0.05f, 1.0f)
-                        window.attributes = attributes
-                        result.success(null)
-                    }
-
-                    else -> result.notImplemented()
-                }
-            }
-
         // El widget de inicio se actualiza desde el hilo de Flutter al cambiar
-        // de pista o de estado de reproducción.
+        // de pista o de estado de reproducción. PREFS y el repintado viven solo
+        // en PolarisWidgetProvider: aquí no se duplica ninguna clave.
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WIDGET_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "update" -> {
-                        val title = call.argument<String>("title") ?: "Polaris Music"
-                        val artist = call.argument<String>("artist") ?: ""
+                        val title = call.argument<String>("title")
+                            ?: PolarisWidgetProvider.DEFAULT_TITLE
+                        val artist = call.argument<String>("artist")
+                            ?: PolarisWidgetProvider.DEFAULT_ARTIST
                         val playing = call.argument<Boolean>("playing") == true
-                        val artwork = call.argument<ByteArray>("artwork")
-                        val artPath = if (artwork != null && artwork.isNotEmpty()) {
-                            val file = File(cacheDir, "polaris_widget_art.jpg")
-                            file.writeBytes(artwork)
-                            file.absolutePath
-                        } else {
-                            null
-                        }
-
-                        val prefs = getSharedPreferences(
-                            "polaris_widget_state",
-                            Context.MODE_PRIVATE,
+                        PolarisWidgetProvider.publishState(
+                            this,
+                            title,
+                            artist,
+                            playing,
+                            call.argument<ByteArray>("artwork"),
                         )
-                        val editor = prefs.edit()
-                            .putString("title", title)
-                            .putString("artist", artist)
-                            .putBoolean("playing", playing)
-                        if (artPath != null) editor.putString("artwork", artPath)
-                        editor.apply()
-                        PolarisWidgetProvider.refreshAll(this)
+                        result.success(null)
+                    }
+
+                    "clear" -> {
+                        PolarisWidgetProvider.clearState(this)
                         result.success(null)
                     }
 
                     else -> result.notImplemented()
                 }
             }
-    }
-
-    /** Brillo real de la ventana; -1 indica el automático del sistema. */
-    private fun currentBrightness(): Double {
-        val windowBrightness = window.attributes.screenBrightness
-        if (windowBrightness >= 0f) return windowBrightness.toDouble()
-        return try {
-            Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS)
-                .toDouble() / 255.0
-        } catch (e: Settings.SettingNotFoundException) {
-            0.5
-        }
     }
 
     /** Android O+ exige el permiso de "instalar aplicaciones desconocidas". */

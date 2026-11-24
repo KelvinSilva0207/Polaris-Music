@@ -11,7 +11,10 @@ import '../domain/music_source.dart';
 import '../domain/online_catalog_items.dart';
 import '../domain/online_music_repository.dart';
 import '../domain/online_track.dart';
+import '../domain/request_cancellation.dart';
 import 'audius_models.dart';
+import 'dio_request_cancellation.dart';
+import 'online_diagnostics.dart';
 import 'source_helpers.dart';
 
 /// Error legible del catálogo online.
@@ -60,31 +63,77 @@ class OnlineMusicService implements OnlineMusicRepository {
   Future<String>? _hostFuture;
 
   @override
-  Future<List<OnlineTrack>> search(String query, {int limit = 25}) async {
+  Future<List<OnlineTrack>> search(
+    String query, {
+    int limit = 25,
+    CancelToken? cancel,
+  }) async {
     final String term = query.trim();
     if (term.isEmpty) return const <OnlineTrack>[];
     return _fetchTracks('/v1/tracks/search', <String, dynamic>{
       'query': term,
       'limit': limit,
       'app_name': _appName,
-    });
+    }, cancel);
   }
 
   @override
-  Future<List<OnlineTrack>> trending({int limit = 25}) => _fetchTracks(
-    '/v1/tracks/trending',
-    <String, dynamic>{'limit': limit, 'app_name': _appName},
-  );
+  Future<List<OnlineTrack>> trending({int limit = 25, CancelToken? cancel}) =>
+      _fetchTracks('/v1/tracks/trending', <String, dynamic>{
+        'limit': limit,
+        'app_name': _appName,
+      }, cancel);
+
+  @override
+  Future<List<OnlineTrack>> searchCancellable(
+    String query, {
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return search(query, limit: limit, cancel: dioCancelTokenOf(token));
+  }
+
+  @override
+  Future<List<OnlineTrack>> trendingCancellable({
+    int limit = 25,
+    required OnlineRequestToken token,
+  }) {
+    token.throwIfCancelled();
+    return trending(limit: limit, cancel: dioCancelTokenOf(token));
+  }
+
+  @override
+  Future<CollectionPage> collectionPage(
+    OnlineCollectionRef collection, {
+    String? continuation,
+    int limit = 50,
+    required OnlineRequestToken token,
+  }) async {
+    token.throwIfCancelled();
+    // Audius no entrega tokens de continuación: devuelve todo de una vez.
+    return CollectionPage.only(
+      await collectionTracks(
+        collection,
+        limit: limit,
+        cancel: dioCancelTokenOf(token),
+      ),
+    );
+  }
 
   Future<List<OnlineTrack>> _fetchTracks(
     String path,
-    Map<String, dynamic> query,
-  ) async {
+    Map<String, dynamic> query, [
+    CancelToken? cancel,
+  ]) async {
+    if (cancel?.isCancelled ?? false) throw const RequestCanceledException();
     final String host = await _host();
+    if (cancel?.isCancelled ?? false) throw const RequestCanceledException();
     try {
       final Response<dynamic> response = await _dio.get<dynamic>(
         '$host$path',
         queryParameters: query,
+        cancelToken: cancel,
         options: Options(responseType: ResponseType.json),
       );
       final Object? payload = response.data;
@@ -101,8 +150,19 @@ class OnlineMusicService implements OnlineMusicRepository {
         tracks.add(dto.toEntity());
       }
       return tracks;
+    } on RequestCanceledException {
+      rethrow;
     } on DioException catch (error, stack) {
-      AppLog.w(_tag, 'Fallo consultando $path', error, stack);
+      if (CancelToken.isCancel(error) ||
+          error.type == DioExceptionType.cancel) {
+        throw const RequestCanceledException();
+      }
+      OnlineDiagnostics.report(
+        _tag,
+        'Fallo consultando $path',
+        error: error,
+        stack: stack,
+      );
       throw const OnlineMusicException(
         'No se pudo consultar el catálogo online. Revisa tu conexión.',
       );
@@ -239,9 +299,12 @@ class OnlineMusicService implements OnlineMusicRepository {
     String query, {
     required OnlineSearchType type,
     int limit = 25,
+    CancelToken? cancel,
   }) async {
     final String term = query.trim();
-    if (term.isEmpty || type == OnlineSearchType.songs) {
+    if (term.isEmpty ||
+        type == OnlineSearchType.songs ||
+        type == OnlineSearchType.all) {
       return const <OnlineCollectionRef>[];
     }
     final String path = type == OnlineSearchType.artists
@@ -251,7 +314,7 @@ class OnlineMusicService implements OnlineMusicRepository {
       'query': term,
       'limit': limit,
       'app_name': _appName,
-    });
+    }, cancel);
 
     final List<OnlineCollectionRef> result = <OnlineCollectionRef>[];
     for (final Object? entry in entries) {
@@ -293,20 +356,35 @@ class OnlineMusicService implements OnlineMusicRepository {
 
   Future<List<Object?>> _fetchList(
     String path,
-    Map<String, dynamic> query,
-  ) async {
+    Map<String, dynamic> query, [
+    CancelToken? cancel,
+  ]) async {
+    if (cancel?.isCancelled ?? false) throw const RequestCanceledException();
     final String host = await _host();
+    if (cancel?.isCancelled ?? false) throw const RequestCanceledException();
     try {
       final Response<dynamic> response = await _dio.get<dynamic>(
         '$host$path',
         queryParameters: query,
+        cancelToken: cancel,
         options: Options(responseType: ResponseType.json),
       );
       final Object? payload = response.data;
       final Object? list = payload is Map ? payload['data'] : payload;
       return list is List ? list.cast<Object?>() : const <Object?>[];
+    } on RequestCanceledException {
+      rethrow;
     } on DioException catch (error, stack) {
-      AppLog.w(_tag, 'Fallo consultando $path', error, stack);
+      if (CancelToken.isCancel(error) ||
+          error.type == DioExceptionType.cancel) {
+        throw const RequestCanceledException();
+      }
+      OnlineDiagnostics.report(
+        _tag,
+        'Fallo consultando $path',
+        error: error,
+        stack: stack,
+      );
       throw const OnlineMusicException(
         'No se pudo consultar el catálogo de Audius. Revisa tu conexión.',
       );
@@ -324,6 +402,7 @@ class OnlineMusicService implements OnlineMusicRepository {
   Future<List<OnlineTrack>> collectionTracks(
     OnlineCollectionRef collection, {
     int limit = 50,
+    CancelToken? cancel,
   }) async {
     final String path = collection.kind == OnlineSearchType.artists
         ? '/v1/users/${Uri.encodeComponent(collection.id)}/tracks'
@@ -331,7 +410,7 @@ class OnlineMusicService implements OnlineMusicRepository {
     final List<OnlineTrack> tracks = await _fetchTracks(path, <String, dynamic>{
       'limit': limit,
       'app_name': _appName,
-    });
+    }, cancel);
     return tracks.take(limit).toList(growable: false);
   }
 

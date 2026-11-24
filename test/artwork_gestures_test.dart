@@ -100,41 +100,6 @@ void main() {
     },
   );
 
-  testWidgets('arrastrar el borde izquierdo ajusta el brillo', (
-    WidgetTester tester,
-  ) async {
-    final List<double> brightness = <double>[];
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: ArtworkGestures(
-              size: 200,
-              onSeekFraction: (_) {},
-              onPrevious: () {},
-              onNext: () {},
-              onLyrics: () {},
-              onMinimize: () {},
-              onBrightnessDelta: brightness.add,
-              child: const SizedBox(width: 200, height: 200),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    final Rect rect = tester.getRect(find.byType(ArtworkGestures));
-    final TestGesture gesture = await tester.startGesture(
-      Offset(rect.left + 10, rect.center.dy),
-    );
-    await gesture.moveBy(const Offset(0, 30));
-    await gesture.up();
-    await tester.pump();
-
-    expect(brightness, isNotEmpty);
-    expect(brightness.first, lessThan(0));
-  });
-
   testWidgets(
     'con el anillo activo, el borde derecho sigue controlando el volumen',
     (WidgetTester tester) async {

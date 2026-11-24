@@ -197,6 +197,8 @@ class _CustomizationScreenState extends ConsumerState<CustomizationScreen> {
               onCategory: (MotionCategory category, bool value) => ref
                   .read(motionControllerProvider.notifier)
                   .setCategory(category, value),
+              onPure: (bool value) =>
+                  ref.read(motionControllerProvider.notifier).setPure(value),
               onReset: () =>
                   ref.read(motionControllerProvider.notifier).reset(),
             ),
@@ -787,6 +789,7 @@ class _MotionControls extends StatelessWidget {
     required this.onProfile,
     required this.onSpeed,
     required this.onCategory,
+    required this.onPure,
     required this.onReset,
   });
 
@@ -794,6 +797,7 @@ class _MotionControls extends StatelessWidget {
   final ValueChanged<MotionProfile> onProfile;
   final ValueChanged<double> onSpeed;
   final void Function(MotionCategory category, bool value) onCategory;
+  final ValueChanged<bool> onPure;
   final VoidCallback onReset;
 
   @override
@@ -822,6 +826,18 @@ class _MotionControls extends StatelessWidget {
           suffix: '×',
           decimals: 1,
           onChanged: onSpeed,
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          dense: true,
+          title: const Text('Modo puro (rendimiento)'),
+          subtitle: Text(
+            'Sin animaciones: conserva tu perfil pero detiene escalas, '
+            'desplazamientos y brillos.',
+            style: TextStyle(fontSize: 10.5, color: context.inkAlpha(0.54)),
+          ),
+          value: motion.pure,
+          onChanged: onPure,
         ),
         for (final MotionCategory category in MotionCategory.values)
           SwitchListTile(

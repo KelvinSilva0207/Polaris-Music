@@ -35,6 +35,27 @@ class OnlineTrack {
   final String sourceLabel;
   final int playCount;
 
+  /// Reconstruye la pista de catálogo a partir de una pista ya reproducible.
+  ///
+  /// El motor solo recibe [Track] y necesita volver a pedir una URL fresca
+  /// cuando la anterior expira. Esta fábrica conserva el `externalId` (y con él
+  /// el `sourceId` que usan las fuentes) sin depender de la capa de datos.
+  factory OnlineTrack.fromPlayable(Track track) {
+    final String externalId = track.externalId ?? '';
+    final int colon = externalId.indexOf(':');
+    return OnlineTrack(
+      externalId: externalId,
+      sourceId: colon >= 0 ? externalId.substring(colon + 1) : externalId,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      genre: track.genre,
+      durationMs: track.durationMs,
+      artworkUrl: track.artworkUrl,
+      sourceLabel: track.sourceLabel ?? 'Online',
+    );
+  }
+
   Duration get duration => Duration(milliseconds: durationMs);
 
   /// Proyección reproducible. [streamUrl] es la URL directa de audio y

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/equalizer_config.dart';
 import '../../../core/theme/theme_tokens.dart';
+import 'precision_controls.dart';
 
 /// Editor de filtros paramétricos (frecuencia, ganancia y Q).
 class ParametricEqView extends StatelessWidget {
@@ -70,7 +71,6 @@ class _FilterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color accent = context.tokens.accent;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
@@ -121,51 +121,50 @@ class _FilterCard extends StatelessWidget {
               ),
             ],
           ),
-          _ControlRow(
+          PrecisionSliderRow(
             label: 'Frecuencia',
-            value: _formatFrequency(filter.frequencyHz),
-            child: Slider(
-              value: _toSlider(filter.frequencyHz),
-              min: 0,
-              max: 1000,
-              divisions: 1000,
-              activeColor: accent,
-              onChanged: (double value) => onChanged(
-                index,
-                filter.copyWith(frequencyHz: _fromSlider(value)),
-              ),
+            value: filter.frequencyHz,
+            min: AppConstants.eqMinFrequency,
+            max: AppConstants.eqMaxFrequency,
+            step: 1,
+            decimals: 0,
+            unit: 'Hz',
+            onChanged: (double value) =>
+                onChanged(index, filter.copyWith(frequencyHz: value)),
+            formatter: _formatFrequency,
+            sliderValue: _toSlider(filter.frequencyHz),
+            sliderMin: 0,
+            sliderMax: 1000,
+            divisions: 1000,
+            onSliderChanged: (double value) => onChanged(
+              index,
+              filter.copyWith(frequencyHz: _fromSlider(value)),
             ),
           ),
-          _ControlRow(
+          PrecisionSliderRow(
             label: 'Ganancia',
-            value:
-                '${filter.gainDb >= 0 ? '+' : ''}'
-                '${filter.gainDb.toStringAsFixed(1)} dB',
-            child: Slider(
-              value: filter.gainDb.clamp(
-                AppConstants.eqMinGain,
-                AppConstants.eqMaxGain,
-              ),
-              min: AppConstants.eqMinGain,
-              max: AppConstants.eqMaxGain,
-              divisions: 48,
-              activeColor: accent,
-              onChanged: (double value) =>
-                  onChanged(index, filter.copyWith(gainDb: value)),
-            ),
+            value: filter.gainDb,
+            min: AppConstants.eqMinGain,
+            max: AppConstants.eqMaxGain,
+            step: 1,
+            decimals: 1,
+            unit: 'dB',
+            onChanged: (double value) =>
+                onChanged(index, filter.copyWith(gainDb: value)),
+            formatter: (double v) =>
+                '${v >= 0 ? '+' : ''}${v.toStringAsFixed(1)} dB',
           ),
-          _ControlRow(
+          PrecisionSliderRow(
             label: 'Ancho / Q',
-            value: filter.q.toStringAsFixed(2),
-            child: Slider(
-              value: filter.q.clamp(AppConstants.eqMinQ, AppConstants.eqMaxQ),
-              min: AppConstants.eqMinQ,
-              max: AppConstants.eqMaxQ,
-              divisions: 100,
-              activeColor: accent,
-              onChanged: (double value) =>
-                  onChanged(index, filter.copyWith(q: value)),
-            ),
+            value: filter.q,
+            min: AppConstants.eqMinQ,
+            max: AppConstants.eqMaxQ,
+            step: 0.1,
+            decimals: 2,
+            unit: '',
+            onChanged: (double value) =>
+                onChanged(index, filter.copyWith(q: value)),
+            formatter: (double v) => v.toStringAsFixed(2),
           ),
         ],
       ),
@@ -198,41 +197,5 @@ class _FilterCard extends StatelessWidget {
       return '${k.toStringAsFixed(k < 10 ? 2 : 1)} kHz';
     }
     return '${hz.toStringAsFixed(0)} Hz';
-  }
-}
-
-class _ControlRow extends StatelessWidget {
-  const _ControlRow({
-    required this.label,
-    required this.value,
-    required this.child,
-  });
-
-  final String label;
-  final String value;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: <Widget>[
-        SizedBox(
-          width: 78,
-          child: Text(
-            label,
-            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
-          ),
-        ),
-        Expanded(child: child),
-        SizedBox(
-          width: 68,
-          child: Text(
-            value,
-            textAlign: TextAlign.end,
-            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.70)),
-          ),
-        ),
-      ],
-    );
   }
 }

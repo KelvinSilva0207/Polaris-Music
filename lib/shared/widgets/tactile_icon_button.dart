@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../../core/theme/motion_config.dart';
 import '../../core/theme/theme_tokens.dart';
+import 'light_motion.dart';
 import 'motion_scope.dart';
 
 /// Botón de transporte con respuesta táctil breve y legible.
@@ -128,7 +129,7 @@ class _TactileIconButtonState extends State<TactileIconButton>
           children: <Widget>[
             if (progress > 0 && progress < 1)
               IgnorePointer(
-                child: CustomPaint(
+                child: MotionPaint(
                   painter: _EchoPainter(
                     progress: progress,
                     color: accent,

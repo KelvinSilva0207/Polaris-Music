@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  minHeight cubre la carátula de 44dp más el padding del layout (8dp arriba y
+  abajo). updatePeriodMillis es la red de seguridad: Android impone 30 min como
+  mínimo y el push desde Dart sigue siendo la vía principal de actualización.
+-->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:initialLayout="@layout/widget_now_playing"
-    android:minHeight="40dp"
+    android:minHeight="64dp"
     android:minWidth="180dp"
     android:resizeMode="horizontal"
-    android:updatePeriodMillis="0"
+    android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen" />

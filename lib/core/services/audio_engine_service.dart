@@ -11,10 +11,17 @@ import '../utils/audio_filter_message.dart';
 import '../utils/logger.dart';
 import '../utils/media_uri.dart';
 import '../utils/replay_gain.dart';
+import 'audio_output_engine.dart';
 
 /// Renueva el acceso a archivos locales (permisos en Android) antes de dar por
 /// perdida una pista. Lo inyecta el DI porque el motor no conoce permisos.
 typedef LocalAccessRefresher = Future<bool> Function();
+
+/// Pide una URL nueva para una pista online cuyos enlaces han caducado.
+///
+/// Lo inyecta el DI porque el motor no conoce el catálogo online. Devuelve
+/// `null` cuando la pista ya no se puede resolver; la cola sigue con su orden.
+typedef StreamRefresher = Future<Track?> Function(Track track);
 
 /// Motor de reproducción basado en media_kit (libmpv).
 ///
@@ -31,7 +38,7 @@ typedef LocalAccessRefresher = Future<bool> Function();
 ///   la UI hasta el relevo.
 /// - Recorte de silencios: offsets `start`/`end` de `Media` (mpv), sin tocar la
 ///   cadena `af` del ecualizador.
-class AudioEngineService {
+class AudioEngineService implements AudioOutputEngine {
   /// Caché demuxer por deck. 8 MB son suficientes para archivos locales y
   /// streaming normal, y se pagan DOS veces cuando hay crossfade: reducirlo
   /// de 16 MB recorta 16 MB de memoria nativa en cada fundido.
@@ -117,36 +124,68 @@ class AudioEngineService {
   ///
   /// Cada alternativa lleva sus propias cabeceras (User-Agent incluido), así
   /// que se sustituye la pista en los espejos de la cola y se reabre la playlist
-  /// en la misma posición. Devuelve `true` cuando ha lanzado un reintento; el
-  /// mensaje "Reintentando…" se limpia en cuanto mpv abre el nuevo media.
+  /// en la misma posición. Si ya no quedan alternativas (o todas dieron `403`
+  /// por expiración) se pide una URL nueva al catálogo antes de declarar el
+  /// fallo. Devuelve `true` cuando ha lanzado un reintento; el mensaje
+  /// "Reintentando…" se limpia en cuanto mpv abre el nuevo media.
   Future<bool> _tryNextStreamAlternative(Track failed) async {
-    if (_disposed || failed.streamAlternatives.isEmpty) return false;
+    if (_disposed) return false;
     final String key = _streamKey(failed);
     // Un mismo error pueden emitirlo varios listeners de mpv; solo actuamos
     // una vez por ronda para no quemar todas las alternativas de golpe.
     if (!_retryingStreams.add(key)) return false;
     try {
       final int attempt = _streamAttempts[key] ?? 0;
-      if (attempt >= failed.streamAlternatives.length) return false;
-      final StreamAlternative alternative = failed.streamAlternatives[attempt];
-      final Track replacement = failed.copyWith(
-        path: alternative.url,
-        httpHeaders: alternative.httpHeaders,
-      );
-      _streamAttempts[key] = attempt + 1;
+      final bool hasAlternative = attempt < failed.streamAlternatives.length;
+      Track? replacement;
+      String detail = 'URL disponible';
+
+      if (hasAlternative) {
+        final StreamAlternative alternative =
+            failed.streamAlternatives[attempt];
+        replacement = failed.copyWith(
+          path: alternative.url,
+          httpHeaders: alternative.httpHeaders,
+        );
+        _streamAttempts[key] = attempt + 1;
+        detail = alternative.label.isEmpty
+            ? 'alternativa ${attempt + 1}'
+            : alternative.label;
+      } else if (refreshStream != null && _refreshedStreams.add(key)) {
+        // Todas las URLs conocidas expiraron: pedimos una resolución fresca.
+        try {
+          replacement = await refreshStream!(failed);
+        } on Object catch (error, stack) {
+          AppLog.w(
+            _tag,
+            'No se pudo refrescar “${failed.title}”',
+            error,
+            stack,
+          );
+        }
+        detail = 'URL fresca';
+      }
+
+      if (replacement == null || _disposed) return false;
+      final Duration resume = _state.position;
+      if (!hasAlternative) {
+        // La resolución nueva trae sus propias alternativas: se prueban desde
+        // el principio si vuelve a fallar.
+        _streamAttempts[key] = 0;
+      }
 
       List<Track> replaceIn(List<Track> source) {
         final int at = source.indexWhere((Track item) => item.id == failed.id);
         if (at < 0) return source;
         return List<Track>.unmodifiable(<Track>[
           ...source.sublist(0, at),
-          replacement,
+          replacement!,
           ...source.sublist(at + 1),
         ]);
       }
 
       final String retryMessage = sanitizePlaybackError(
-        'Failed to open ${alternative.url}',
+        'Failed to open ${replacement.path}',
         sourceLabel: failed.sourceLabel,
       );
       _state = _state.copyWith(
@@ -158,12 +197,12 @@ class AudioEngineService {
         error: retryMessage,
       );
       _emit(_state);
-      AppLog.w(
-        _tag,
-        'Reintentando “${failed.title}” con '
-        '${alternative.label.isEmpty ? 'alternativa ${attempt + 1}' : alternative.label}',
-      );
+      AppLog.w(_tag, 'Reintentando “${failed.title}” con $detail');
       await _open(autoPlay: true);
+      if (!hasAlternative && resume > Duration.zero && !_disposed) {
+        // Un refresco es la misma pista: el usuario no debe perder su sitio.
+        await _player.seek(resume);
+      }
       if (!_disposed && identical(_state.error, retryMessage)) {
         _emit(_state.copyWith(error: null, buffering: false));
       }
@@ -200,6 +239,7 @@ class AudioEngineService {
     Player? player,
     this.isBackgrounded,
     this.refreshLocalAccess,
+    this.refreshStream,
   }) : _player = player ?? _createPlayer();
 
   static const String _tag = 'AudioEngine';
@@ -211,9 +251,16 @@ class AudioEngineService {
   /// Renueva permisos/URI de archivos locales tras un reinicio de la app.
   final LocalAccessRefresher? refreshLocalAccess;
 
+  /// Resuelve de nuevo una pista online cuando todas sus URLs han expirado.
+  final StreamRefresher? refreshStream;
+
   /// Deck principal. No es `final` porque al terminar un crossfade se intercambia
   /// con el deck entrante; el handler `_onPlaylistChanged` no se modifica.
   Player _player;
+
+  /// Última salida pedida por el selector. Se replica en el deck entrante del
+  /// crossfade para que el relevo no cambie de dispositivo a mitad de canción.
+  AudioDevice _selectedAudioDevice = AudioDevice.auto();
 
   /// Segundo deck (mpv), solo durante un crossfade. Se dispone al terminar:
   /// conservarlo caliente deja vivo un contexto mpv con su caché de demuxer
@@ -254,6 +301,10 @@ class AudioEngineService {
   final Map<String, int> _streamAttempts = <String, int>{};
   final Set<String> _retryingStreams = <String>{};
 
+  /// Claves a las que ya se pidió una URL fresca. Evita bucles de reintento
+  /// cuando el servicio de streams sigue devolviendo enlaces caducados.
+  final Set<String> _refreshedStreams = <String>{};
+
   /// Plan de filtros ordenado de más completo a más seguro. mpv no informa al
   /// asignar `af`, así que un fallo al abrir la pista siguiente hace retroceder
   /// un paso en vez de llenar la UI de avisos rojos.
@@ -289,6 +340,49 @@ class AudioEngineService {
 
   /// Acceso de bajo nivel para DSP/ecualizador.
   Player get player => _player;
+
+  @override
+  List<AudioDevice> get availableAudioDevices => _player.state.audioDevices;
+
+  @override
+  Stream<List<AudioDevice>> get availableAudioDevicesChanged =>
+      _player.stream.audioDevices;
+
+  @override
+  AudioDevice get currentAudioDevice => _player.state.audioDevice;
+
+  @override
+  Stream<AudioDevice> get currentAudioDeviceChanged =>
+      _player.stream.audioDevice;
+
+  @override
+  bool get audioOutputSelectionAvailable => _player.platform is NativePlayer;
+
+  /// Cambia el `audio-device` de mpv sin reabrir la playlist.
+  ///
+  /// A diferencia de `open(Playlist(...))`, esto conserva la cola, el índice y
+  /// la posición: el mismo proceso mpv sigue reproduciendo, solo mueve el
+  /// sink. Si hay un crossfade en curso, el deck entrante recibe la misma
+  /// salida para que el fundido no se corte a mitad.
+  @override
+  Future<void> setAudioDevice(AudioDevice device) async {
+    if (_disposed) return;
+    await _player.setAudioDevice(device);
+    _selectedAudioDevice = device;
+    final Player? fade = _fadePlayer;
+    if (fade != null && !identical(fade, _player)) {
+      try {
+        await fade.setAudioDevice(device);
+      } catch (error, stack) {
+        AppLog.w(
+          _tag,
+          'No se pudo fijar la salida en el deck secundario',
+          error,
+          stack,
+        );
+      }
+    }
+  }
 
   /// `true` cuando libmpv está disponible y acepta filtros de audio.
   ///
@@ -590,8 +684,8 @@ class AudioEngineService {
         }
         if (failed != null &&
             failed.isOnline &&
-            failed.streamAlternatives.isNotEmpty &&
-            _isOpenFailure(message)) {
+            _isOpenFailure(message) &&
+            (failed.streamAlternatives.isNotEmpty || refreshStream != null)) {
           final bool retried = await _tryNextStreamAlternative(failed);
           if (retried) return;
           _emit(
@@ -818,6 +912,7 @@ class AudioEngineService {
     // Cola nueva: los reintentos de la cola anterior ya no proceden.
     _streamAttempts.clear();
     _retryingStreams.clear();
+    _refreshedStreams.clear();
     _notifiedMissingLocal.clear();
     // Si una ruta local ya no es legible tras reiniciar Android, renovamos el
     // acceso antes de que `_open` decida saltarla.
@@ -1213,8 +1308,10 @@ class AudioEngineService {
     }
     await _cancelCrossfade();
     _resetPositionFeed();
-    // Elegir explícitamente una pista vuelve a intentar su URL principal.
+    // Elegir explícitamente una pista vuelve a intentar su URL principal y
+    // permite pedir una nueva resolución si vuelve a caducar.
     _streamAttempts.remove(_streamKey(target));
+    _refreshedStreams.remove(_streamKey(target));
     _state = _state.copyWith(
       index: index,
       currentTrack: target,
@@ -1384,6 +1481,18 @@ class AudioEngineService {
     try {
       final Player incoming = _fadePlayer ??= _createPlayer();
       await incoming.stop();
+      // Un deck recién creado nace en `auto`; hereda la salida elegida antes de
+      // abrir la playlist para que el fundido suene por el mismo dispositivo.
+      try {
+        await incoming.setAudioDevice(_selectedAudioDevice);
+      } catch (error, stack) {
+        AppLog.w(
+          _tag,
+          'No se pudo heredar la salida en el deck entrante',
+          error,
+          stack,
+        );
+      }
       // El deck entrante usa el MISMO orden activo, así que su `playlist.index`
       // vuelve a significar lo mismo que `activeQueue[index]`.
       await incoming.open(
