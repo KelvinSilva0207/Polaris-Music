@@ -34,6 +34,28 @@ class PermissionService {
 
   bool get isAndroid => !kIsWeb && Platform.isAndroid;
 
+  /// Comprueba el permiso sin abrir diálogos. Se usa al restaurar la sesión:
+  /// si el acceso sigue concedido no debe molestarse al usuario al arrancar.
+  Future<bool> hasLibraryAccess() async {
+    if (!isAndroid) return true;
+    try {
+      PermissionStatus status = await Permission.audio.status;
+      if (status.isGranted || status.isLimited) return true;
+      status = await Permission.storage.status;
+      return status.isGranted || status.isLimited;
+    } catch (error, stack) {
+      AppLog.w(_tag, 'No se pudo consultar el permiso de audio', error, stack);
+      return false;
+    }
+  }
+
+  /// Renueva el acceso a la biblioteca solo cuando ha dejado de estar disponible.
+  Future<bool> refreshLibraryAccess() async {
+    if (await hasLibraryAccess()) return true;
+    final LibraryPermissionResult result = await requestLibraryAccess();
+    return result.granted;
+  }
+
   Future<LibraryPermissionResult> requestLibraryAccess() async {
     if (!isAndroid) return LibraryPermissionResult.desktop;
 

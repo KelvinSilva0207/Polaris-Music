@@ -113,6 +113,62 @@ class EqualizerDsp {
     return 'lavfi=[${chain.join(',')}]';
   }
 
+  /// Cadenas a probar, de más completa a más segura.
+  ///
+  /// Algunos builds de FFmpeg no incluyen todos los filtros usados por el
+  /// sub-armónico (`asetrate`, `atempo`, `alimiter`, ...). mpv no avisa al
+  /// asignar `af`: falla al abrir la siguiente pista. Tener el plan completo
+  /// aquí permite retirar primero la rama opcional y, si aun así falla, dejar
+  /// el ecualizador basic funcionando antes que silenciar la música.
+  static List<String> buildFilterCandidates({
+    required bool enabled,
+    required List<double> gains,
+    List<double>? frequencies,
+    double preampDb = 0,
+    EqMode mode = EqMode.graphic,
+    List<ParametricFilter> filters = const <ParametricFilter>[],
+    SubHarmonicSettings sub = const SubHarmonicSettings(),
+    bool pure = false,
+    bool antiClip = true,
+  }) {
+    final List<String> candidates = <String>[];
+
+    void add(String? value) {
+      if (value == null || value.isEmpty || candidates.contains(value)) return;
+      candidates.add(value);
+    }
+
+    String build({
+      required SubHarmonicSettings subSetting,
+      required bool limiter,
+    }) => buildFilter(
+      enabled: enabled,
+      gains: gains,
+      frequencies: frequencies,
+      preampDb: preampDb,
+      mode: mode,
+      filters: filters,
+      sub: subSetting,
+      pure: pure,
+      antiClip: limiter,
+    );
+
+    add(build(subSetting: sub, limiter: antiClip));
+    if (sub.enabled) {
+      add(build(subSetting: sub.copyWith(enabled: false), limiter: antiClip));
+    }
+    if (antiClip) {
+      add(build(subSetting: sub, limiter: false));
+      if (sub.enabled) {
+        add(build(subSetting: sub.copyWith(enabled: false), limiter: false));
+      }
+    }
+    // Último recurso: silenciar el DSP antes que dejar mpv rechazando la
+    // cadena en cada canción. `''` siempre cierra el plan.
+    candidates.add('');
+    return List<String>.unmodifiable(candidates);
+  }
+
   /// Atenuación (dB, valor ≤ 0) necesaria para dejar [headroom] por debajo de
   /// 0 dBFS antes del limitador.
   ///

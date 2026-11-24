@@ -103,10 +103,14 @@ class ServiceLocator {
     await fontService.restore();
     sl.registerSingleton<FontService>(fontService);
 
+    final PermissionService permissions = PermissionService();
+    sl.registerSingleton<PermissionService>(permissions);
+
     AppLog.i('Bootstrap', 'Iniciando motor de audio');
     final AudioEngineService engine = AudioEngineService(
       isBackgrounded: () =>
           sl.isRegistered<WindowService>() && sl<WindowService>().backgrounded,
+      refreshLocalAccess: permissions.refreshLibraryAccess,
     );
     await engine.initialize();
     sl.registerSingleton<AudioEngineService>(engine);
@@ -174,7 +178,6 @@ class ServiceLocator {
     sl.registerSingleton<TrayService>(tray);
     window.hideOnClose = tray.isInitialized;
 
-    sl.registerSingleton<PermissionService>(PermissionService());
     final AppUpdaterService updater = AppUpdaterService(
       updatesDirectory: storagePaths.updates,
     );

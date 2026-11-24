@@ -7,9 +7,14 @@ import '../debug/memory_probe.dart';
 import '../models/playback_state.dart';
 import '../models/track.dart';
 import '../models/track_technical_info.dart';
+import '../utils/audio_filter_message.dart';
 import '../utils/logger.dart';
 import '../utils/media_uri.dart';
 import '../utils/replay_gain.dart';
+
+/// Renueva el acceso a archivos locales (permisos en Android) antes de dar por
+/// perdida una pista. Lo inyecta el DI porque el motor no conoce permisos.
+typedef LocalAccessRefresher = Future<bool> Function();
 
 /// Motor de reproducción basado en media_kit (libmpv).
 ///
@@ -38,10 +43,8 @@ class AudioEngineService {
     );
   }
 
-  /// Un archivo local debe existir; las pistas online usan URLs y no se tocan.
-  static bool _isPlayable(Track track) =>
-      track.isOnline ||
-      (track.path.isNotEmpty && File(track.path).existsSync());
+  /// Un archivo local debe existir y poder leerse; las pistas online no se tocan.
+  static bool _isPlayable(Track track) => _isReadableLocalFile(track);
 
   /// Convierte un error de libmpv en un mensaje breve y sin URLs.
   ///
@@ -86,6 +89,25 @@ class AudioEngineService {
         lower.contains('410') ||
         lower.contains('permission denied') ||
         lower.contains('cannot open');
+  }
+
+  /// Aviso de archivo local ilegible, sin exponer la ruta completa.
+  static String localFileMessage(Track track) =>
+      'No se encontró o no se puede leer “${track.title}”. '
+      'Revisa los permisos de audio o vuelve a escanear la biblioteca.';
+
+  /// Comprueba que el archivo exista y se pueda consultar (no solo `exists`).
+  ///
+  /// `existsSync` puede devolver `true` con permisos revocados tras reiniciar
+  /// Android; `lengthSync` fuerza una llamada real al sistema de archivos.
+  static bool _isReadableLocalFile(Track track) {
+    if (track.isOnline) return true;
+    if (track.path.isEmpty) return false;
+    try {
+      return File(track.path).lengthSync() >= 0;
+    } catch (_) {
+      return false;
+    }
   }
 
   static String _streamKey(Track track) =>
@@ -160,25 +182,34 @@ class AudioEngineService {
     int from, {
     bool forward = true,
     bool wrap = true,
+    int? excludeId,
   }) {
     final int length = order.length;
     if (length == 0) return -1;
     final int limit = wrap ? length : (forward ? length - from : from + 1);
     for (int i = 0; i < limit; i++) {
       final int raw = forward ? from + i : from - i;
-      if (_isPlayable(order[raw % length])) return raw % length;
+      final Track candidate = order[raw % length];
+      if (candidate.id == excludeId) continue;
+      if (_isPlayable(candidate)) return raw % length;
     }
     return -1;
   }
 
-  AudioEngineService({Player? player, this.isBackgrounded})
-    : _player = player ?? _createPlayer();
+  AudioEngineService({
+    Player? player,
+    this.isBackgrounded,
+    this.refreshLocalAccess,
+  }) : _player = player ?? _createPlayer();
 
   static const String _tag = 'AudioEngine';
 
   /// Lo inyecta el DI para saber si la UI está en segundo plano. Nunca se usa
   /// para pausar la reproducción: solo reduce la frecuencia de eventos de UI.
   final bool Function()? isBackgrounded;
+
+  /// Renueva permisos/URI de archivos locales tras un reinicio de la app.
+  final LocalAccessRefresher? refreshLocalAccess;
 
   /// Deck principal. No es `final` porque al terminar un crossfade se intercambia
   /// con el deck entrante; el handler `_onPlaylistChanged` no se modifica.
@@ -222,7 +253,24 @@ class AudioEngineService {
   /// pistas con el mismo título.
   final Map<String, int> _streamAttempts = <String, int>{};
   final Set<String> _retryingStreams = <String>{};
-  String _lastAudioFilter = '';
+
+  /// Plan de filtros ordenado de más completo a más seguro. mpv no informa al
+  /// asignar `af`, así que un fallo al abrir la pista siguiente hace retroceder
+  /// un paso en vez de llenar la UI de avisos rojos.
+  List<String> _audioFilterPlan = const <String>[''];
+  int _audioFilterStep = 0;
+  String _appliedAudioFilter = '';
+  DateTime? _lastFilterFailure;
+  static const Duration _filterFailureDebounce = Duration(milliseconds: 900);
+
+  /// Control de accesos locales: se pide una sola vez por ronda para no
+  /// encadenar diálogos de permisos al restaurar una cola larga.
+  DateTime? _lastAccessRefresh;
+  bool _accessRefreshInFlight = false;
+  final Set<String> _notifiedMissingLocal = <String>{};
+  bool _handlingLocalFailure = false;
+  Timer? _errorClearTimer;
+
   DateTime _lastPositionEmit = DateTime.fromMillisecondsSinceEpoch(0);
   Duration? _pendingPosition;
   Timer? _positionTrailingTimer;
@@ -253,10 +301,36 @@ class AudioEngineService {
   /// Si mpv rechaza una cadena (por ejemplo, un filtro no disponible en su
   /// build de FFmpeg), se restaura la última cadena válida para no interrumpir
   /// la reproducción.
-  Future<void> setAudioFilter(String filter) async {
+  Future<void> setAudioFilter(
+    String filter, {
+    List<String> fallbacks = const <String>[],
+  }) async {
+    final List<String> plan = <String>[
+      filter,
+      ...fallbacks.where((String value) => value != filter),
+    ];
+    _audioFilterPlan = List<String>.unmodifiable(plan);
+    _audioFilterStep = 0;
+    _lastFilterFailure = null;
+    // Modo puro llega como cadena vacía: no hay nada que reintentar. Si el
+    // reproductor aún no está listo, la cadena se aplica en initialize/open.
+    await _applyAudioFilterStep();
+  }
+
+  bool get _canApplyAudioFilter =>
+      _initialized && !_disposed && _player.platform is NativePlayer;
+
+  Future<void> _applyAudioFilterStep() async {
+    if (!_canApplyAudioFilter) return;
+    final int step = _audioFilterStep.clamp(0, _audioFilterPlan.length - 1);
+    await _writeAudioFilter(_audioFilterPlan[step]);
+  }
+
+  /// Escribe `af` en libmpv sin convertir un rechazo del DSP en error de pista.
+  Future<void> _writeAudioFilter(String filter) async {
     final PlatformPlayer? platform = _player.platform;
-    if (platform is! NativePlayer) return;
-    final String previous = _lastAudioFilter;
+    if (platform is! NativePlayer || _disposed) return;
+    final String previous = _appliedAudioFilter;
     if (filter == previous) return;
 
     try {
@@ -276,7 +350,7 @@ class AudioEngineService {
         return;
       }
 
-      _lastAudioFilter = filter;
+      _appliedAudioFilter = filter;
       // El deck entrante debe llevar la misma cadena cuando el relevo ocurra
       // mientras el usuario está ajustando el ecualizador.
       final PlatformPlayer? fadePlatform = _fadePlayer?.platform;
@@ -296,6 +370,110 @@ class AudioEngineService {
       }
       AppLog.w(_tag, 'No se pudo aplicar el filtro de audio', error, stack);
     }
+  }
+
+  /// mpv avisa del fallo al intentar inicializar el filtro en la pista abierta.
+  /// Retrocedemos un paso del plan y, sobre todo, no publicamos el mensaje en
+  /// el stream de errores de reproducción: el audio sigue sonando.
+  Future<void> _handleAudioFilterFailure(String message) async {
+    final DateTime now = DateTime.now();
+    if (_lastFilterFailure != null &&
+        now.difference(_lastFilterFailure!) < _filterFailureDebounce) {
+      return;
+    }
+    _lastFilterFailure = now;
+    AppLog.w(_tag, 'DSP rechazado por libmpv; degradando cadena', message);
+    if (_audioFilterStep < _audioFilterPlan.length - 1) {
+      _audioFilterStep++;
+    }
+    await _applyAudioFilterStep();
+  }
+
+  /// Emite un error con caducidad para que el banner no quede colgado.
+  void _emitError(String message) {
+    _emit(_state.copyWith(buffering: false, error: message));
+    _errorClearTimer?.cancel();
+    _errorClearTimer = Timer(const Duration(seconds: 5), () {
+      if (!_disposed && _state.error == message) {
+        _emit(_state.copyWith(error: null));
+      }
+    });
+  }
+
+  /// Pide permisos/renueva el acceso local una sola vez por ronda.
+  Future<bool> _refreshLocalAccess() async {
+    final LocalAccessRefresher? refresher = refreshLocalAccess;
+    if (refresher == null) return false;
+    if (_accessRefreshInFlight) return false;
+    final DateTime now = DateTime.now();
+    if (_lastAccessRefresh != null &&
+        now.difference(_lastAccessRefresh!) < const Duration(seconds: 30)) {
+      return false;
+    }
+    _lastAccessRefresh = now;
+    _accessRefreshInFlight = true;
+    try {
+      return await refresher();
+    } catch (error, stack) {
+      AppLog.w(_tag, 'No se pudo renovar el acceso local', error, stack);
+      return false;
+    } finally {
+      _accessRefreshInFlight = false;
+    }
+  }
+
+  /// Comprueba la cola completa y renueva permisos antes de declararla muerta.
+  ///
+  /// Tras cerrar la app, Android puede revocar el acceso a las rutas guardadas;
+  /// el fallo no debe marcar todas las pistas como inexistentes sin intentar
+  /// recuperarlas primero.
+  Future<bool> _ensureQueueAccessible(List<Track> order) async {
+    if (!order.any((Track track) => !_isPlayable(track))) return true;
+    final bool refreshed = await _refreshLocalAccess();
+    if (!refreshed) return false;
+    return order.any(_isPlayable);
+  }
+
+  /// mpv avisó de que no puede abrir un archivo local.
+  ///
+  /// Antes de darlo por perdido se renuevan permisos (una sola vez por ronda) y
+  /// se reintenta la apertura; si sigue fallando se salta a la siguiente pista
+  /// con un único aviso claro, sin romper la cola ni dejar `buffering` colgado.
+  Future<void> _handleLocalOpenFailure(String message, Track failed) async {
+    if (_handlingLocalFailure || _disposed) return;
+    _handlingLocalFailure = true;
+    try {
+      final bool refreshed = await _refreshLocalAccess();
+      if (refreshed && _isPlayable(failed)) {
+        AppLog.i(_tag, 'Acceso local renovado; reabriendo la cola');
+        await _open(autoPlay: true);
+        return;
+      }
+      await _skipUnavailableCurrent(failed);
+    } finally {
+      _handlingLocalFailure = false;
+    }
+  }
+
+  /// Avanza desde la pista ilegible sin volver a caer en ella.
+  Future<void> _skipUnavailableCurrent(Track failed) async {
+    final List<Track> active = _state.activeQueue;
+    final int fallback = _nextPlayableIndex(
+      active,
+      _state.index + 1,
+      wrap: _state.repeat == RepeatMode.all,
+      excludeId: failed.id,
+    );
+    final String key = _streamKey(failed);
+    if (_notifiedMissingLocal.add(key)) {
+      _emitError(localFileMessage(failed));
+    }
+    if (fallback < 0) {
+      await _player.stop();
+      _emit(_state.copyWith(playing: false, buffering: false));
+      return;
+    }
+    await playIndex(fallback);
   }
 
   /// Lee una sola vez las propiedades reales del archivo/stream de mpv.
@@ -361,6 +539,9 @@ class AudioEngineService {
     await _player.setRate(1);
 
     _bindPlayer();
+    // La cadena elegida antes de que libmpv estuviera listo (por ejemplo, al
+    // restaurar preferencias) se aplica aquí, nunca desde el constructor.
+    await _applyAudioFilterStep();
 
     AppLog.i(_tag, 'Motor inicializado (${_player.platform.runtimeType})');
   }
@@ -388,9 +569,25 @@ class AudioEngineService {
         }
       }),
       _player.stream.error.listen((String message) async {
+        // mpv mezcla en este stream los fallos de `af` con los de apertura.
+        // Un filtro rechazado no debe convertirse en banner rojo: degradamos
+        // la cadena y seguimos reproduciendo.
+        if (AudioFilterMessage.isFilterFailure(message)) {
+          AppLog.w(
+            _tag,
+            'Mensaje de DSP ignorado por el stream de errores',
+            message,
+          );
+          await _handleAudioFilterFailure(message);
+          return;
+        }
         // El log conserva el detalle técnico (incluida la URL); la UI no.
         AppLog.e(_tag, message);
         final Track? failed = _state.currentTrack;
+        if (failed != null && !failed.isOnline && _isOpenFailure(message)) {
+          await _handleLocalOpenFailure(message, failed);
+          return;
+        }
         if (failed != null &&
             failed.isOnline &&
             failed.streamAlternatives.isNotEmpty &&
@@ -621,6 +818,10 @@ class AudioEngineService {
     // Cola nueva: los reintentos de la cola anterior ya no proceden.
     _streamAttempts.clear();
     _retryingStreams.clear();
+    _notifiedMissingLocal.clear();
+    // Si una ruta local ya no es legible tras reiniciar Android, renovamos el
+    // acceso antes de que `_open` decida saltarla.
+    await _ensureQueueAccessible(tracks);
     final int index = startIndex.clamp(0, tracks.length - 1);
     _state = _state.copyWith(
       queue: List<Track>.unmodifiable(tracks),
@@ -704,13 +905,12 @@ class AudioEngineService {
     // tocar `queue`/`shuffledQueue`, para no desalinear el orden de mpv.
     final int start = _nextPlayableIndex(order, wanted);
     if (start < 0) {
-      _emit(
-        _state.copyWith(
-          buffering: false,
-          playing: false,
-          error: 'No hay pistas disponibles en la cola',
-        ),
+      _emitError(
+        order[wanted].isOnline
+            ? 'No hay pistas disponibles en la cola'
+            : localFileMessage(order[wanted]),
       );
+      _emit(_state.copyWith(playing: false));
       return;
     }
     if (start != wanted) {
@@ -720,9 +920,16 @@ class AudioEngineService {
         position: Duration.zero,
         duration: order[start].duration,
         buffering: false,
-        error: 'Archivo no disponible: ${order[wanted].title}',
       );
       _emit(_state);
+      final Track skipped = order[wanted];
+      if (_notifiedMissingLocal.add(_streamKey(skipped))) {
+        _emitError(
+          skipped.isOnline
+              ? 'No se pudo abrir “${skipped.title}”. Se eligió otra pista.'
+              : localFileMessage(skipped),
+        );
+      }
     }
 
     final List<Media> medias = order.map(_mediaFor).toList(growable: false);
@@ -980,24 +1187,29 @@ class AudioEngineService {
     if (index < 0 || index >= active.length) return;
     final Track target = active[index];
     if (!_isPlayable(target)) {
-      final int fallback = _nextPlayableIndex(
-        active,
-        index + 1,
-        wrap: _state.repeat == RepeatMode.all,
-      );
-      if (fallback < 0) {
-        _emit(
-          _state.copyWith(
-            buffering: false,
-            playing: false,
-            error: 'No hay pistas disponibles en la cola',
-          ),
+      // Puede ser un permiso revocado al reiniciar, no un archivo borrado.
+      await _ensureQueueAccessible(active);
+      if (!_isPlayable(target)) {
+        final int fallback = _nextPlayableIndex(
+          active,
+          index + 1,
+          wrap: _state.repeat == RepeatMode.all,
+          excludeId: target.id,
         );
+        if (_notifiedMissingLocal.add(_streamKey(target))) {
+          _emitError(
+            target.isOnline
+                ? 'No se pudo abrir “${target.title}”. Se eligió otra pista.'
+                : localFileMessage(target),
+          );
+        }
+        if (fallback < 0) {
+          _emit(_state.copyWith(playing: false, buffering: false));
+          return;
+        }
+        await playIndex(fallback);
         return;
       }
-      _emit(_state.copyWith(error: 'Archivo no disponible: ${target.title}'));
-      await playIndex(fallback);
-      return;
     }
     await _cancelCrossfade();
     _resetPositionFeed();
@@ -1185,8 +1397,11 @@ class AudioEngineService {
       await incoming.setPlaylistMode(PlaylistMode.none);
       await incoming.setShuffle(false);
       final PlatformPlayer? platform = incoming.platform;
-      if (platform is NativePlayer && _lastAudioFilter.isNotEmpty) {
-        await platform.setProperty('af', _lastAudioFilter);
+      final String filter = _audioFilterStep < _audioFilterPlan.length
+          ? _audioFilterPlan[_audioFilterStep]
+          : '';
+      if (platform is NativePlayer && filter.isNotEmpty) {
+        await platform.setProperty('af', filter);
       }
       await incoming.play();
 
@@ -1380,6 +1595,8 @@ class AudioEngineService {
     _disposed = true;
     _crossfadeTimer?.cancel();
     _crossfadeTimer = null;
+    _errorClearTimer?.cancel();
+    _errorClearTimer = null;
     _positionTrailingTimer?.cancel();
     _positionTrailingTimer = null;
     await _crossfadePositionSub?.cancel();

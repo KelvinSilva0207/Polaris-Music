@@ -436,6 +436,9 @@ Future<_ScannedFile?> _parseFile(
     final String genre = metadata.genres.isEmpty
         ? ''
         : MetadataText.clean(metadata.genres.first, '');
+    // Las etiquetas incrustadas también llegan con mojibake: conservamos los
+    // saltos de línea del LRC y reparamos solo la codificación.
+    final String lyrics = MetadataText.repairLines(metadata.lyrics ?? '');
 
     final Picture? picture = needArtwork && metadata.pictures.isNotEmpty
         ? metadata.pictures.first
@@ -465,8 +468,8 @@ Future<_ScannedFile?> _parseFile(
       format: FileUtils.extensionOf(path).toUpperCase(),
       size: file.lengthSync(),
       artworkPath: artworkPath,
-      lyrics: metadata.lyrics,
-      lyricsSynced: (metadata.lyrics ?? '').contains('['),
+      lyrics: lyrics.trim().isEmpty ? null : lyrics,
+      lyricsSynced: lyrics.contains('['),
     );
   } catch (_) {
     // Formatos sin parser o archivos corruptos: se omiten sin abortar el lote.

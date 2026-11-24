@@ -8,6 +8,7 @@ import '../../../core/models/track.dart';
 import '../../../core/utils/file_utils.dart';
 import '../../../core/utils/logger.dart';
 import '../../../core/utils/lrc_parser.dart';
+import '../../../core/utils/text_decoder.dart';
 
 /// Letra resuelta para una pista.
 class LyricsResult {
@@ -59,7 +60,7 @@ class LyricsService {
     final File? local = await FileUtils.siblingLyrics(track.path);
     if (local != null) {
       try {
-        final String raw = await local.readAsString();
+        final String raw = await TextDecoder.readFile(local);
         final LyricsResult result = LyricsResult(
           document: LrcDocument.parse(raw),
           source: 'local',
@@ -129,7 +130,7 @@ class LyricsService {
     if (!FileUtils.isLrcFile(path)) {
       throw const FormatException('El archivo debe tener extensión .lrc');
     }
-    final String raw = await File(path).readAsString();
+    final String raw = await TextDecoder.readFile(File(path));
     if (raw.trim().isEmpty) return null;
     final LrcDocument document = LrcDocument.parse(raw);
     await saveLyrics(track, document, source: 'local', synced: document.synced);

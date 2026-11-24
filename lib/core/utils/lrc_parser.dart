@@ -1,3 +1,5 @@
+import 'metadata_text.dart';
+
 /// Parser de letras LRC (sincronizadas) y texto plano.
 ///
 /// Soporta timestamps `[mm:ss]`, `[mm:ss.xx]`, `[mm:ss:xx]`, varias marcas por
@@ -68,7 +70,10 @@ class LrcDocument {
     String artist = '';
     Duration offset = Duration.zero;
 
-    for (final String rawLine in const LineSplitter().convert(raw)) {
+    // Repara el mojibake sin tocar los saltos de línea: el parser necesita
+    // que cada marca de tiempo siga en su propia línea.
+    final String source = MetadataText.repairLines(raw);
+    for (final String rawLine in const LineSplitter().convert(source)) {
       final String line = rawLine.trimRight();
       if (line.trim().isEmpty) continue;
 

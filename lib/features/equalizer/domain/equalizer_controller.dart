@@ -405,17 +405,19 @@ class EqualizerController extends StateNotifier<EqualizerState> {
 
   Future<void> _applyDsp() async {
     _dspDebounce?.cancel();
+    final List<String> candidates = EqualizerDsp.buildFilterCandidates(
+      enabled: state.enabled,
+      gains: state.config.bands,
+      frequencies: state.config.frequencies,
+      preampDb: state.config.preampDb,
+      mode: state.config.mode,
+      filters: state.config.filters,
+      sub: state.config.sub,
+      pure: state.pure,
+    );
     await _engine.setAudioFilter(
-      EqualizerDsp.buildFilter(
-        enabled: state.enabled,
-        gains: state.config.bands,
-        frequencies: state.config.frequencies,
-        preampDb: state.config.preampDb,
-        mode: state.config.mode,
-        filters: state.config.filters,
-        sub: state.config.sub,
-        pure: state.pure,
-      ),
+      candidates.first,
+      fallbacks: candidates.skip(1).toList(growable: false),
     );
   }
 

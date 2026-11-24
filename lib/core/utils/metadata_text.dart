@@ -46,6 +46,13 @@ class MetadataText {
     0x0178: 0x9F,
   };
 
+  /// Inverso del mapa anterior: byte CP1252 → carácter Unicode. Se usa cuando
+  /// un `.lrc` no es UTF-8 válido y hay que decodificarlo como Windows-1252.
+  static final Map<int, int> _cp1252Forward = Map<int, int>.fromIterables(
+    _cp1252Reverse.values,
+    _cp1252Reverse.keys,
+  );
+
   static const List<String> _markers = <String>['Ã', 'Â', 'â€', 'ðŸ', 'ï¿½'];
 
   /// Puntos de código que indican que la etiqueta ya llegó rota.
@@ -120,10 +127,26 @@ class MetadataText {
       .replaceAll(_whiteSpace, ' ')
       .trim();
 
-  /// Repara `Ã©`, `Â©`, `â€™`, `ÃƒÂ©`, `ï¿½`... de forma conservadora e
-  /// idempotente, sin devolver caracteres de control al editor de etiquetas.
-  static String repair(String input) {
-    String current = input.replaceAll('\x00', '').trim();
+  /// Decodifica bytes Latin-1/Windows-1252 a Unicode.
+  ///
+  /// Latin-1 puro deja 0x80–0x9F como controles; CP1252 les da su significado
+  /// real (€, comillas tipográficas, guiones...). Los bytes no asignados se
+  /// conservan y [clean]/[repair] se encargan de descartarlos.
+  static String decodeWindows1252(List<int> bytes) => String.fromCharCodes(
+    bytes.map(
+      (int byte) =>
+          byte >= 0x80 && byte <= 0x9F ? (_cp1252Forward[byte] ?? byte) : byte,
+    ),
+  );
+
+  /// Repara el mojibake sin colapsar espacios: imprescindible para `.lrc`,
+  /// donde los saltos de línea forman parte del formato.
+  static String repairLines(String input) =>
+      _tidyLines(repairMojibakeOnly(input));
+
+  /// Solo corrige la codificación. No normaliza espacios ni recorta texto.
+  static String repairMojibakeOnly(String input) {
+    String current = input.replaceAll('\x00', '');
     // Hasta tres pasadas para mojibake doble: `ÃƒÂ©` → `Ã©` → `é`.
     for (int pass = 0; pass < 3; pass++) {
       if (!_looksLikeMojibake(current)) break;
@@ -136,14 +159,24 @@ class MetadataText {
         // Si no es UTF-8 válido, conservamos el texto original.
         break;
       }
-      candidate = candidate.trim();
       if (candidate.isEmpty || candidate == current) break;
       if (_mojibakeScore(candidate) >= _mojibakeScore(current)) break;
       current = candidate;
     }
     // Un `Â` suelto al final no tiene pareja UTF-8: se descarta.
-    return _tidy(current.replaceAll(RegExp(r'Â+$'), ''));
+    return current.replaceAll(RegExp(r'Â+$'), '');
   }
+
+  /// Repara `Ã©`, `Â©`, `â€™`, `ÃƒÂ©`, `ï¿½`... de forma conservadora e
+  /// idempotente, sin devolver caracteres de control al editor de etiquetas.
+  static String repair(String input) => _tidy(repairMojibakeOnly(input));
+
+  /// Como [_tidy] pero conservando saltos de línea y sangrías.
+  static String _tidyLines(String value) => value
+      .replaceAll(_controlCharacters, '')
+      .replaceAll('\uFEFF', '')
+      .replaceAll('\u200B', '')
+      .replaceAll(_replacementGlyphs, ' ');
 
   /// Texto listo para guardar o mostrar: repara, quita caracteres de control
   /// y cae a [fallback] si no queda nada legible.
