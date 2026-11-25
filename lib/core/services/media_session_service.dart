@@ -27,6 +27,21 @@ List<MediaControl> buildAndroidMediaControls({required bool playing}) =>
       ),
     ];
 
+/// Posición de la `X` dentro de [buildAndroidMediaControls].
+const int androidQuitControlIndex = 3;
+
+/// Botones visibles en la notificación plegada de Android.
+///
+/// `audio_service` limita la vista compacta a tres acciones, así que la `X`
+/// ocupa el lugar de "siguiente": se puede cerrar la app sin desplegar la
+/// notificación ni entrar en Ajustes del sistema. Las dos primeras posiciones
+/// no se mueven y "siguiente" sigue disponible al expandir la notificación.
+const List<int> androidCompactActionIndices = <int>[
+  0,
+  1,
+  androidQuitControlIndex,
+];
+
 /// Integración con los controles nativos de cada plataforma.
 ///
 /// - Android: `audio_service` → notificación, pantalla de bloqueo y botones
@@ -337,9 +352,9 @@ class PolarisAudioHandler extends BaseAudioHandler
     playbackState.add(
       PlaybackState(
         controls: buildAndroidMediaControls(playing: snapshot.playing),
-        // La acción personalizada no cuenta como acción nativa compacta; se
-        // muestra en el panel expandido de la notificación.
-        androidCompactActionIndices: const <int>[0, 1, 2],
+        // La X viaja con los controles compactos para cerrar la app sin tener
+        // que entrar en Ajustes del sistema.
+        androidCompactActionIndices: androidCompactActionIndices,
         systemActions: const <MediaAction>{
           MediaAction.seek,
           MediaAction.seekForward,

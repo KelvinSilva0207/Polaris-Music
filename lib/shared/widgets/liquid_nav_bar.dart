@@ -44,9 +44,13 @@ class LiquidNavBar extends StatefulWidget {
 }
 
 class _LiquidNavBarState extends State<LiquidNavBar>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   static const int _count = 4;
 
+  // Ambos controladores se crean una sola vez en initState y comparten este
+  // TickerProvider: el indicador persigue la selección y el panel se despliega
+  // al entrar. Con SingleTickerProviderStateMixin el segundo vsync lanzaba
+  // "multiple tickers were created" al mostrar/animar la barra.
   late final AnimationController _controller;
 
   /// Despliegue de la barra flotante al entrar en un modo/panel nuevo.
@@ -132,8 +136,11 @@ class _LiquidNavBarState extends State<LiquidNavBar>
 
   @override
   void dispose() {
-    _controller.dispose();
+    // Las animaciones curvas se liberan antes que sus controladores para
+    // desenganchar los listeners; cada controlador creado se libera aquí.
+    _position.dispose();
     _revealMotion.dispose();
+    _controller.dispose();
     _reveal.dispose();
     super.dispose();
   }

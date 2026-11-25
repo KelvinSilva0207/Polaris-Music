@@ -29,6 +29,36 @@ void main() {
     expect(PolarisAudioHandler.quitEvent, 'polaris.quit');
   });
 
+  test('la X aparece en la notificación plegada', () {
+    final List<MediaControl> controls = buildAndroidMediaControls(
+      playing: true,
+    );
+
+    // Android solo muestra tres acciones compactas y audio_service lo valida
+    // con un assert: superar el límite tumbaría la notificación completa.
+    expect(androidCompactActionIndices.length, lessThanOrEqualTo(3));
+    expect(androidCompactActionIndices, contains(androidQuitControlIndex));
+    expect(
+      controls[androidQuitControlIndex].customAction?.name,
+      PolarisAudioHandler.quitAction,
+    );
+    expect(
+      androidCompactActionIndices.map((int index) => controls[index]).toList(),
+      <MediaControl>[
+        MediaControl.skipToPrevious,
+        MediaControl.pause,
+        controls.last,
+      ],
+    );
+    expect(
+      () => PlaybackState(
+        controls: controls,
+        androidCompactActionIndices: androidCompactActionIndices,
+      ),
+      returnsNormally,
+    );
+  });
+
   test('el icono X sobrevive a R8', () {
     final File icon = File('android/app/src/main/res/drawable/ic_close.xml');
     final File keep = File('android/app/src/main/res/raw/keep.xml');
