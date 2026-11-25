@@ -31,12 +31,11 @@ class CompactPanel extends StatelessWidget {
     final BorderRadius radius = BorderRadius.circular(style.radius);
 
     final bool matte = style.tokens.finish == SurfaceFinish.matte;
-    final BoxDecoration decoration = switch (style.tokens.finish) {
+    final BoxDecoration surface = switch (style.tokens.finish) {
       SurfaceFinish.matte => BoxDecoration(
         color: fill.withValues(alpha: alpha),
         borderRadius: radius,
         border: Border.all(color: style.accent.withValues(alpha: 0.20)),
-        boxShadow: null,
       ),
       SurfaceFinish.liquid => BoxDecoration(
         gradient: LinearGradient(
@@ -49,7 +48,21 @@ class CompactPanel extends StatelessWidget {
         ),
         borderRadius: radius,
         border: Border.all(color: style.accent.withValues(alpha: 0.24)),
-        boxShadow: style.glow
+      ),
+      SurfaceFinish.glass => BoxDecoration(
+        color: fill.withValues(alpha: alpha),
+        borderRadius: radius,
+        border: Border.all(color: style.accent.withValues(alpha: 0.28)),
+      ),
+    };
+
+    // Sombra y recorte comparten el mismo radio, pero la sombra se pinta en un
+    // DecoratedBox exterior: si el ClipRRect envolviera al DecoratedBox con
+    // boxShadow, recortaría el resplandor y dejaría solo el marco flotante.
+    final List<BoxShadow>? shadows = switch (style.tokens.finish) {
+      SurfaceFinish.matte => null,
+      SurfaceFinish.liquid =>
+        style.glow
             ? <BoxShadow>[
                 BoxShadow(
                   color: style.accent.withValues(alpha: 0.16),
@@ -58,12 +71,8 @@ class CompactPanel extends StatelessWidget {
                 ),
               ]
             : null,
-      ),
-      SurfaceFinish.glass => BoxDecoration(
-        color: fill.withValues(alpha: alpha),
-        borderRadius: radius,
-        border: Border.all(color: style.accent.withValues(alpha: 0.28)),
-        boxShadow: style.glow
+      SurfaceFinish.glass =>
+        style.glow
             ? <BoxShadow>[
                 BoxShadow(
                   color: style.accent.withValues(alpha: 0.22),
@@ -77,28 +86,28 @@ class CompactPanel extends StatelessWidget {
                 ),
               ]
             : null,
-      ),
     };
 
-    final Widget decorated = DecoratedBox(
-      decoration: decoration,
+    Widget inner = DecoratedBox(
+      decoration: surface,
       child: Padding(padding: padding, child: child),
     );
-
-    if (matte || style.blur <= 0) {
-      return ClipRRect(borderRadius: radius, child: decorated);
+    if (!matte && style.blur > 0) {
+      // El acabado líquido limita el desenfoque para no multiplicar el coste GPU.
+      final double sigma = style.tokens.finish == SurfaceFinish.liquid
+          ? math.min(style.blur, 16)
+          : style.blur;
+      inner = BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: inner,
+      );
     }
 
-    // El acabado líquido limita el desenfoque para no multiplicar el coste GPU.
-    final double sigma = style.tokens.finish == SurfaceFinish.liquid
-        ? math.min(style.blur, 16)
-        : style.blur;
-    return ClipRRect(
-      borderRadius: radius,
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-        child: decorated,
-      ),
+    final Widget clipped = ClipRRect(borderRadius: radius, child: inner);
+    if (shadows == null) return clipped;
+    return DecoratedBox(
+      decoration: BoxDecoration(borderRadius: radius, boxShadow: shadows),
+      child: clipped,
     );
   }
 }

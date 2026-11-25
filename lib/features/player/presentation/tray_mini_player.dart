@@ -23,15 +23,21 @@ class _TrayProgress extends ConsumerWidget {
       playerControllerProvider.select((PlayerUiState s) => s.playback.progress),
     );
     if (progress <= 0) return const SizedBox.shrink();
+    // Positioned es un ParentDataWidget: debe ser hijo directo del Stack. Si un
+    // RepaintBoundary lo envuelve, Flutter lanza "Incorrect use of
+    // ParentDataWidget" en cuanto la pista avanza y el mini se queda sin
+    // contenido, solo con el marco/sombra de la ventana.
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
-      child: LinearProgressIndicator(
-        value: progress.clamp(0.0, 1.0),
-        minHeight: 2.5,
-        backgroundColor: color.withValues(alpha: 0.12),
-        valueColor: AlwaysStoppedAnimation<Color>(color),
+      child: RepaintBoundary(
+        child: LinearProgressIndicator(
+          value: progress.clamp(0.0, 1.0),
+          minHeight: 2.5,
+          backgroundColor: color.withValues(alpha: 0.12),
+          valueColor: AlwaysStoppedAnimation<Color>(color),
+        ),
       ),
     );
   }
@@ -297,9 +303,9 @@ class TrayMiniPlayer extends ConsumerWidget {
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              RepaintBoundary(
-                child: _TrayProgress(color: resolved.progressColor),
-              ),
+              // El progreso se suscribe solo aquí; el Positioned va directo en
+              // el Stack y su RepaintBoundary queda por dentro.
+              _TrayProgress(color: resolved.progressColor),
               if (!hasTrack)
                 _EmptyState(
                   accent: resolved.accent,

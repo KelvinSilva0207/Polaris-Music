@@ -314,16 +314,22 @@ class _IslandProgress extends ConsumerWidget {
     );
     // Sin progreso real no se dibuja nada: evita la línea huérfana en el borde.
     if (progress <= 0) return const SizedBox.shrink();
+    // Positioned es un ParentDataWidget: solo funciona como hijo directo del
+    // Stack. Envolverlo en RepaintBoundary (o cualquier otro widget de
+    // renderizado) lanza "Incorrect use of ParentDataWidget" y tumbaba toda la
+    // cápsula en cuanto la pista avanzaba, dejando solo la sombra nativa.
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
       height: 3,
-      child: LinearProgressIndicator(
-        value: progress.clamp(0.0, 1.0),
-        minHeight: 3,
-        backgroundColor: color.withValues(alpha: 0.12),
-        valueColor: AlwaysStoppedAnimation<Color>(color),
+      child: RepaintBoundary(
+        child: LinearProgressIndicator(
+          value: progress.clamp(0.0, 1.0),
+          minHeight: 3,
+          backgroundColor: color.withValues(alpha: 0.12),
+          valueColor: AlwaysStoppedAnimation<Color>(color),
+        ),
       ),
     );
   }
@@ -393,9 +399,9 @@ class _Capsule extends StatelessWidget {
             children: <Widget>[
               // Sin progreso real no se dibuja nada: evita la línea huérfana
               // en el borde de la cápsula cuando no hay pista o está parada.
-              RepaintBoundary(
-                child: _IslandProgress(color: style.progressColor),
-              ),
+              // El Positioned debe ser hijo directo del Stack; el
+              // RepaintBoundary va dentro para no romper el parent data.
+              _IslandProgress(color: style.progressColor),
               Padding(
                 padding: EdgeInsets.fromLTRB(
                   hovering ? 12 : 8,
@@ -487,31 +493,38 @@ class _CompactInfo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          track?.title ?? 'Polaris Music',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          track?.artist ?? 'Nada en reproducción',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 10, color: context.inkAlpha(0.60)),
-        ),
-        if (track == null)
+    // La cápsula compacta mide 64 px: con escala de fuente alta o sin pista
+    // (tres líneas) el Column desbordaba y recortaba el texto de respaldo.
+    // scaleDown conserva las tres líneas legibles sin salirse del borde.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
           Text(
-            'Pasa el ratón para ver controles',
+            track?.title ?? 'Polaris Music',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 8.5, color: context.inkAlpha(0.38)),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
           ),
-      ],
+          const SizedBox(height: 3),
+          Text(
+            track?.artist ?? 'Nada en reproducción',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 10, color: context.inkAlpha(0.60)),
+          ),
+          if (track == null)
+            Text(
+              'Pasa el ratón para ver controles',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 8.5, color: context.inkAlpha(0.38)),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -542,34 +555,40 @@ class _ExpandedInfo extends ConsumerWidget {
     final String subtitle = message != null
         ? 'Aviso de Polaris'
         : (track?.artist ?? 'Elige una canción para empezar');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        Text(
-          title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          subtitle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 11, color: context.inkAlpha(0.60)),
-        ),
-        if (message == null) ...<Widget>[
-          const SizedBox(height: 5),
+    // Igual que en la vista compacta: ningún aviso ni escala de fuente puede
+    // hacer que el texto se salga de la cápsula expandida.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
           Text(
-            '${Formatters.duration(position)} / ${Formatters.duration(duration)}'
-            '${playing ? '  ·  En reproducción' : ''}',
+            title,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 9, color: context.inkAlpha(0.38)),
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
           ),
+          const SizedBox(height: 3),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.60)),
+          ),
+          if (message == null) ...<Widget>[
+            const SizedBox(height: 5),
+            Text(
+              '${Formatters.duration(position)} / ${Formatters.duration(duration)}'
+              '${playing ? '  ·  En reproducción' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 9, color: context.inkAlpha(0.38)),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 }

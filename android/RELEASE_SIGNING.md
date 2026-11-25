@@ -63,12 +63,12 @@ Gradle. La clave nunca se sube al artefacto ni al repo.
 versionCode = major * 10_000_000 + minor * 100_000 + patch * 1_000 + build
 ```
 
-Para `version: 1.1.1+12` el valor es `10_100_012`, mayor que el anterior
-`10_009_010`.
+Para `version: 1.1.2+13` el valor es `10_102_013`, mayor que el anterior
+`10_100_012`.
 Cada subida de `major`, `minor`, `patch` o `build` aumenta el código. El
 número de build debe estar entre `0` y `999`.
 
-Al publicar, cambia `version` en `pubspec.yaml` (por ejemplo `1.1.1+12`). El
+Al publicar, cambia `version` en `pubspec.yaml` (por ejemplo `1.1.2+13`). El
 instalador de Windows toma la parte semántica automáticamente.
 
 ## Verificación
