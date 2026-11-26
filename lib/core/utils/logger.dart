@@ -64,6 +64,11 @@ class AppLog {
   static void d(String tag, Object? message) => _emit('D', tag, message);
   static void i(String tag, Object? message) => _emit('I', tag, message);
 
+  /// Registro para rutas calientes (por ejemplo, cada cambio de `af`).
+  /// Mantiene la línea en consola pero no bloquea el hilo de UI con disco.
+  static void iFast(String tag, Object? message) =>
+      _emit('I', tag, message, null, null, false);
+
   static void w(String tag, Object? message, [Object? error, StackTrace? st]) =>
       _emit('W', tag, message, error, st);
 
@@ -76,6 +81,7 @@ class AppLog {
     Object? message, [
     Object? error,
     StackTrace? stack,
+    bool file = true,
   ]) {
     final String line =
         '[${DateTime.now().toIso8601String()}][$level][$tag] '
@@ -84,7 +90,7 @@ class AppLog {
     if (error != null) debugPrint('[$level][$tag] error: $error');
     if (stack != null) debugPrint(stack.toString());
 
-    if (!_fileEnabled) return;
+    if (!file || !_fileEnabled) return;
     final String? path = _filePath;
     if (path == null) return;
 

@@ -11,9 +11,11 @@ import 'package:path/path.dart' as p;
 import '../../../core/constants/app_paths.dart';
 import '../../../core/debug/memory_probe.dart';
 import '../../../core/database/app_database.dart';
+import '../../../core/services/settings_service.dart';
 import '../../../core/utils/file_utils.dart';
 import '../../../core/utils/logger.dart';
 import '../../../core/utils/metadata_text.dart';
+import '../domain/scan_index.dart';
 
 /// Progreso del escaneo de la biblioteca.
 class ScanProgress {
@@ -123,11 +125,10 @@ class _ScannedFile {
 /// - Las carátulas se cachean en `AppPaths.artwork()` con un hash estable de
 ///   la ruta (no se duplica la imagen en la base de datos).
 class LibraryScanner {
-  LibraryScanner(AppDatabase db)
-    : _db = db,
-      _folders = db.folderDao,
-      _tracks = db.trackDao,
-      _lyrics = db.lyricsDao;
+  LibraryScanner(this._db, {this._settings})
+    : _folders = _db.folderDao,
+      _tracks = _db.trackDao,
+      _lyrics = _db.lyricsDao;
 
   static const String _tag = 'Scanner';
   // Lote pequeño: el isolate lee y guarda las carátulas antes de devolver la
@@ -136,6 +137,7 @@ class LibraryScanner {
   static const int _batchSize = 12;
 
   final AppDatabase _db;
+  final SettingsService? _settings;
   final FolderDao _folders;
   final TrackDao _tracks;
   final LyricsDao _lyrics;
@@ -161,14 +163,46 @@ class LibraryScanner {
       final Set<String> unique = found.toSet();
       if (unique.isEmpty) return const ScanSummary();
       final Set<String> knownPaths = (await _tracks.allPaths()).toSet();
-      return await _index(
+      final ScanIndex index = _readIndex();
+      final Set<String> pending = await _pendingPaths(
         unique,
-        unique.difference(knownPaths),
+        knownPaths,
+        index,
+      );
+      return await _index(
+        found: unique,
+        pending: pending,
+        knownPaths: knownPaths,
+        index: index,
         removeMissing: false,
       );
     } finally {
       _running = false;
     }
+  }
+
+  /// Solo las rutas nuevas o cuyo tamaño/fecha cambió necesitan abrirse.
+  ///
+  /// `stat()` es una llamada al sistema muy barata frente a leer etiquetas y
+  /// carátulas. Las pistas ya indexadas y sin cambios no se vuelven a tocar.
+  ScanIndex _readIndex() =>
+      ScanIndex(_settings?.scanIndex ?? const <String, String>{});
+
+  Future<Set<String>> _pendingPaths(
+    Set<String> found,
+    Set<String> knownPaths,
+    ScanIndex index,
+  ) async {
+    final Set<String> pending = <String>{};
+    for (final String path in found) {
+      final FileSignature? signature = FileSignature.read(path);
+      if (signature == null ||
+          !knownPaths.contains(path) ||
+          !index.isUnchanged(path, signature)) {
+        pending.add(path);
+      }
+    }
+    return pending;
   }
 
   void _ensureNotRunning() {
@@ -190,10 +224,13 @@ class LibraryScanner {
         );
       }
       final Set<String> knownPaths = (await _tracks.allPaths()).toSet();
-      final Set<String> pending = found.difference(knownPaths);
+      final ScanIndex index = _readIndex();
+      final Set<String> pending = await _pendingPaths(found, knownPaths, index);
       final ScanSummary summary = await _index(
-        found,
-        pending,
+        found: found,
+        pending: pending,
+        knownPaths: knownPaths,
+        index: index,
         removeMissing: removeMissing,
       );
       for (final ScanFolderRow folder in folders) {
@@ -205,9 +242,11 @@ class LibraryScanner {
     }
   }
 
-  Future<ScanSummary> _index(
-    Set<String> found,
-    Set<String> pending, {
+  Future<ScanSummary> _index({
+    required Set<String> found,
+    required Set<String> pending,
+    required Set<String> knownPaths,
+    required ScanIndex index,
     required bool removeMissing,
   }) async {
     final Stopwatch watch = Stopwatch()..start();
@@ -215,15 +254,13 @@ class LibraryScanner {
     int updated = 0;
     int failed = 0;
     int removed = 0;
+    ScanIndex nextIndex = index;
 
     try {
-      // Solo los archivos nuevos necesitan leer la carátula incrustada.
-      // Releer imágenes de varios MB en cada escaneo era el mayor pico de
-      // memoria: el `Uint8List` cruzaba el isolate y vivía hasta el upsert.
-      final List<String> all = <String>[
-        ...pending,
-        ...found.where((String path) => !pending.contains(path)),
-      ];
+      // Solo se abre lo que cambió. El resto ya está en Drift con sus
+      // metadatos y carátula: releerlos era el coste principal del escaneo.
+      // Las imágenes de varios MB siguen sin cruzar el isolate.
+      final List<String> all = pending.toList(growable: false);
       final String artworkDir = (await AppPaths.artwork()).path;
       // Solo nombres: no se abren ni decodifican imágenes. Permite recuperar
       // la ruta de las pistas ya indexadas sin repetir la lectura incrustada.
@@ -259,7 +296,7 @@ class LibraryScanner {
               continue;
             }
             try {
-              final bool isNew = pending.contains(file.path);
+              final bool isNew = !knownPaths.contains(file.path);
               // Si el isolate no leyó la carátula (pista ya indexada), se
               // reutiliza la copia en disco. `Value.absent()` evita borrar la
               // ruta existente cuando no hay ninguna copia cacheada.
@@ -301,6 +338,13 @@ class LibraryScanner {
                 );
               }
 
+              // Solo se guarda la huella de lo que se indexó con éxito: un
+              // fallo se reintenta en el próximo escaneo.
+              final FileSignature? signature = FileSignature.read(file.path);
+              if (signature != null) {
+                nextIndex = nextIndex.withSignature(file.path, signature);
+              }
+
               if (isNew) {
                 inserted++;
               } else {
@@ -332,13 +376,20 @@ class LibraryScanner {
           await _tracks.deleteMissingPaths(found);
           final int after = await _tracks.count();
           removed = before - after;
+          nextIndex = nextIndex.retainAll(found);
         }
       });
+
+      // Una sola escritura al terminar: el índice puede ser grande y no debe
+      // notificar a la UI una vez por lote.
+      if (_settings != null) {
+        await _settings.setScanIndex(nextIndex.toMap());
+      }
       MemoryProbe.mark('scan:end');
 
       watch.stop();
       final ScanSummary summary = ScanSummary(
-        filesFound: all.length,
+        filesFound: found.length,
         inserted: inserted,
         updated: updated,
         removed: removed,

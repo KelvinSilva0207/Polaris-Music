@@ -46,8 +46,8 @@ class EqualizerScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    '${state.config.frequencies.length} bandas, paramétrico y '
-                    'sub-armónico',
+                    '${state.config.frequencies.length} bandas · '
+                    '${state.mode.label} · sub',
                     style: TextStyle(color: context.inkAlpha(0.54)),
                   ),
                 ],
@@ -91,7 +91,7 @@ class EqualizerScreen extends ConsumerWidget {
           },
         ),
         const SizedBox(height: 14),
-        EqCurveView(config: state.config),
+        EqCurveView(config: state.config, active: state.enabled && !state.pure),
         const SizedBox(height: 14),
         if (state.mode == EqMode.graphic)
           _GraphicPanel(state: state, controller: controller)
@@ -130,10 +130,8 @@ class EqualizerScreen extends ConsumerWidget {
         ),
         const SizedBox(height: 18),
         Text(
-          'Elige 5, 10, 15, 20 o 31 bandas, ajusta cada frecuencia o usa hasta '
-          '8 filtros paramétricos. Los perfiles se guardan con su curva, modo '
-          'y sub-armónico. Mantén pulsado un perfil propio para eliminarlo.',
-          style: TextStyle(fontSize: 12, color: context.inkAlpha(0.38)),
+          'Mantén pulsado un perfil propio para borrarlo.',
+          style: TextStyle(fontSize: 11, color: context.inkAlpha(0.45)),
         ),
       ],
     );
@@ -212,10 +210,12 @@ class _GraphicPanel extends StatelessWidget {
                       },
                     ),
                   ),
+                // Indicador de estado, no un botón: no hay ninguna acción
+                // asociada a "Personalizada" y antes parecía pulsable.
                 ChoiceChip(
                   label: const Text('Personalizada'),
                   selected: layoutId == AppConstants.eqCustomLayout,
-                  onSelected: (_) {},
+                  onSelected: null,
                 ),
               ],
             ),
@@ -304,15 +304,15 @@ class _DspStatus extends StatelessWidget {
           Expanded(
             child: Text(
               pure
-                  ? 'Modo puro: la cadena de filtros está bypassada. Tu curva '
-                        'sigue guardada y vuelve al salir de este modo.'
+                  ? 'Puro · curva conservada'
                   : enabled
-                  ? 'DSP activo: modo ${mode.label} mediante libmpv'
-                        '${subEnabled ? ' + sub-armónico' : ''}, con preamp '
-                        'automático y limitador suave.'
-                  : 'DSP en espera. Activa el interruptor para escuchar los '
-                        'filtros.',
-              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
+                  ? 'DSP activo · ${mode.label}${subEnabled ? ' · sub' : ''}'
+                  : 'DSP en espera',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: color,
+              ),
             ),
           ),
         ],
@@ -345,10 +345,10 @@ class _DspNotice extends StatelessWidget {
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              'Esta plataforma no permite aplicar filtros de audio. Los ajustes '
-              'se guardan como perfil, pero no modifican la reproducción.',
-              style: TextStyle(fontSize: 12, color: context.inkAlpha(0.70)),
+            child: const Text(
+              'Sin DSP en esta plataforma: los ajustes se guardan, pero no '
+              'afectan al audio.',
+              style: TextStyle(fontSize: 12),
             ),
           ),
         ],
@@ -358,36 +358,85 @@ class _DspNotice extends StatelessWidget {
 }
 
 /// Perfiles de ecualizador por dispositivo de salida (altavoces vs. BT).
-class _DeviceProfileCard extends StatelessWidget {
+class _DeviceProfileCard extends StatefulWidget {
   const _DeviceProfileCard({required this.state, required this.controller});
 
   final EqualizerState state;
   final EqualizerController controller;
 
   @override
+  State<_DeviceProfileCard> createState() => _DeviceProfileCardState();
+}
+
+class _DeviceProfileCardState extends State<_DeviceProfileCard> {
+  Future<bool>? _hasProfile;
+
+  @override
+  void initState() {
+    super.initState();
+    _reloadProfile();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DeviceProfileCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.state.activeDeviceName != oldWidget.state.activeDeviceName ||
+        widget.state.perDeviceProfiles != oldWidget.state.perDeviceProfiles) {
+      _reloadProfile();
+    }
+  }
+
+  void _reloadProfile() {
+    _hasProfile = widget.controller.hasProfileForCurrentDevice();
+  }
+
+  Future<void> _save() async {
+    await widget.controller.saveProfileForCurrentDevice();
+    if (mounted) setState(_reloadProfile);
+  }
+
+  Future<void> _delete() async {
+    await widget.controller.deleteProfileForCurrentDevice();
+    if (mounted) setState(_reloadProfile);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final EqualizerState state = widget.state;
+    final EqualizerController controller = widget.controller;
+    final bool enabled = state.perDeviceProfiles;
     final Color accent = context.tokens.accent;
     final String? deviceName = state.activeDeviceName;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: accent.withValues(alpha: 0.08),
+        color: enabled
+            ? accent.withValues(alpha: 0.08)
+            : context.inkAlpha(0.03),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: accent.withValues(alpha: 0.20)),
+        border: Border.all(
+          color: enabled
+              ? accent.withValues(alpha: 0.24)
+              : context.inkAlpha(0.08),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
             children: <Widget>[
-              Icon(Icons.headphones_rounded, size: 18, color: accent),
+              Icon(
+                Icons.headphones_rounded,
+                size: 18,
+                color: enabled ? accent : context.inkAlpha(0.54),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     const Text(
-                      'Perfil por dispositivo de salida',
+                      'Perfil por salida',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -395,9 +444,7 @@ class _DeviceProfileCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      deviceName == null
-                          ? 'No se ha detectado la salida activa'
-                          : 'Salida: $deviceName',
+                      deviceName ?? 'Sin salida detectada',
                       style: TextStyle(
                         fontSize: 11,
                         color: context.inkAlpha(0.54),
@@ -407,14 +454,12 @@ class _DeviceProfileCard extends StatelessWidget {
                 ),
               ),
               Switch(
-                value: controller.perDeviceProfilesEnabled,
-                onChanged: (bool value) =>
-                    controller.setPerDeviceProfiles(value),
+                value: enabled,
+                onChanged: controller.setPerDeviceProfiles,
               ),
             ],
           ),
-          if (controller.perDeviceProfilesEnabled &&
-              deviceName != null) ...<Widget>[
+          if (enabled && deviceName != null) ...<Widget>[
             const SizedBox(height: 8),
             if (state.usingDeviceProfile)
               Padding(
@@ -424,28 +469,27 @@ class _DeviceProfileCard extends StatelessWidget {
                     Icon(Icons.check_circle_rounded, size: 14, color: accent),
                     const SizedBox(width: 6),
                     Text(
-                      'Aplicando el perfil guardado de $deviceName',
+                      'Perfil activo: $deviceName',
                       style: TextStyle(fontSize: 11, color: accent),
                     ),
                   ],
                 ),
               ),
             FutureBuilder<bool>(
-              future: controller.hasProfileForCurrentDevice(),
+              future: _hasProfile!,
               builder: (BuildContext context, AsyncSnapshot<bool> snapshot) {
                 final bool hasProfile = snapshot.data ?? false;
                 return Wrap(
                   spacing: 8,
                   children: <Widget>[
                     OutlinedButton.icon(
-                      onPressed: () => controller.saveProfileForCurrentDevice(),
+                      onPressed: _save,
                       icon: const Icon(Icons.bookmark_add_rounded, size: 16),
-                      label: const Text('Guardar para este dispositivo'),
+                      label: const Text('Guardar aquí'),
                     ),
                     if (hasProfile)
                       TextButton.icon(
-                        onPressed: () =>
-                            controller.deleteProfileForCurrentDevice(),
+                        onPressed: _delete,
                         icon: const Icon(
                           Icons.delete_outline_rounded,
                           size: 16,
@@ -558,20 +602,25 @@ class _BandSlider extends StatelessWidget {
   final ValueChanged<double> onChanged;
   final VoidCallback? onRemove;
 
-  String get _label {
+  /// Frecuencia con unidad correcta: `1k Hz` era ambiguo (k ya es kilo).
+  String get _frequencyLabel {
     if (frequency >= 1000) {
       final double k = frequency / 1000;
-      return k == k.roundToDouble()
-          ? '${k.toStringAsFixed(0)}k'
-          : '${k.toStringAsFixed(1)}k';
+      final String value = k == k.roundToDouble()
+          ? k.toStringAsFixed(0)
+          : k.toStringAsFixed(1);
+      return '$value kHz';
     }
-    return frequency.toStringAsFixed(0);
+    return '${frequency.toStringAsFixed(0)} Hz';
   }
 
   String get _gainLabel {
-    if (gain.abs() < 0.05) return '0';
-    if (gain == gain.roundToDouble()) return gain.toStringAsFixed(0);
-    return gain.toStringAsFixed(1);
+    final String value = gain.abs() < 0.05
+        ? '0'
+        : gain == gain.roundToDouble()
+        ? gain.toStringAsFixed(0)
+        : gain.toStringAsFixed(1);
+    return '$value dB';
   }
 
   @override
@@ -580,11 +629,11 @@ class _BandSlider extends StatelessWidget {
     const double min = AppConstants.eqMinGain;
     const double max = AppConstants.eqMaxGain;
     const double step = 1;
-    final String bandLabel = 'Banda $_label Hz';
-    final String hint = 'Doble toque para escribir $_label Hz';
+    final String bandLabel = 'Banda $_frequencyLabel';
+    final String hint = 'Doble toque para escribir $_frequencyLabel';
 
     return SizedBox(
-      width: 58,
+      width: 64,
       height: 230,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -651,6 +700,7 @@ class _BandSlider extends StatelessWidget {
                         min: min,
                         max: max,
                         divisions: 24,
+                        label: _gainLabel,
                         onChanged: onChanged,
                       ),
                     ),
@@ -661,7 +711,7 @@ class _BandSlider extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            '$_label Hz',
+            _frequencyLabel,
             style: TextStyle(fontSize: 10, color: context.inkAlpha(0.54)),
           ),
         ],

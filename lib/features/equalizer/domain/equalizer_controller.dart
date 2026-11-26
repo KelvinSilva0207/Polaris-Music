@@ -26,6 +26,7 @@ class EqualizerState {
     this.activeDeviceName,
     this.usingDeviceProfile = false,
     this.pure = false,
+    this.perDeviceProfiles = false,
   });
 
   final bool enabled;
@@ -44,6 +45,11 @@ class EqualizerState {
   /// (en vez del perfil global). Determina dónde se persisten los cambios.
   final bool usingDeviceProfile;
 
+  /// Aplicación automática de perfiles por salida. Vive en el estado (no solo
+  /// en el servicio) para que el interruptor responda aunque no haya salida
+  /// detectada y por tanto no llegue ningún evento del servicio.
+  final bool perDeviceProfiles;
+
   List<double> get bands => config.bands;
   double get preampDb => config.preampDb;
   EqMode get mode => config.mode;
@@ -60,6 +66,7 @@ class EqualizerState {
     Object? activeDeviceName = _unset,
     bool? usingDeviceProfile,
     bool? pure,
+    bool? perDeviceProfiles,
   }) => EqualizerState(
     enabled: enabled ?? this.enabled,
     pure: pure ?? this.pure,
@@ -71,6 +78,7 @@ class EqualizerState {
         ? this.activeDeviceName
         : activeDeviceName as String?,
     usingDeviceProfile: usingDeviceProfile ?? this.usingDeviceProfile,
+    perDeviceProfiles: perDeviceProfiles ?? this.perDeviceProfiles,
   );
 
   static const Object _unset = Object();
@@ -90,6 +98,11 @@ class EqualizerController extends StateNotifier<EqualizerState> {
   final SettingsService _settings;
   final AudioEngineService _engine;
   final AudioDeviceProfileService? _profiles;
+
+  /// Los deslizadores envían muchos eventos por segundo. Solo la última
+  /// configuración llega a libmpv: así el grafo de audio se reconstruye una vez
+  /// por arrastre y no se percibe ningún corte mientras el dedo se mueve.
+  static const Duration _liveDspWindow = Duration(milliseconds: 180);
 
   Timer? _dspDebounce;
   StreamSubscription<EqualizerConfig?>? _profileSub;
@@ -139,6 +152,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
       presets: presets,
       selectedPreset: presetName,
       loaded: true,
+      perDeviceProfiles: _profiles?.enabled ?? false,
     );
 
     if (_profiles != null) {
@@ -180,7 +194,13 @@ class EqualizerController extends StateNotifier<EqualizerState> {
 
   /// Activa/desactiva la aplicación automática de perfiles por salida.
   Future<void> setPerDeviceProfiles(bool value) async {
+    // Actualizamos la UI antes de tocar la base de datos: sin salida detectada
+    // el servicio no emite nada y el interruptor antes se quedaba quieto.
+    state = state.copyWith(perDeviceProfiles: value);
     await _profiles?.setEnabled(value);
+    if (currentDevice == null) {
+      await _onActiveProfile(null);
+    }
   }
 
   /// Guarda la configuración actual como perfil de la salida activa.
@@ -421,10 +441,13 @@ class EqualizerController extends StateNotifier<EqualizerState> {
     );
   }
 
-  /// Evita inundar libmpv mientras se arrastra un deslizador.
+  /// Evita inundar libmpv mientras se arrastra un deslizador. La ventana se
+  /// reinicia en cada evento, así que solo se aplica el valor final; la curva
+  /// de la UI mientras tanto se actualiza de inmediato desde [state].
   void _scheduleDsp() {
     _dspDebounce?.cancel();
-    _dspDebounce = Timer(const Duration(milliseconds: 60), () {
+    _dspDebounce = Timer(_liveDspWindow, () {
+      _dspDebounce = null;
       unawaited(_persistConfig());
       unawaited(_applyDsp());
     });
@@ -434,27 +457,40 @@ class EqualizerController extends StateNotifier<EqualizerState> {
   ///
   /// Con un perfil de dispositivo activo se escribe en ese scope (no se pisa el
   /// perfil global), de modo que cada salida recuerde su propio EQ/sub-graves.
-  Future<void> _persistConfig() async {
-    if (state.usingDeviceProfile && _profiles != null) {
-      await _profiles.saveCurrent(state.config);
+  Future<void> _setIfChanged(String key, String value) async {
+    if (_settings.getString(key) == value) return;
+    await _settings.setString(key, value);
+  }
+
+  Future<void> _persistConfig({
+    EqualizerConfig? config,
+    String? preset,
+    bool? usingDeviceProfile,
+  }) async {
+    final EqualizerConfig target = config ?? state.config;
+    final String targetPreset = preset ?? state.selectedPreset;
+    final bool targetUsingDevice =
+        usingDeviceProfile ?? state.usingDeviceProfile;
+    if (targetUsingDevice && _profiles != null) {
+      await _profiles.saveCurrent(target);
       return;
     }
-    _globalConfig = state.config;
-    await _settings.setString(
-      AppConstants.keyEqConfig,
-      state.config.serialize(),
-    );
-    await _settings.setString(AppConstants.keyEqPreset, state.selectedPreset);
-    await _settings.setString(
-      AppConstants.keyEqCustomBands,
-      state.config.bands
-          .map((double gain) => gain.toStringAsFixed(2))
-          .join(','),
-    );
-    await _settings.setDouble(
-      AppConstants.keyEqCustomPreamp,
-      state.config.preampDb,
-    );
+    _globalConfig = target;
+    final String bands = target.bands
+        .map((double gain) => gain.toStringAsFixed(2))
+        .join(',');
+    // Cada escritura notifica a todos los widgets que observan `settings`.
+    // Omitir valores idénticos evita reconstrucciones innecesarias al arrastrar.
+    await _setIfChanged(AppConstants.keyEqConfig, target.serialize());
+    await _setIfChanged(AppConstants.keyEqPreset, targetPreset);
+    await _setIfChanged(AppConstants.keyEqCustomBands, bands);
+    final String preamp = target.preampDb.toStringAsFixed(4);
+    if (_settings.stringOr(AppConstants.keyEqCustomPreamp, '') != preamp) {
+      await _settings.setDouble(
+        AppConstants.keyEqCustomPreamp,
+        target.preampDb,
+      );
+    }
   }
 
   static List<double> _parseBands(String raw) {
@@ -499,7 +535,25 @@ class EqualizerController extends StateNotifier<EqualizerState> {
 
   @override
   void dispose() {
-    _dspDebounce?.cancel();
+    // Si el usuario cierra la pantalla justo después de soltar un deslizador,
+    // el temporizador aún no ha guardado el último valor: lo persistimos ahora.
+    // No reaplicamos el DSP aquí: una invalidación del provider creará otro
+    // controlador que aplicará su propia configuración al cargar.
+    if (_dspDebounce?.isActive ?? false) {
+      _dspDebounce!.cancel();
+      // Capturamos el estado antes de llamar a `super.dispose()`: el notifier
+      // ya no debe leerse después de liberarse.
+      final EqualizerConfig config = state.config;
+      final String preset = state.selectedPreset;
+      final bool usingDeviceProfile = state.usingDeviceProfile;
+      unawaited(
+        _persistConfig(
+          config: config,
+          preset: preset,
+          usingDeviceProfile: usingDeviceProfile,
+        ),
+      );
+    }
     unawaited(_profileSub?.cancel());
     super.dispose();
   }

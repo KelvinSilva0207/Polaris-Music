@@ -334,6 +334,7 @@ extension ResolvedCompactArtwork on ResolvedCompactStyle {
   double artworkRadius(double base) => switch (tokens.artworkShape) {
     ArtworkShape.circleVinyl => 100000,
     ArtworkShape.card3D => base * 1.6,
+    ArtworkShape.vinylWave => base,
     ArtworkShape.squareRounded => base,
   };
 }

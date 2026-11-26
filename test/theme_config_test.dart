@@ -62,9 +62,29 @@ void main() {
         AppThemeConfig.monolithMinimal,
       );
       expect(
+        AppThemeConfig.fromPreset(AppThemePreset.vinylWave),
+        AppThemeConfig.vinylWave,
+      );
+      expect(
         AppThemeConfig.fromPreset(AppThemePreset.custom),
         AppThemeConfig.defaults,
       );
+    });
+
+    test('Vinyl Wave conserva su onda y su carátula asomante', () {
+      const AppThemeConfig theme = AppThemeConfig.vinylWave;
+      expect(theme.preset, AppThemePreset.vinylWave);
+      expect(theme.artworkShape, ArtworkShape.vinylWave);
+      expect(theme.progressBarType, ProgressBarType.waveform);
+      expect(theme.isVinylWave, isTrue);
+      expect(theme.accent, const Color(0xFFFF5C8A));
+      expect(
+        theme.copyWith(artworkShape: ArtworkShape.squareRounded).isVinylWave,
+        isFalse,
+      );
+
+      final AppThemeConfig restored = AppThemeConfig.fromJson(theme.toJson());
+      expect(restored, theme);
     });
   });
 
@@ -307,13 +327,14 @@ void main() {
 
   group('Catálogo de temas y acabados', () {
     test('la galería incluye todos los temas con su acabado', () {
-      expect(AppThemeConfig.catalog, hasLength(9));
+      expect(AppThemeConfig.catalog, hasLength(10));
       expect(
         AppThemeConfig.catalog.map((AppThemeConfig entry) => entry.preset),
         containsAll(<AppThemePreset>[
           AppThemePreset.dark,
           AppThemePreset.light,
           AppThemePreset.rgbDynamic,
+          AppThemePreset.vinylWave,
           AppThemePreset.cyberNeon,
           AppThemePreset.nordicFrost,
           AppThemePreset.emeraldStudio,

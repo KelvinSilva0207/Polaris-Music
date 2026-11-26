@@ -52,6 +52,10 @@ enum SurfaceFinish {
 enum ArtworkShape {
   squareRounded('Cuadrada', 'Esquinas suaves, estilo tarjeta moderna'),
   circleVinyl('Vinilo', 'Círculo perfecto que gira mientras suena la música'),
+  vinylWave(
+    'Vinilo Wave',
+    'Carátula redondeada con un disco de vinilo asomando a un lado',
+  ),
   card3D('Tarjeta 3D', 'Perspectiva y profundidad con sombras dinámicas');
 
   const ArtworkShape(this.label, this.description);
@@ -134,6 +138,10 @@ enum AppThemePreset {
   bronzeVinyl(
     'Bronze Vinyl',
     'Bronce cálido, vinilo giratorio y progreso circular envolvente.',
+  ),
+  vinylWave(
+    'Vinyl Wave',
+    'Coral vivo sobre ciruela profunda, vinilo asomante y progreso en onda.',
   ),
   cyberNeon('Cyber Neon', 'Azul noche con neón cian y magenta sobre cristal.'),
   nordicFrost('Nordic Frost', 'Blanco nórdico, azul frío y vidrio muy ligero.'),
@@ -345,6 +353,34 @@ class AppThemeConfig {
     neumorphicDark: Color(0xFF000000),
   );
 
+  /// Coral vivo sobre ciruela profunda: carátula con vinilo asomante y onda.
+  static const AppThemeConfig vinylWave = AppThemeConfig(
+    preset: AppThemePreset.vinylWave,
+    cardStyle: CardStyle.glassmorphic,
+    artworkShape: ArtworkShape.vinylWave,
+    progressBarType: ProgressBarType.waveform,
+    paletteMode: ColorPaletteMode.fixedPreset,
+    finish: SurfaceFinish.liquid,
+    accent: Color(0xFFFF5C8A),
+    secondary: Color(0xFFFFC857),
+    background: Color(0xFF120A18),
+    surface: Color(0xFF211328),
+    backdrop: <Color>[Color(0xFF3A1238), Color(0xFF120A18), Color(0xFF2A0E20)],
+    surfaceOpacity: 0.92,
+    panelRadius: 24,
+    artworkRadius: 28,
+    glassBlur: 16,
+    glassOpacity: 0.10,
+    progressColor: Color(0xFFFF5C8A),
+    volumeColor: Color(0xFFFFC857),
+    karaokeColor: Color(0xFFFF5C8A),
+    borderColor: Color(0x24FFFFFF),
+    shadowColor: Color(0xFF000000),
+    shadowOpacity: 0.34,
+    neumorphicLight: Color(0xFF3A2340),
+    neumorphicDark: Color(0xFF07040A),
+  );
+
   /// Carbón profundo con acento violeta y acabado mate.
   static const AppThemeConfig dark = AppThemeConfig(
     preset: AppThemePreset.dark,
@@ -529,6 +565,7 @@ class AppThemeConfig {
       AppThemePreset.rgbDynamic => rgbDynamic,
       AppThemePreset.polarisVioletGlass => polarisVioletGlass,
       AppThemePreset.bronzeVinyl => bronzeVinyl,
+      AppThemePreset.vinylWave => vinylWave,
       AppThemePreset.cyberNeon => cyberNeon,
       AppThemePreset.nordicFrost => nordicFrost,
       AppThemePreset.emeraldStudio => emeraldStudio,
@@ -552,6 +589,7 @@ class AppThemeConfig {
     rgbDynamic,
     polarisVioletGlass,
     bronzeVinyl,
+    vinylWave,
     cyberNeon,
     nordicFrost,
     emeraldStudio,
@@ -559,6 +597,10 @@ class AppThemeConfig {
   ];
 
   bool get isGlass => cardStyle == CardStyle.glassmorphic;
+
+  /// Vinyl Wave dibuja la onda de progreso como curva en vez de barras.
+  /// Se deriva de la forma para sobrevivir a los cambios de color del usuario.
+  bool get isVinylWave => artworkShape == ArtworkShape.vinylWave;
 
   bool get usesDynamicPalette => paletteMode == ColorPaletteMode.dynamicArtwork;
 

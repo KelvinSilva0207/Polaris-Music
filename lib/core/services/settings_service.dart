@@ -214,6 +214,34 @@ class SettingsService {
   bool get scanOnStartup =>
       boolOr(AppConstants.keyScanOnStartup, fallback: true);
 
+  /// Escala de carátulas y densidad de la biblioteca (pellizco o selector).
+  double get libraryArtworkScale => doubleOr(
+    AppConstants.keyLibraryArtworkScale,
+    fallback: 1,
+  ).clamp(0.75, 1.75).toDouble();
+
+  Future<void> setLibraryArtworkScale(double value) =>
+      setDouble(AppConstants.keyLibraryArtworkScale, value.clamp(0.75, 1.75));
+
+  /// Índice `ruta -> tamaño@modificación` del escáner incremental.
+  Map<String, String> get scanIndex {
+    try {
+      final Object? decoded = jsonDecode(
+        stringOr(AppConstants.keyScanIndex, '{}'),
+      );
+      if (decoded is! Map) return const <String, String>{};
+      return decoded.map(
+        (Object? key, Object? value) =>
+            MapEntry<String, String>('$key', '$value'),
+      );
+    } on Object {
+      return const <String, String>{};
+    }
+  }
+
+  Future<void> setScanIndex(Map<String, String> entries) =>
+      setString(AppConstants.keyScanIndex, jsonEncode(entries));
+
   Future<void> markOnboardingDone() =>
       setBool(AppConstants.keyOnboardingDone, true);
 

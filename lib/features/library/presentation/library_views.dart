@@ -9,6 +9,7 @@ import '../../../shared/widgets/track_artwork.dart';
 import '../../../shared/widgets/track_tile.dart';
 import '../../player/presentation/player_providers.dart';
 import '../domain/folder_tree.dart';
+import '../domain/library_folder.dart';
 import '../domain/library_sort.dart';
 import '../domain/library_view.dart';
 import 'library_providers.dart';
@@ -19,12 +20,14 @@ class TrackResults extends StatelessWidget {
     super.key,
     required this.tracks,
     this.onManageFolders,
+    this.artworkScale = 1,
     this.emptyTitle = 'No hay pistas que mostrar',
     this.emptyMessage = 'Añade una carpeta con música y pulsa “Escanear” para indexar tus archivos.',
   });
 
   final AsyncValue<List<Track>> tracks;
   final VoidCallback? onManageFolders;
+  final double artworkScale;
   final String emptyTitle;
   final String emptyMessage;
 
@@ -79,6 +82,7 @@ class TrackResults extends StatelessWidget {
                     queue: list,
                     index: index,
                     showIndex: true,
+                    artworkSize: 46 * artworkScale,
                   );
                 },
               ),
@@ -92,9 +96,10 @@ class TrackResults extends StatelessWidget {
 
 /// Rejilla de álbumes o artistas con búsqueda instantánea (provider filtrado).
 class LibraryGroupsView extends ConsumerWidget {
-  const LibraryGroupsView({super.key, required this.view});
+  const LibraryGroupsView({super.key, required this.view, this.scale = 1});
 
   final LibraryView view;
+  final double scale;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -127,16 +132,16 @@ class LibraryGroupsView extends ConsumerWidget {
           child: GridView.builder(
             key: PageStorageKey<String>('library-groups-${view.name}'),
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
-            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-              maxCrossAxisExtent: 190,
-              mainAxisSpacing: 14,
-              crossAxisSpacing: 14,
+            gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: (190 * scale).clamp(120.0, 340.0).toDouble(),
+              mainAxisSpacing: 14 * scale,
+              crossAxisSpacing: 14 * scale,
               childAspectRatio: 0.82,
             ),
             itemCount: groups.length,
             itemBuilder: (BuildContext context, int index) {
               final LibraryGroup group = groups[index];
-              return _GroupCard(group: group, view: view);
+              return _GroupCard(group: group, view: view, scale: scale);
             },
           ),
         ),
@@ -146,10 +151,11 @@ class LibraryGroupsView extends ConsumerWidget {
 }
 
 class _GroupCard extends StatelessWidget {
-  const _GroupCard({required this.group, required this.view});
+  const _GroupCard({required this.group, required this.view, this.scale = 1});
 
   final LibraryGroup group;
   final LibraryView view;
+  final double scale;
 
   @override
   Widget build(BuildContext context) {
@@ -161,7 +167,7 @@ class _GroupCard extends StatelessWidget {
           context,
           MaterialPageRoute<void>(
             builder: (BuildContext context) =>
-                LibraryGroupPage(group: group, view: view),
+                LibraryGroupPage(group: group, view: view, scale: scale),
           ),
         ),
         child: Ink(
@@ -172,11 +178,15 @@ class _GroupCard extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 child: Center(
-                  child: TrackArtwork(
-                    path: group.artworkPath,
-                    size: 120,
-                    radius: view == LibraryView.albums ? 12 : 60,
-                    icon: group.icon,
+                  // FittedBox evita que una carátula grande recorte la tarjeta
+                  // cuando la rejilla se reduce con el pellizco.
+                  child: FittedBox(
+                    child: TrackArtwork(
+                      path: group.artworkPath,
+                      size: 120 * scale,
+                      radius: view == LibraryView.albums ? 12 : 60 * scale,
+                      icon: group.icon,
+                    ),
                   ),
                 ),
               ),
@@ -203,10 +213,16 @@ class _GroupCard extends StatelessWidget {
 
 /// Detalle de un álbum o artista.
 class LibraryGroupPage extends ConsumerWidget {
-  const LibraryGroupPage({super.key, required this.group, required this.view});
+  const LibraryGroupPage({
+    super.key,
+    required this.group,
+    required this.view,
+    this.scale = 1,
+  });
 
   final LibraryGroup group;
   final LibraryView view;
+  final double scale;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -226,8 +242,8 @@ class LibraryGroupPage extends ConsumerWidget {
               children: <Widget>[
                 TrackArtwork(
                   path: group.artworkPath,
-                  size: 72,
-                  radius: view == LibraryView.albums ? 12 : 36,
+                  size: 72 * scale,
+                  radius: view == LibraryView.albums ? 12 : 36 * scale,
                   icon: group.icon,
                 ),
                 const SizedBox(width: 14),
@@ -251,6 +267,7 @@ class LibraryGroupPage extends ConsumerWidget {
                 queue: group.tracks,
                 index: index,
                 showIndex: true,
+                artworkSize: 46 * scale,
               ),
             ),
           ),
@@ -262,10 +279,36 @@ class LibraryGroupPage extends ConsumerWidget {
 
 /// Raíces reales de almacenamiento/SD descubiertas durante el escaneo.
 class FoldersView extends ConsumerWidget {
-  const FoldersView({super.key});
+  const FoldersView({super.key, this.scale = 1});
+
+  final double scale;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final AsyncValue<List<Track>> tracks = ref.watch(libraryAllTracksProvider);
+    final AsyncValue<List<LibraryFolder>> folders = ref.watch(
+      libraryFoldersProvider,
+    );
+    // Sin este estado, la primera carga mostraba un fondo gris con el mensaje
+    // de "sin carpetas" durante unos instantes.
+    if ((tracks.isLoading && tracks.valueOrNull == null) ||
+        (folders.isLoading && folders.valueOrNull == null)) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if ((tracks.hasError && tracks.valueOrNull == null) ||
+        (folders.hasError && folders.valueOrNull == null)) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No se pudo cargar el árbol de carpetas.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ),
+      );
+    }
+
     final FolderLibrary library = ref.watch(folderLibraryProvider);
     final List<FolderNode> nodes = <FolderNode>[
       ...library.roots,
@@ -286,7 +329,7 @@ class FoldersView extends ConsumerWidget {
         final FolderNode node = nodes[index];
         return Card(
           child: ListTile(
-            leading: const Icon(Icons.folder_rounded),
+            leading: Icon(Icons.folder_rounded, size: 24 * scale),
             title: Text(
               node.name,
               maxLines: 1,
@@ -305,7 +348,7 @@ class FoldersView extends ConsumerWidget {
               context,
               MaterialPageRoute<void>(
                 builder: (BuildContext context) =>
-                    FolderBrowserPage(root: node),
+                    FolderBrowserPage(root: node, scale: scale),
               ),
             ),
           ),
@@ -318,9 +361,10 @@ class FoldersView extends ConsumerWidget {
 /// Explorador de una carpeta: subcarpetas + pistas directas y, en una segunda
 /// pestaña, Vista General con todas las pistas descendientes y búsqueda local.
 class FolderBrowserPage extends ConsumerStatefulWidget {
-  const FolderBrowserPage({super.key, required this.root});
+  const FolderBrowserPage({super.key, required this.root, this.scale = 1});
 
   final FolderNode root;
+  final double scale;
 
   @override
   ConsumerState<FolderBrowserPage> createState() => _FolderBrowserPageState();
@@ -352,7 +396,8 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage>
     Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
-        builder: (BuildContext context) => FolderBrowserPage(root: node),
+        builder: (BuildContext context) =>
+            FolderBrowserPage(root: node, scale: widget.scale),
       ),
     );
   }
@@ -408,34 +453,45 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage>
       body: TabBarView(
         controller: _tabs,
         children: <Widget>[
-          ListView.builder(
-            key: PageStorageKey<String>('folder-content-${folder.path}'),
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-            itemCount: folder.children.length + folder.directTracks.length,
-            itemBuilder: (BuildContext context, int index) {
-              if (index < folder.children.length) {
-                final FolderNode child = folder.children[index];
-                return ListTile(
-                  leading: const Icon(Icons.folder_rounded),
-                  title: Text(
-                    child.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(Formatters.count(child.count)),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => _open(child),
+          if (folder.children.isEmpty && folder.directTracks.isEmpty)
+            const EmptyState(
+              icon: Icons.folder_open_rounded,
+              title: 'Carpeta vacía',
+              message: 'No hay pistas directas ni subcarpetas indexadas aquí.',
+            )
+          else
+            ListView.builder(
+              key: PageStorageKey<String>('folder-content-${folder.path}'),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
+              itemCount: folder.children.length + folder.directTracks.length,
+              itemBuilder: (BuildContext context, int index) {
+                if (index < folder.children.length) {
+                  final FolderNode child = folder.children[index];
+                  return ListTile(
+                    leading: Icon(
+                      Icons.folder_rounded,
+                      size: 24 * widget.scale,
+                    ),
+                    title: Text(
+                      child.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(Formatters.count(child.count)),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => _open(child),
+                  );
+                }
+                final int trackIndex = index - folder.children.length;
+                return TrackTile(
+                  track: folder.directTracks[trackIndex],
+                  queue: folder.directTracks,
+                  index: trackIndex,
+                  showIndex: true,
+                  artworkSize: 46 * widget.scale,
                 );
-              }
-              final int trackIndex = index - folder.children.length;
-              return TrackTile(
-                track: folder.directTracks[trackIndex],
-                queue: folder.directTracks,
-                index: trackIndex,
-                showIndex: true,
-              );
-            },
-          ),
+              },
+            ),
           Column(
             children: <Widget>[
               Padding(
@@ -474,6 +530,7 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage>
                               queue: descendant,
                               index: index,
                               showIndex: true,
+                              artworkSize: 46 * widget.scale,
                             ),
                       ),
               ),

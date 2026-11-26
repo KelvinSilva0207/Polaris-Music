@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/models/track.dart';
+import '../../../core/services/settings_service.dart';
 import '../data/library_repository.dart';
 import '../data/library_scanner.dart';
 import '../data/metadata_editor_service.dart';
@@ -43,6 +44,12 @@ final StateProvider<bool> libraryAscendingProvider = StateProvider<bool>(
 /// Selector principal de la Biblioteca: Todas / Álbumes / Artistas / Carpetas.
 final StateProvider<LibraryView> libraryViewProvider =
     StateProvider<LibraryView>((Ref ref) => LibraryView.all);
+
+/// Escala de carátulas y densidad de rejilla. Se persiste en preferencias, pero
+/// el proveedor responde al instante para que el pellizco no tenga latencia.
+final StateProvider<double> libraryArtworkScaleProvider = StateProvider<double>(
+  (Ref ref) => sl<SettingsService>().libraryArtworkScale,
+);
 
 /// Todas las pistas indexadas, sin filtrar por búsqueda. Alimenta las vistas
 /// agrupadas y el árbol de carpetas; `libraryTracksProvider` se conserva intacto

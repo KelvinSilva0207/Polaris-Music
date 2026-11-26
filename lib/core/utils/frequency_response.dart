@@ -102,29 +102,30 @@ class FrequencyResponse {
         return _Biquad(b0, -(1 + cw), b0, 1 + alpha, -2 * cw, 1 - alpha);
       case ParametricFilterType.lowShelf:
         final double a = math.pow(10, gain / 40).toDouble();
-        // En estantes el Q se interpreta como pendiente inversa; se acota a
-        // valores que mantienen la raíz real (solo afecta a la curva dibujada).
-        final double shelfQ = q.clamp(1, 10);
-        final double s = sw / 2 * math.sqrt(2 + (a + 1 / a) * (shelfQ - 1));
+        // La cadena usa `bass`/`treble` con `t=q`: FFmpeg calcula
+        // alpha = sin(w0)/(2·Q) y, para esos dos filtros, beta = sqrt(2·A).
+        // Usar pendiente S (o el beta de `lowshelf`) hacía que la curva no
+        // coincidiera con el audio: un Q bajo parecía plano en la UI pero sí
+        // ensanchaba el filtro.
+        final double beta = math.sqrt(2 * a) * alpha;
         return _Biquad(
-          a * ((a + 1) - (a - 1) * cw + 2 * math.sqrt(a) * s),
+          a * ((a + 1) - (a - 1) * cw + beta),
           2 * a * ((a - 1) - (a + 1) * cw),
-          a * ((a + 1) - (a - 1) * cw - 2 * math.sqrt(a) * s),
-          (a + 1) + (a - 1) * cw + 2 * math.sqrt(a) * s,
+          a * ((a + 1) - (a - 1) * cw - beta),
+          (a + 1) + (a - 1) * cw + beta,
           -2 * ((a - 1) + (a + 1) * cw),
-          (a + 1) + (a - 1) * cw - 2 * math.sqrt(a) * s,
+          (a + 1) + (a - 1) * cw - beta,
         );
       case ParametricFilterType.highShelf:
         final double a = math.pow(10, gain / 40).toDouble();
-        final double shelfQ = q.clamp(1, 10);
-        final double s = sw / 2 * math.sqrt(2 + (a + 1 / a) * (shelfQ - 1));
+        final double beta = math.sqrt(2 * a) * alpha;
         return _Biquad(
-          a * ((a + 1) + (a - 1) * cw + 2 * math.sqrt(a) * s),
+          a * ((a + 1) + (a - 1) * cw + beta),
           -2 * a * ((a - 1) + (a + 1) * cw),
-          a * ((a + 1) + (a - 1) * cw - 2 * math.sqrt(a) * s),
-          (a + 1) - (a - 1) * cw + 2 * math.sqrt(a) * s,
+          a * ((a + 1) + (a - 1) * cw - beta),
+          (a + 1) - (a - 1) * cw + beta,
           2 * ((a - 1) - (a + 1) * cw),
-          (a + 1) - (a - 1) * cw - 2 * math.sqrt(a) * s,
+          (a + 1) - (a - 1) * cw - beta,
         );
     }
   }

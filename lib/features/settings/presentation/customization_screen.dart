@@ -1361,6 +1361,7 @@ class _ThemePreview extends StatelessWidget {
                                 child: CustomPaint(
                                   painter: _PreviewWaveform(
                                     accent: progressColor,
+                                    smooth: config.isVinylWave,
                                   ),
                                   size: const Size(double.infinity, 26),
                                 ),
@@ -1495,6 +1496,36 @@ class _PreviewArtwork extends StatelessWidget {
             },
           );
         },
+      ),
+      ArtworkShape.vinylWave => SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: <Widget>[
+            Positioned(
+              right: 0,
+              child: Container(
+                width: artSize * 0.66,
+                height: artSize * 0.66,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: accent.withValues(alpha: 0.85),
+                  border: Border.all(color: context.inkAlpha(0.20), width: 2),
+                ),
+              ),
+            ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: _PreviewImage(
+                path: path,
+                accent: accent,
+                size: artSize * 0.82,
+              ),
+            ),
+          ],
+        ),
       ),
       ArtworkShape.card3D => Transform(
         alignment: Alignment.center,
@@ -1800,12 +1831,38 @@ class _PreviewRing extends CustomPainter {
 }
 
 class _PreviewWaveform extends CustomPainter {
-  _PreviewWaveform({required this.accent});
+  _PreviewWaveform({required this.accent, this.smooth = false});
 
   final Color accent;
+  final bool smooth;
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (smooth) {
+      final Paint paint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.5
+        ..strokeCap = StrokeCap.round
+        ..color = accent;
+      final Path path = Path();
+      const int samples = 48;
+      for (int i = 0; i <= samples; i++) {
+        final double t = i / samples;
+        final double envelope = 0.35 + 0.65 * math.sin(math.pi * t);
+        final double y =
+            size.height / 2 +
+            math.sin(t * math.pi * 7) * envelope * size.height * 0.30;
+        final double x = t * size.width;
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      canvas.drawPath(path, paint);
+      return;
+    }
+
     const int bars = 42;
     final double gap = 2;
     final double barWidth = math.max(
@@ -1835,5 +1892,5 @@ class _PreviewWaveform extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PreviewWaveform oldDelegate) =>
-      oldDelegate.accent != accent;
+      oldDelegate.accent != accent || oldDelegate.smooth != smooth;
 }

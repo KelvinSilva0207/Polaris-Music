@@ -225,6 +225,12 @@ class AppConstants {
   static const String keyScanOnStartup = 'library.scan_on_startup';
   static const String keyLastScanAt = 'library.last_scan_at';
   static const String keyRecentSearches = 'library.recent_searches';
+
+  /// Escala de carátulas/tajas de la biblioteca (pellizco o selector).
+  static const String keyLibraryArtworkScale = 'library.artwork_scale';
+
+  /// Índice local `ruta -> tamaño@modificación` para escaneos incrementales.
+  static const String keyScanIndex = 'library.scan_index';
   static const String keyKaraokeEnabled = 'lyrics.karaoke';
   static const String keyScrobbleConfig = 'scrobbling.config';
 
@@ -286,6 +292,7 @@ class AppConstants {
     keyScanOnStartup,
     keyLastScanAt,
     keyRecentSearches,
+    keyLibraryArtworkScale,
     keyKaraokeEnabled,
     keyDocumentsFolder,
     keyMusicFolder,

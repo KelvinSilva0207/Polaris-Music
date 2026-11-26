@@ -815,6 +815,7 @@ class _ProgressSection extends ConsumerWidget {
           duration: duration,
           accent: accent,
           onSeekFraction: onSeekFraction,
+          smooth: config.isVinylWave,
         );
 
       case ProgressBarType.circularAroundArtwork:
@@ -869,12 +870,16 @@ class _WaveformProgress extends StatelessWidget {
     required this.duration,
     required this.accent,
     required this.onSeekFraction,
+    this.smooth = false,
   });
 
   final Duration position;
   final Duration duration;
   final Color accent;
   final ValueChanged<double> onSeekFraction;
+
+  /// Vinyl Wave usa una curva continua; los demás temas conservan las barras.
+  final bool smooth;
 
   @override
   Widget build(BuildContext context) {
@@ -908,6 +913,7 @@ class _WaveformProgress extends StatelessWidget {
                     painter: _WaveformPainter(
                       progress: progress,
                       accent: accent,
+                      smooth: smooth,
                     ),
                   ),
                 ),
@@ -922,7 +928,11 @@ class _WaveformProgress extends StatelessWidget {
 }
 
 class _WaveformPainter extends CustomPainter {
-  _WaveformPainter({required this.progress, required this.accent}) {
+  _WaveformPainter({
+    required this.progress,
+    required this.accent,
+    this.smooth = false,
+  }) {
     // Dos únicos objetos Paint por repintado en vez de ~64 `Color` nuevos.
     _playedPaint = Paint()
       ..strokeCap = StrokeCap.round
@@ -930,15 +940,70 @@ class _WaveformPainter extends CustomPainter {
     _pendingPaint = Paint()
       ..strokeCap = StrokeCap.round
       ..color = accent.withValues(alpha: 0.18);
+    _thumbPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = accent;
+    _thumbCorePaint = Paint()
+      ..style = PaintingStyle.fill
+      ..color = Colors.white.withValues(alpha: 0.92);
   }
 
   final double progress;
   final Color accent;
+
+  /// Curva continua de Vinyl Wave; `false` mantiene la onda de barras histórica.
+  final bool smooth;
   late final Paint _playedPaint;
   late final Paint _pendingPaint;
+  late final Paint _thumbPaint;
+  late final Paint _thumbCorePaint;
+
+  static const int _smoothSamples = 96;
+
+  /// Onda determinista: no hay timers ni estados por fotograma.
+  static double _smoothY(double t, double height) {
+    final double envelope = 0.30 + 0.70 * math.sin(math.pi * t);
+    final double wobble =
+        math.sin(t * math.pi * 8) * 0.55 +
+        math.sin(t * math.pi * 3 + 0.6) * 0.45;
+    return height / 2 + wobble * envelope * height * 0.32;
+  }
+
+  void _paintSmoothWave(Canvas canvas, Size size) {
+    final Path path = Path();
+    for (int i = 0; i <= _smoothSamples; i++) {
+      final double t = i / _smoothSamples;
+      final double x = t * size.width;
+      final double y = _smoothY(t, size.height);
+      if (i == 0) {
+        path.moveTo(x, y);
+      } else {
+        path.lineTo(x, y);
+      }
+    }
+
+    _pendingPaint.strokeWidth = 2.5;
+    canvas.drawPath(path, _pendingPaint);
+
+    final double playedX = size.width * progress;
+    canvas.save();
+    canvas.clipRect(Rect.fromLTWH(0, 0, playedX, size.height));
+    _playedPaint.strokeWidth = 3.5;
+    canvas.drawPath(path, _playedPaint);
+    canvas.restore();
+
+    final Offset thumb = Offset(playedX, _smoothY(progress, size.height));
+    canvas.drawCircle(thumb, 6, _thumbPaint);
+    canvas.drawCircle(thumb, 2.5, _thumbCorePaint);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
+    if (smooth) {
+      _paintSmoothWave(canvas, size);
+      return;
+    }
+
     const int bars = 64;
     const double gap = 2;
     final double barWidth = math.max(
@@ -973,7 +1038,9 @@ class _WaveformPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _WaveformPainter oldDelegate) =>
-      oldDelegate.progress != progress || oldDelegate.accent != accent;
+      oldDelegate.progress != progress ||
+      oldDelegate.accent != accent ||
+      oldDelegate.smooth != smooth;
 }
 
 class _TransportControls extends ConsumerWidget {
@@ -2330,6 +2397,12 @@ class _ArtworkStage extends ConsumerWidget {
             playing: playing,
             paused: state.backgrounded,
           ),
+          ArtworkShape.vinylWave => _VinylWaveArtwork(
+            path: track.artworkPath,
+            size: artSize,
+            accent: accent,
+            radius: config.artworkRadius,
+          ),
           ArtworkShape.card3D => _Card3DArtwork(
             path: track.artworkPath,
             size: artSize,
@@ -2661,6 +2734,149 @@ class _SquareArtwork extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Vinyl Wave: tapa redondeada al frente y disco asomando por la derecha.
+/// El detalle es estático (sin `AnimationController`): no añade trabajo por
+/// fotograma y, por tanto, no interfiere con los perfiles de movimiento.
+class _VinylWaveArtwork extends StatelessWidget {
+  const _VinylWaveArtwork({
+    required this.path,
+    required this.size,
+    required this.accent,
+    required this.radius,
+  });
+
+  final String? path;
+  final double size;
+  final Color accent;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final double cover = size * 0.86;
+    final double disc = size * 0.66;
+    final BorderRadius coverRadius = BorderRadius.circular(radius);
+
+    return Center(
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: <Widget>[
+            Positioned(
+              left: size * 0.66 - disc / 2,
+              top: (size - disc) / 2,
+              child: Container(
+                width: disc,
+                height: disc,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.24),
+                      blurRadius: 26,
+                    ),
+                    BoxShadow(
+                      color: context.tokens.shadowColor.withValues(alpha: 0.50),
+                      blurRadius: 20,
+                      offset: const Offset(8, 12),
+                    ),
+                  ],
+                ),
+                child: ClipOval(
+                  child: SizedBox(
+                    width: disc,
+                    height: disc,
+                    child: CustomPaint(
+                      painter: _VinylPeekPainter(
+                        accent: accent,
+                        ink: context.inkAlpha(0.85),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              left: 0,
+              top: (size - cover) / 2,
+              child: Container(
+                padding: const EdgeInsets.all(5),
+                decoration: BoxDecoration(
+                  borderRadius: coverRadius,
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[
+                      accent.withValues(alpha: 0.50),
+                      context.inkAlpha(0.05),
+                    ],
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.26),
+                      blurRadius: 32,
+                      spreadRadius: 1,
+                    ),
+                    BoxShadow(
+                      color: context.tokens.shadowColor.withValues(alpha: 0.45),
+                      blurRadius: 24,
+                      offset: const Offset(0, 16),
+                    ),
+                  ],
+                ),
+                child: _ArtworkImage(
+                  path: path,
+                  size: cover - 10,
+                  shape: BoxShape.rectangle,
+                  radius: BorderRadius.circular(math.max(radius - 5, 4)),
+                  accent: accent,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Surcos y etiqueta del disco que asoma. Reutiliza dos `Paint` por repintado.
+class _VinylPeekPainter extends CustomPainter {
+  _VinylPeekPainter({required this.accent, required this.ink}) {
+    _discPaint = Paint()..color = const Color(0xFF0B0B10);
+    _groovePaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = ink.withValues(alpha: 0.16);
+    _labelPaint = Paint()..color = accent;
+    _holePaint = Paint()..color = const Color(0xFF0B0B10);
+  }
+
+  final Color accent;
+  final Color ink;
+  late final Paint _discPaint;
+  late final Paint _groovePaint;
+  late final Paint _labelPaint;
+  late final Paint _holePaint;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Offset center = Offset(size.width / 2, size.height / 2);
+    final double r = math.min(size.width, size.height) / 2;
+    canvas.drawCircle(center, r, _discPaint);
+    for (int i = 0; i < 6; i++) {
+      canvas.drawCircle(center, r * (0.44 + i * 0.085), _groovePaint);
+    }
+    canvas.drawCircle(center, r * 0.31, _labelPaint);
+    canvas.drawCircle(center, r * 0.055, _holePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _VinylPeekPainter oldDelegate) =>
+      oldDelegate.accent != accent || oldDelegate.ink != ink;
 }
 
 class _Card3DArtwork extends StatelessWidget {

@@ -455,7 +455,10 @@ class AudioEngineService implements AudioOutputEngine {
           // Si falla, se reintentará al abrir el siguiente crossfade.
         }
       }
-      AppLog.i(_tag, filter.isEmpty ? 'DSP desactivado' : 'DSP: $filter');
+      // Esta línea se escribe en cada cambio de filtro: usar el registro sin
+      // disco evita un `writeAsStringSync(flush: true)` en el hilo de UI justo
+      // cuando libmpv está reconstruyendo el grafo de audio.
+      AppLog.iFast(_tag, filter.isEmpty ? 'DSP desactivado' : 'DSP: $filter');
     } catch (error, stack) {
       try {
         await platform.setProperty('af', previous);

@@ -35,6 +35,8 @@ import '../../../features/dynamic_island/presentation/island_providers.dart';
 import '../../../features/equalizer/presentation/equalizer_providers.dart';
 import '../../../features/equalizer/presentation/equalizer_screen.dart';
 import '../../../features/home/presentation/home_screen.dart';
+import '../../../features/library/data/library_repository.dart';
+import '../../../features/library/presentation/library_providers.dart';
 import '../../../features/player/domain/player_controller.dart';
 import '../../../features/player/presentation/player_providers.dart';
 import '../../../features/profiles_backup/domain/profiles_service.dart';
@@ -141,7 +143,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SettingCard(
             icon: Icons.palette_outlined,
             title: 'Apariencia',
-            subtitle: 'Temas, colores, acabados, movimiento, tipografía y diseños compactos',
+            subtitle: 'Temas, colores y movimiento',
+            info:
+                'Personaliza tema, tipografía, animaciones y diseños compactos '
+                'sin salir de esta pantalla.',
             onTap: () => Navigator.of(context).push(
               MaterialPageRoute<void>(
                 builder: (BuildContext context) => const CustomizationScreen(),
@@ -156,9 +161,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: <Widget>[
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text('ReplayGain'),
-            subtitle: Text(
-              'Normaliza el volumen usando las etiquetas de la pista',
+            title: const Text('ReplayGain'),
+            subtitle: Row(
+              children: <Widget>[
+                const Expanded(child: Text('Normaliza el volumen')),
+                const _InfoButton(
+                  message:
+                      'Ajusta la ganancia con las etiquetas ReplayGain de cada '
+                      'pista para que todas suenen parejo.',
+                ),
+              ],
             ),
             value: replayGain,
             onChanged: (bool value) => ref
@@ -167,10 +179,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text('Modo puro / sin filtros'),
-            subtitle: Text(
-              'Bypass temporal del ecualizador, el sub-armónico y el '
-              'limitador. Tu curva se conserva intacta al volver a activarlos.',
+            title: const Text('Modo puro / sin filtros'),
+            subtitle: Row(
+              children: <Widget>[
+                const Expanded(
+                  child: Text('Desactiva los efectos sin borrarlos'),
+                ),
+                const _InfoButton(
+                  message:
+                      'Deja fuera ecualizador, sub-armónico y limitador. Tu '
+                      'curva se conserva intacta al volver a activarlos.',
+                ),
+              ],
             ),
             value: pureAudio,
             onChanged: (bool value) =>
@@ -200,9 +220,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text('Reproducción sin pausas (gapless)'),
-            subtitle: Text(
-              'mpv encadena pistas sin hueco. Se desactiva al usar crossfade.',
+            title: const Text('Reproducción sin pausas (gapless)'),
+            subtitle: Row(
+              children: <Widget>[
+                const Expanded(child: Text('Encadena pistas sin hueco')),
+                const _InfoButton(
+                  message:
+                      'mpv reproduce el siguiente tema sin silencio. Se '
+                      'desactiva automáticamente al usar crossfade.',
+                ),
+              ],
             ),
             value: gapless,
             onChanged: (bool value) => ref
@@ -211,9 +238,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text('Crossfade entre pistas'),
-            subtitle: Text(
-              'Dos decks mpv: funde pistas y desactiva el gapless estricto.',
+            title: const Text('Crossfade entre pistas'),
+            subtitle: Row(
+              children: <Widget>[
+                const Expanded(child: Text('Funde una pista con la siguiente')),
+                const _InfoButton(
+                  message:
+                      'Usa dos decks mpv para mezclar las pistas. El gapless '
+                      'estricto se desactiva mientras esté activo.',
+                ),
+              ],
             ),
             value: crossfade,
             onChanged: (bool value) => ref
@@ -248,9 +282,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text('Omitir silencios largos'),
-            subtitle: Text(
-              'Recorta el inicio y el final de cada pista (offsets de mpv)',
+            title: const Text('Omitir silencios largos'),
+            subtitle: Row(
+              children: <Widget>[
+                const Expanded(child: Text('Recorta inicio y final')),
+                const _InfoButton(
+                  message:
+                      'Aplica pequeños offsets de mpv para saltar silencios '
+                      'al principio o al final de cada pista.',
+                ),
+              ],
             ),
             value: silenceTrim,
             onChanged: (bool value) => ref
@@ -281,9 +322,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         children: <Widget>[
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text('Escanear al iniciar'),
-            subtitle: Text(
-              'Reindexa las carpetas configuradas al abrir la app',
+            title: const Text('Escanear al iniciar'),
+            subtitle: Row(
+              children: <Widget>[
+                const Expanded(child: Text('Actualiza solo los cambios')),
+                const _InfoButton(
+                  message:
+                      'Al abrir la app se comparan tamaño y fecha de cada '
+                      'archivo. Solo se releen las pistas nuevas o modificadas.',
+                ),
+              ],
             ),
             value: scanOnStartup,
             onChanged: (bool value) async {
@@ -297,9 +345,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           _SettingCard(
             icon: Icons.library_music_outlined,
             title: 'Administrar biblioteca',
-            subtitle: 'Escanear, gestionar carpetas y revisar duplicados',
+            subtitle: 'Escanear y organizar tu música',
             onTap: () => widget.onNavigate(AppSection.library),
           ),
+          if (Platform.isAndroid) ...<Widget>[
+            const SizedBox(height: 8),
+            const _MetrolistCard(),
+          ],
         ],
       ),
       _Section(
@@ -347,11 +399,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         title: 'Ecualizador',
         icon: Icons.graphic_eq_rounded,
         children: <Widget>[
-          Text(
-            'Diez bandas de estudio, preamplificador y curvas guardadas. '
-            'Con filtros activos se aplica preamp automático y un limitador '
-            'suave para evitar recortes; el modo puro los deja a todos fuera.',
-            style: TextStyle(fontSize: 12, color: context.inkAlpha(0.54)),
+          Row(
+            children: <Widget>[
+              const Expanded(
+                child: Text(
+                  'Diez bandas y curvas guardadas.',
+                  style: TextStyle(fontSize: 12),
+                ),
+              ),
+              const _InfoButton(
+                message:
+                    'Con filtros activos se aplica preamp automático y un '
+                    'limitador suave para evitar recortes. El modo puro los '
+                    'deja a todos fuera sin borrar tu curva.',
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           OutlinedButton.icon(
@@ -1151,19 +1213,58 @@ class _SettingLabel extends StatelessWidget {
   }
 }
 
+/// Icono de información discreto: explica un ajuste solo cuando se pulsa.
+class _InfoButton extends StatelessWidget {
+  const _InfoButton({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: 'Más información',
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => showDialog<void>(
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            title: const Text('Detalle'),
+            content: Text(message),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Entendido'),
+              ),
+            ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+          child: Text(
+            'ⓘ',
+            style: TextStyle(fontSize: 14, color: context.inkAlpha(0.5)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Tarjeta de navegación única para agrupar ajustes relacionados.
 class _SettingCard extends StatelessWidget {
   const _SettingCard({
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.onTap,
+    this.info,
+    this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final VoidCallback onTap;
+  final String? info;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -1195,11 +1296,79 @@ class _SettingCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right_rounded),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  if (info != null) _InfoButton(message: info!),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: onTap == null ? context.inkAlpha(0.3) : null,
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Importación de descargas de Metrolist, antes en la barra de Biblioteca.
+///
+/// Comprueba primero las carpetas conocidas: si Metrolist no está instalado,
+/// ofrece elegir una carpeta y una cancelación no muestra ningún error.
+class _MetrolistCard extends ConsumerWidget {
+  const _MetrolistCard();
+
+  Future<void> _import(BuildContext context, WidgetRef ref) async {
+    if (ref.read(scanControllerProvider).running) return;
+    final LibraryRepository repository = ref.read(libraryRepositoryProvider);
+    String? folder;
+    final List<String> known = await repository.metrolistPaths();
+    if (known.isEmpty) {
+      try {
+        folder = await FilePicker.getDirectoryPath(
+          dialogTitle: 'Carpeta de descargas de Metrolist (opcional)',
+        );
+      } on Object {
+        folder = null;
+      }
+      if (folder == null) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Todavía no hay descargas de Metrolist. Puedes elegir una carpeta más tarde.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    }
+
+    await ref.read(scanControllerProvider.notifier).importMetrolist(folder);
+    if (!context.mounted) return;
+    final String? error = ref.read(scanControllerProvider).error;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(error ?? 'Importación de Metrolist completada.')),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bool running = ref.watch(
+      scanControllerProvider.select((ScanUiState s) => s.running),
+    );
+    return _SettingCard(
+      icon: Icons.download_for_offline_outlined,
+      title: 'Importar de Metrolist',
+      subtitle: running ? 'Importando…' : 'Descargas de Metrolist',
+      info:
+          'Busca las carpetas habituales de Metrolist. Si no las encuentra, '
+          'puedes elegir una manualmente; cancelar no cambia tu biblioteca.',
+      onTap: running ? null : () => unawaited(_import(context, ref)),
     );
   }
 }

@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/di/service_locator.dart';
 import '../../../core/models/track.dart';
@@ -34,6 +35,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
   final TextEditingController _search = TextEditingController();
   Timer? _searchDebounce;
   bool _hasQuery = false;
+  double _pinchStartScale = 1;
 
   @override
   void dispose() {
@@ -68,8 +70,25 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final LibrarySort sort = ref.watch(librarySortProvider);
     final bool ascending = ref.watch(libraryAscendingProvider);
     final LibraryView view = ref.watch(libraryViewProvider);
+    final double artworkScale = ref.watch(libraryArtworkScaleProvider);
     // Reconstruye la fila de búsquedas recientes cuando se guarda un término.
     ref.watch(settingsValuesProvider);
+    // Si se restauran los ajustes, la escala vuelve al valor guardado sin
+    // recrear la pantalla ni perder la posición de scroll.
+    ref.listen<AsyncValue<Map<String, String>>>(settingsValuesProvider, (
+      _,
+      AsyncValue<Map<String, String>> next,
+    ) {
+      final Map<String, String>? values = next.valueOrNull;
+      if (values == null) return;
+      // Tras “Restablecer ajustes” la clave desaparece: vuelve al 100 %.
+      final String? raw = values[AppConstants.keyLibraryArtworkScale];
+      final double stored = raw == null ? 1 : double.tryParse(raw) ?? 1;
+      final double current = ref.read(libraryArtworkScaleProvider);
+      if ((stored - current).abs() > 0.001) {
+        ref.read(libraryArtworkScaleProvider.notifier).state = stored;
+      }
+    });
     final List<String> recent = ref
         .read(settingsServiceProvider)
         .recentSearches;
@@ -162,82 +181,111 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                 ),
               ),
               const SizedBox(height: 10),
-              Row(
-                children: <Widget>[
-                  if (Platform.isAndroid)
+              // En móvil esta fila no cabe: se desplaza en vez de recortar
+              // botones. El pellizco sobre el contenido también ajusta la escala.
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    Tooltip(
+                      message: 'Añadir o quitar carpetas de escaneo',
+                      child: OutlinedButton.icon(
+                        onPressed: _manageFolders,
+                        icon: Icon(Icons.folder_outlined, size: 18),
+                        label: Text('Gestionar'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     OutlinedButton.icon(
-                      onPressed: scan.running ? null : _importMetrolist,
-                      icon: Icon(Icons.download_for_offline_outlined, size: 18),
-                      label: Text('Metrolist'),
+                      onPressed: _showDuplicates,
+                      icon: Icon(Icons.copy_all_rounded, size: 18),
+                      label: Text('Duplicados'),
                     ),
-                  if (Platform.isAndroid) const SizedBox(width: 8),
-                  Tooltip(
-                    message: 'Añadir o quitar carpetas de escaneo',
-                    child: OutlinedButton.icon(
-                      onPressed: _manageFolders,
-                      icon: Icon(Icons.folder_outlined, size: 18),
-                      label: Text('Gestionar'),
+                    const SizedBox(width: 8),
+                    PopupMenuButton<String>(
+                      tooltip: 'Listas y M3U',
+                      icon: Icon(Icons.playlist_play_rounded, size: 22),
+                      onSelected: _onPlaylistAction,
+                      itemBuilder: (BuildContext context) =>
+                          const <PopupMenuEntry<String>>[
+                            PopupMenuItem<String>(
+                              value: 'manage',
+                              child: Text('Gestionar listas'),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'import',
+                              child: Text('Importar M3U…'),
+                            ),
+                            PopupMenuItem<String>(
+                              value: 'export',
+                              child: Text('Exportar M3U…'),
+                            ),
+                          ],
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: _showDuplicates,
-                    icon: Icon(Icons.copy_all_rounded, size: 18),
-                    label: Text('Duplicados'),
-                  ),
-                  const SizedBox(width: 8),
-                  PopupMenuButton<String>(
-                    tooltip: 'Listas y M3U',
-                    icon: Icon(Icons.playlist_play_rounded, size: 22),
-                    onSelected: _onPlaylistAction,
-                    itemBuilder: (BuildContext context) =>
-                        const <PopupMenuEntry<String>>[
-                          PopupMenuItem<String>(
-                            value: 'manage',
-                            child: Text('Gestionar listas'),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'import',
-                            child: Text('Importar M3U…'),
-                          ),
-                          PopupMenuItem<String>(
-                            value: 'export',
-                            child: Text('Exportar M3U…'),
-                          ),
-                        ],
-                  ),
-                  const Spacer(),
-                  DropdownButtonHideUnderline(
-                    child: DropdownButton<LibrarySort>(
-                      value: sort,
-                      borderRadius: BorderRadius.circular(12),
-                      items: LibrarySort.values
-                          .map(
-                            (LibrarySort value) =>
-                                DropdownMenuItem<LibrarySort>(
-                                  value: value,
-                                  child: Text(value.label),
-                                ),
-                          )
-                          .toList(growable: false),
-                      onChanged: (LibrarySort? value) {
-                        if (value == null) return;
-                        ref.read(librarySortProvider.notifier).state = value;
-                      },
+                    const SizedBox(width: 8),
+                    PopupMenuButton<double>(
+                      tooltip:
+                          'Tamaño de carátulas: ${(artworkScale * 100).round()} %',
+                      icon: Badge(
+                        isLabelVisible: artworkScale != 1,
+                        label: Text('${(artworkScale * 100).round()}'),
+                        child: const Icon(Icons.zoom_in_rounded, size: 22),
+                      ),
+                      onSelected: _setArtworkScale,
+                      itemBuilder: (BuildContext context) =>
+                          const <PopupMenuEntry<double>>[
+                            PopupMenuItem<double>(
+                              value: 0.8,
+                              child: Text('Pequeño · 80 %'),
+                            ),
+                            PopupMenuItem<double>(
+                              value: 1,
+                              child: Text('Normal · 100 %'),
+                            ),
+                            PopupMenuItem<double>(
+                              value: 1.25,
+                              child: Text('Grande · 125 %'),
+                            ),
+                            PopupMenuItem<double>(
+                              value: 1.5,
+                              child: Text('Muy grande · 150 %'),
+                            ),
+                          ],
                     ),
-                  ),
-                  IconButton(
-                    tooltip: ascending ? 'Ascendente' : 'Descendente',
-                    onPressed: () =>
-                        ref.read(libraryAscendingProvider.notifier).state =
-                            !ascending,
-                    icon: Icon(
-                      ascending
-                          ? Icons.arrow_upward_rounded
-                          : Icons.arrow_downward_rounded,
+                    const SizedBox(width: 8),
+                    DropdownButtonHideUnderline(
+                      child: DropdownButton<LibrarySort>(
+                        value: sort,
+                        borderRadius: BorderRadius.circular(12),
+                        items: LibrarySort.values
+                            .map(
+                              (LibrarySort value) =>
+                                  DropdownMenuItem<LibrarySort>(
+                                    value: value,
+                                    child: Text(value.label),
+                                  ),
+                            )
+                            .toList(growable: false),
+                        onChanged: (LibrarySort? value) {
+                          if (value == null) return;
+                          ref.read(librarySortProvider.notifier).state = value;
+                        },
+                      ),
                     ),
-                  ),
-                ],
+                    IconButton(
+                      tooltip: ascending ? 'Ascendente' : 'Descendente',
+                      onPressed: () =>
+                          ref.read(libraryAscendingProvider.notifier).state =
+                              !ascending,
+                      icon: Icon(
+                        ascending
+                            ? Icons.arrow_upward_rounded
+                            : Icons.arrow_downward_rounded,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               if (scan.running) ...<Widget>[
                 const SizedBox(height: 12),
@@ -266,23 +314,47 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
           ),
         ),
         Expanded(
-          child: DirectionalContentSwitcher(
-            direction: view.index,
-            duration: context.motion.duration(
-              const Duration(milliseconds: 260),
+          child: GestureDetector(
+            // Un dedo desplaza la lista; dos dedos escalan. El detector es
+            // translúcido para no robar los toques de los hijos.
+            behavior: HitTestBehavior.translucent,
+            onScaleStart: (_) =>
+                _pinchStartScale = ref.read(libraryArtworkScaleProvider),
+            onScaleUpdate: (ScaleUpdateDetails details) {
+              final double next = (_pinchStartScale * details.scale).clamp(
+                0.75,
+                1.75,
+              );
+              final double current = ref.read(libraryArtworkScaleProvider);
+              if ((next - current).abs() < 0.02) return;
+              ref.read(libraryArtworkScaleProvider.notifier).state = next;
+            },
+            onScaleEnd: (_) => unawaited(
+              ref
+                  .read(settingsServiceProvider)
+                  .setLibraryArtworkScale(
+                    ref.read(libraryArtworkScaleProvider),
+                  ),
             ),
-            distance: 0.06,
-            child: KeyedSubtree(
-              key: ValueKey<String>('library-view-${view.name}'),
-              child: switch (view) {
-                LibraryView.all => TrackResults(
-                  tracks: tracks,
-                  onManageFolders: _manageFolders,
-                ),
-                LibraryView.albums ||
-                LibraryView.artists => LibraryGroupsView(view: view),
-                LibraryView.folders => const FoldersView(),
-              },
+            child: DirectionalContentSwitcher(
+              direction: view.index,
+              duration: context.motion.duration(
+                const Duration(milliseconds: 260),
+              ),
+              distance: 0.06,
+              child: KeyedSubtree(
+                key: ValueKey<String>('library-view-${view.name}'),
+                child: switch (view) {
+                  LibraryView.all => TrackResults(
+                    tracks: tracks,
+                    onManageFolders: _manageFolders,
+                    artworkScale: artworkScale,
+                  ),
+                  LibraryView.albums || LibraryView.artists =>
+                    LibraryGroupsView(view: view, scale: artworkScale),
+                  LibraryView.folders => FoldersView(scale: artworkScale),
+                },
+              ),
             ),
           ),
         ),
@@ -297,12 +369,9 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     await ref.read(scanControllerProvider.notifier).scan();
   }
 
-  Future<void> _importMetrolist() async {
-    final String? folder = await FilePicker.getDirectoryPath(
-      dialogTitle: 'Carpeta de descargas de Metrolist (opcional)',
-    );
-    if (!mounted) return;
-    await ref.read(scanControllerProvider.notifier).importMetrolist(folder);
+  Future<void> _setArtworkScale(double value) async {
+    ref.read(libraryArtworkScaleProvider.notifier).state = value;
+    await ref.read(settingsServiceProvider).setLibraryArtworkScale(value);
   }
 
   Future<void> _manageFolders() async {
@@ -445,47 +514,56 @@ class _FoldersDialog extends ConsumerWidget {
 
     return AlertDialog(
       title: Text('Carpetas de música'),
-      content: SizedBox(
-        width: 520,
+      // Sin límites, muchas carpetas desbordaban el diálogo y la lista quedaba
+      // cortada sin scroll; en móvil el ancho fijo también recortaba botones.
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520, maxHeight: 420),
         child: folders.when(
-          loading: () => Center(child: CircularProgressIndicator()),
+          loading: () => const Center(child: CircularProgressIndicator()),
           error: (Object error, StackTrace stack) =>
               Text('No se pudieron cargar las carpetas: $error'),
           data: (List<LibraryFolder> list) => Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              if (list.isEmpty)
-                Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
-                  child: Text(
-                    'Todavía no hay carpetas. Añade una para empezar.',
-                    style: TextStyle(color: context.inkAlpha(0.54)),
-                  ),
-                )
-              else
-                ...list.map(
-                  (LibraryFolder folder) => ListTile(
-                    leading: Icon(Icons.folder_rounded),
-                    title: Text(folder.name),
-                    subtitle: Text(
-                      folder.path,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: IconButton(
-                      tooltip: 'Quitar carpeta',
-                      icon: Icon(Icons.delete_outline_rounded),
-                      onPressed: () => ref
-                          .read(libraryRepositoryProvider)
-                          .removeFolder(folder.id),
-                    ),
-                  ),
-                ),
+              Flexible(
+                child: list.isEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        child: Text(
+                          'Todavía no hay carpetas. Añade una para empezar.',
+                          style: TextStyle(color: context.inkAlpha(0.54)),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: list.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final LibraryFolder folder = list[index];
+                          return ListTile(
+                            leading: const Icon(Icons.folder_rounded),
+                            title: Text(folder.name),
+                            subtitle: Text(
+                              folder.path,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: IconButton(
+                              tooltip: 'Quitar carpeta',
+                              icon: const Icon(Icons.delete_outline_rounded),
+                              onPressed: () => ref
+                                  .read(libraryRepositoryProvider)
+                                  .removeFolder(folder.id),
+                            ),
+                          );
+                        },
+                      ),
+              ),
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: () => _addFolder(context, ref),
-                icon: Icon(Icons.add_rounded),
-                label: Text('Añadir carpeta'),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('Añadir carpeta'),
               ),
             ],
           ),

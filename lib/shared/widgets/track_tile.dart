@@ -45,6 +45,7 @@ class TrackTile extends ConsumerWidget {
     this.showIndex = false,
     this.trailing,
     this.onTap,
+    this.artworkSize = 46,
   });
 
   final Track track;
@@ -53,6 +54,10 @@ class TrackTile extends ConsumerWidget {
   final bool showIndex;
   final Widget? trailing;
   final VoidCallback? onTap;
+
+  /// Tamaño de la carátula. La biblioteca lo escala con el gesto de pellizco;
+  /// el resto de pantallas conserva el valor por defecto.
+  final double artworkSize;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -99,7 +104,7 @@ class TrackTile extends ConsumerWidget {
                 TrackArtwork(
                   key: ValueKey<int>(track.id),
                   path: track.artworkPath,
-                  size: 46,
+                  size: artworkSize,
                   radius: 10,
                 ),
                 if (current)

@@ -487,7 +487,7 @@ class PrecisionSliderRow extends StatelessWidget {
           child: Text(
             label,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.54)),
+            style: TextStyle(fontSize: 11, color: context.inkAlpha(0.62)),
           ),
         ),
         const SizedBox(width: 4),
@@ -532,7 +532,7 @@ class PrecisionSliderRow extends StatelessWidget {
         ),
         const SizedBox(width: 6),
         SizedBox(
-          width: 66,
+          width: 72,
           child: Tooltip(
             message: hint,
             child: GestureDetector(
@@ -540,7 +540,11 @@ class PrecisionSliderRow extends StatelessWidget {
               child: Text(
                 _format(value),
                 textAlign: TextAlign.end,
-                style: TextStyle(fontSize: 11, color: context.inkAlpha(0.70)),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: context.inkAlpha(0.88),
+                ),
               ),
             ),
           ),

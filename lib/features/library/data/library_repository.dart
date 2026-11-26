@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 
 import '../../../core/database/app_database.dart';
 import '../../../core/services/permission_service.dart';
+import '../../../core/services/settings_service.dart';
 import '../../../core/models/downloaded_track.dart';
 import '../../../core/models/track.dart';
 import '../domain/library_folder.dart';
@@ -16,11 +17,14 @@ import 'library_scanner.dart';
 /// Traduce filas de Drift a [Track] y aplica orden/filtros en memoria. La UI
 /// nunca importa `drift` ni conoce `TrackRow`.
 class LibraryRepository {
-  LibraryRepository(AppDatabase db, {PermissionService? permissions})
-    : _tracks = db.trackDao,
-      _folders = db.folderDao,
-      _permissions = permissions ?? PermissionService(),
-      scanner = LibraryScanner(db);
+  LibraryRepository(
+    AppDatabase db, {
+    PermissionService? permissions,
+    SettingsService? settings,
+  }) : _tracks = db.trackDao,
+       _folders = db.folderDao,
+       _permissions = permissions ?? PermissionService(),
+       scanner = LibraryScanner(db, settings: settings);
 
   final TrackDao _tracks;
   final FolderDao _folders;
@@ -151,6 +155,16 @@ class LibraryRepository {
   Stream<ScanProgress> get scanProgress => scanner.progress;
 
   Future<ScanSummary> scan() => scanner.scanAll();
+
+  /// Carpetas de Metrolist presentes en el dispositivo, sin pedir permisos ni
+  /// lanzar un escaneo. La UI las consulta para no mostrar errores molestos
+  /// cuando Metrolist no está instalado.
+  Future<List<String>> metrolistPaths({String? folder}) async {
+    final List<Directory> dirs = await MetrolistPaths.existing(
+      additional: folder,
+    );
+    return dirs.map((Directory dir) => dir.path).toList(growable: false);
+  }
 
   /// Importa las descargas de Metrolist sin borrar otras pistas de Drift.
   Future<ScanSummary> importMetrolist(String? folder) async {

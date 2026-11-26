@@ -71,13 +71,26 @@ class _FilterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final Color accent = context.tokens.accent;
+    final bool active = filter.enabled;
+    // `lowpass`/`highpass` no tienen ganancia en la cadena lavfi: mostrar el
+    // control hacía creer que un cambio se aplicaba cuando no era así.
+    final bool hasGain = switch (filter.type) {
+      ParametricFilterType.lowpass => false,
+      ParametricFilterType.highpass => false,
+      _ => true,
+    };
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 8, 8, 10),
       decoration: BoxDecoration(
-        color: context.inkAlpha(0.04),
+        color: active ? accent.withValues(alpha: 0.07) : context.inkAlpha(0.03),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.inkAlpha(0.08)),
+        border: Border.all(
+          color: active
+              ? accent.withValues(alpha: 0.45)
+              : context.inkAlpha(0.08),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -89,9 +102,18 @@ class _FilterCard extends StatelessWidget {
                 onChanged: (bool value) =>
                     onChanged(index, filter.copyWith(enabled: value)),
               ),
+              Icon(
+                active ? Icons.check_circle_rounded : Icons.circle_outlined,
+                size: 14,
+                color: active ? accent : context.inkAlpha(0.38),
+              ),
+              const SizedBox(width: 6),
               Text(
                 'Filtro ${index + 1}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: active ? context.onPanel : context.inkAlpha(0.54),
+                ),
               ),
               const Spacer(),
               DropdownButton<ParametricFilterType>(
@@ -121,50 +143,59 @@ class _FilterCard extends StatelessWidget {
               ),
             ],
           ),
-          PrecisionSliderRow(
-            label: 'Frecuencia',
-            value: filter.frequencyHz,
-            min: AppConstants.eqMinFrequency,
-            max: AppConstants.eqMaxFrequency,
-            step: 1,
-            decimals: 0,
-            unit: 'Hz',
-            onChanged: (double value) =>
-                onChanged(index, filter.copyWith(frequencyHz: value)),
-            formatter: _formatFrequency,
-            sliderValue: _toSlider(filter.frequencyHz),
-            sliderMin: 0,
-            sliderMax: 1000,
-            divisions: 1000,
-            onSliderChanged: (double value) => onChanged(
-              index,
-              filter.copyWith(frequencyHz: _fromSlider(value)),
+          Opacity(
+            opacity: active ? 1 : 0.55,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: <Widget>[
+                PrecisionSliderRow(
+                  label: 'Frecuencia',
+                  value: filter.frequencyHz,
+                  min: AppConstants.eqMinFrequency,
+                  max: AppConstants.eqMaxFrequency,
+                  step: 1,
+                  decimals: 0,
+                  unit: 'Hz',
+                  onChanged: (double value) =>
+                      onChanged(index, filter.copyWith(frequencyHz: value)),
+                  formatter: _formatFrequency,
+                  sliderValue: _toSlider(filter.frequencyHz),
+                  sliderMin: 0,
+                  sliderMax: 1000,
+                  divisions: 1000,
+                  onSliderChanged: (double value) => onChanged(
+                    index,
+                    filter.copyWith(frequencyHz: _fromSlider(value)),
+                  ),
+                ),
+                if (hasGain)
+                  PrecisionSliderRow(
+                    label: 'Ganancia',
+                    value: filter.gainDb,
+                    min: AppConstants.eqMinGain,
+                    max: AppConstants.eqMaxGain,
+                    step: 1,
+                    decimals: 1,
+                    unit: 'dB',
+                    onChanged: (double value) =>
+                        onChanged(index, filter.copyWith(gainDb: value)),
+                    formatter: (double v) =>
+                        '${v >= 0 ? '+' : ''}${v.toStringAsFixed(1)} dB',
+                  ),
+                PrecisionSliderRow(
+                  label: 'Ancho / Q',
+                  value: filter.q,
+                  min: AppConstants.eqMinQ,
+                  max: AppConstants.eqMaxQ,
+                  step: 0.1,
+                  decimals: 2,
+                  unit: '',
+                  onChanged: (double value) =>
+                      onChanged(index, filter.copyWith(q: value)),
+                  formatter: (double v) => v.toStringAsFixed(2),
+                ),
+              ],
             ),
-          ),
-          PrecisionSliderRow(
-            label: 'Ganancia',
-            value: filter.gainDb,
-            min: AppConstants.eqMinGain,
-            max: AppConstants.eqMaxGain,
-            step: 1,
-            decimals: 1,
-            unit: 'dB',
-            onChanged: (double value) =>
-                onChanged(index, filter.copyWith(gainDb: value)),
-            formatter: (double v) =>
-                '${v >= 0 ? '+' : ''}${v.toStringAsFixed(1)} dB',
-          ),
-          PrecisionSliderRow(
-            label: 'Ancho / Q',
-            value: filter.q,
-            min: AppConstants.eqMinQ,
-            max: AppConstants.eqMaxQ,
-            step: 0.1,
-            decimals: 2,
-            unit: '',
-            onChanged: (double value) =>
-                onChanged(index, filter.copyWith(q: value)),
-            formatter: (double v) => v.toStringAsFixed(2),
           ),
         ],
       ),

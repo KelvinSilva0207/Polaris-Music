@@ -49,6 +49,34 @@ void main() {
       );
     });
 
+    test('el Q de los estantes coincide con el Q de bass/treble de FFmpeg', () {
+      EqualizerConfig shelf(double q) => EqualizerConfig(
+        mode: EqMode.parametric,
+        filters: <ParametricFilter>[
+          ParametricFilter(
+            type: ParametricFilterType.lowShelf,
+            frequencyHz: 100,
+            gainDb: 12,
+            q: q,
+          ),
+        ],
+      );
+
+      // Con `t=q`, un Q bajo ensancha la transición: a 200 Hz queda más
+      // refuerzo que con un Q alto. Con la antigua pendiente S ambos casos se
+      // veían igual en la curva aunque sonaban distinto.
+      final double wide = FrequencyResponse.dbAt(
+        frequencyHz: 200,
+        config: shelf(0.2),
+      );
+      final double narrow = FrequencyResponse.dbAt(
+        frequencyHz: 200,
+        config: shelf(8),
+      );
+      expect(wide, greaterThan(narrow));
+      expect(wide, greaterThan(0));
+    });
+
     test('la escala logarítmica es reversible', () {
       const double width = 320;
       for (final double hz in <double>[20, 100, 1000, 10000, 20000]) {

@@ -201,7 +201,9 @@ class ServiceLocator {
     sl.registerSingleton<BackupService>(
       BackupService(database, settingsService: settings),
     );
-    sl.registerSingleton<LibraryRepository>(LibraryRepository(database));
+    sl.registerSingleton<LibraryRepository>(
+      LibraryRepository(database, settings: settings),
+    );
     sl.registerSingleton<PlaylistService>(
       PlaylistService(database, sl<LibraryRepository>()),
     );
