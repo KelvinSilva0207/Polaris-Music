@@ -12,6 +12,7 @@ import '../domain/folder_tree.dart';
 import '../domain/library_folder.dart';
 import '../domain/library_sort.dart';
 import '../domain/library_view.dart';
+import 'alphabet_index.dart';
 import 'library_providers.dart';
 
 /// Lista de pistas compartida por Todas, álbumes, artistas y carpetas.
@@ -71,20 +72,10 @@ class TrackResults extends StatelessWidget {
               ),
             ),
             Expanded(
-              child: ListView.builder(
-                key: const PageStorageKey<String>('library-track-results'),
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-                itemCount: list.length,
-                itemBuilder: (BuildContext context, int index) {
-                  final Track track = list[index];
-                  return TrackTile(
-                    track: track,
-                    queue: list,
-                    index: index,
-                    showIndex: true,
-                    artworkSize: 46 * artworkScale,
-                  );
-                },
+              child: AlphabetizedTrackList(
+                tracks: list,
+                storageKey: 'library-track-results',
+                artworkScale: artworkScale,
               ),
             ),
           ],
@@ -260,17 +251,10 @@ class LibraryGroupPage extends ConsumerWidget {
             ),
           ),
           Expanded(
-            child: ListView.builder(
-              key: PageStorageKey<String>('group-${view.name}-${group.key}'),
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-              itemCount: group.tracks.length,
-              itemBuilder: (BuildContext context, int index) => TrackTile(
-                track: group.tracks[index],
-                queue: group.tracks,
-                index: index,
-                showIndex: true,
-                artworkSize: 46 * scale,
-              ),
+            child: AlphabetizedTrackList(
+              tracks: group.tracks,
+              storageKey: 'group-${view.name}-${group.key}',
+              artworkScale: scale,
             ),
           ),
         ],
@@ -562,20 +546,10 @@ class _FolderBrowserPageState extends ConsumerState<FolderBrowserPage>
                         title: 'Sin coincidencias',
                         message: 'Prueba con otro título, artista o álbum.',
                       )
-                    : ListView.builder(
-                        key: PageStorageKey<String>(
-                          'folder-overview-${folder.path}',
-                        ),
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
-                        itemCount: descendant.length,
-                        itemBuilder: (BuildContext context, int index) =>
-                            TrackTile(
-                              track: descendant[index],
-                              queue: descendant,
-                              index: index,
-                              showIndex: true,
-                              artworkSize: 46 * widget.scale,
-                            ),
+                    : AlphabetizedTrackList(
+                        tracks: descendant,
+                        storageKey: 'folder-overview-${folder.path}',
+                        artworkScale: widget.scale,
                       ),
               ),
             ],
