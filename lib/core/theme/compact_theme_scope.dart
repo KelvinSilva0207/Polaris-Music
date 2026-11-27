@@ -37,7 +37,7 @@ class CompactThemeScope extends ConsumerWidget {
       accent: resolved.accent,
       background: resolved.background,
       surface: resolved.background,
-      cardStyle: style.cardStyle,
+      cardStyle: resolved.tokens.cardStyle,
       panelRadius: resolved.radius,
       glassOpacity: resolved.opacity,
       glassBlur: resolved.blur,

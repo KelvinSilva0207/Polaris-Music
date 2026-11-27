@@ -172,7 +172,9 @@ class _GroupCard extends StatelessWidget {
         ),
         child: Ink(
           padding: const EdgeInsets.all(10),
-          decoration: context.tokens.panelDecoration(radius: 16),
+          decoration: context.tokens.panelDecoration(
+            radius: context.tokens.tileRadius,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -279,9 +281,29 @@ class LibraryGroupPage extends ConsumerWidget {
 
 /// Raíces reales de almacenamiento/SD descubiertas durante el escaneo.
 class FoldersView extends ConsumerWidget {
-  const FoldersView({super.key, this.scale = 1});
+  const FoldersView({
+    super.key,
+    this.scale = 1,
+    this.onManageFolders,
+    this.scanError,
+  });
 
   final double scale;
+  final VoidCallback? onManageFolders;
+  final String? scanError;
+
+  static String? _loadError(
+    AsyncValue<List<Track>> tracks,
+    AsyncValue<List<LibraryFolder>> folders,
+  ) {
+    if (folders.hasError && folders.valueOrNull == null) {
+      return 'No se pudieron cargar las carpetas: ${folders.error}';
+    }
+    if (tracks.hasError && tracks.valueOrNull == null) {
+      return 'No se pudo cargar la biblioteca: ${tracks.error}';
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -295,33 +317,34 @@ class FoldersView extends ConsumerWidget {
         (folders.isLoading && folders.valueOrNull == null)) {
       return const Center(child: CircularProgressIndicator());
     }
-    if ((tracks.hasError && tracks.valueOrNull == null) ||
-        (folders.hasError && folders.valueOrNull == null)) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'No se pudo cargar el árbol de carpetas.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-        ),
-      );
-    }
 
+    final String? loadError = _loadError(tracks, folders);
     final FolderLibrary library = ref.watch(folderLibraryProvider);
     final List<FolderNode> nodes = <FolderNode>[
       ...library.roots,
       if (library.unclassified != null) library.unclassified!,
     ];
     if (nodes.isEmpty) {
-      return const EmptyState(
+      // Antes este era un EmptyState mudo: con la biblioteca vacía parecía un
+      // panel gris sin salida. El mensaje distingue "no hay nada" de "falló".
+      return EmptyState(
         icon: Icons.folder_off_outlined,
         title: 'Todavía no hay carpetas indexadas',
-        message: 'Añade una carpeta de música y pulsa “Escanear”.',
+        message:
+            loadError ??
+            scanError ??
+            'Añade una carpeta de música y pulsa “Escanear”.',
+        action: onManageFolders == null
+            ? null
+            : FilledButton.icon(
+                onPressed: onManageFolders,
+                icon: const Icon(Icons.create_new_folder_outlined),
+                label: const Text('Añadir carpeta'),
+              ),
       );
     }
-    return ListView.builder(
+
+    final Widget list = ListView.builder(
       key: const PageStorageKey<String>('library-folder-roots'),
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
       itemCount: nodes.length,
@@ -354,6 +377,27 @@ class FoldersView extends ConsumerWidget {
           ),
         );
       },
+    );
+
+    final String? banner = loadError ?? scanError;
+    if (banner == null) return list;
+    // Un error parcial no debe borrar el árbol que sí se pudo construir.
+    return Column(
+      children: <Widget>[
+        Material(
+          color: Theme.of(context).colorScheme.errorContainer,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text(
+              banner,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onErrorContainer,
+              ),
+            ),
+          ),
+        ),
+        Expanded(child: list),
+      ],
     );
   }
 }

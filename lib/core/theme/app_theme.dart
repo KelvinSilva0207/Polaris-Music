@@ -25,6 +25,7 @@ class AppTheme {
         typography ??
         const ResolvedTypography(TypographyConfig(), 'Polaris Sans');
     final Color accent = config.accent;
+    final DesignLanguage language = config.designLanguage;
     final Brightness brightness = config.brightness;
     final Color ink = ColorMath.onColor(config.surface);
     final ColorScheme scheme =
@@ -71,6 +72,7 @@ class AppTheme {
           glassEnabled: config.isGlass,
           glassOpacity: config.glassOpacity,
           finish: config.finish,
+          designLanguage: config.designLanguage,
           secondary: config.secondary,
           surfaceOpacity: config.surfaceOpacity,
           brightness: brightness,
@@ -82,8 +84,13 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(config.panelRadius),
-          side: BorderSide(color: config.borderColor),
+          borderRadius: BorderRadius.circular(language.tileRadius),
+          side: language.borderWidth == 0
+              ? BorderSide.none
+              : BorderSide(
+                  color: config.borderColor,
+                  width: language.borderWidth,
+                ),
         ),
       ),
       appBarTheme: const AppBarTheme(
@@ -104,6 +111,9 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: config.surface,
         indicatorColor: accent.withValues(alpha: 0.20),
+        indicatorShape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(language.navRadius),
+        ),
         elevation: 0,
         height: 64,
       ),
@@ -112,7 +122,7 @@ class AppTheme {
         thumbColor: accent,
         inactiveTrackColor: ink.withValues(alpha: 0.16),
         overlayColor: accent.withValues(alpha: 0.16),
-        trackHeight: 3,
+        trackHeight: language.progressThickness,
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
@@ -129,11 +139,11 @@ class AppTheme {
         filled: true,
         fillColor: ink.withValues(alpha: 0.04),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(language.tileRadius),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(language.tileRadius),
           borderSide: BorderSide(color: ink.withValues(alpha: 0.12)),
         ),
         contentPadding: const EdgeInsets.symmetric(
@@ -142,8 +152,8 @@ class AppTheme {
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: ink.withValues(alpha: 0.12),
-        thickness: 1,
+        color: ink.withValues(alpha: language.hairlineDividers ? 0.08 : 0.12),
+        thickness: language.hairlineDividers ? 0.6 : 1,
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

@@ -6,13 +6,11 @@ import '../../../core/models/track.dart';
 import 'library_folder.dart';
 
 /// Nodo de la jerarquía real de carpetas derivada de las rutas indexadas.
-@immutable
 class FolderNode {
-  const FolderNode._({
+  FolderNode._({
     required this.path,
     required this.name,
     this.parent,
-    required this.children,
     required this.directTracks,
     required this.descendantTracks,
   });
@@ -20,7 +18,11 @@ class FolderNode {
   final String path;
   final String name;
   final FolderNode? parent;
-  final List<FolderNode> children;
+  List<FolderNode> _children = const <FolderNode>[];
+
+  /// Los hijos se asignan al congelar el árbol. Se devuelven sin modificar
+  /// para que el resto de la app siga tratando el nodo como inmutable.
+  List<FolderNode> get children => List<FolderNode>.unmodifiable(_children);
   final List<Track> directTracks;
   final List<Track> descendantTracks;
 
@@ -107,13 +109,20 @@ FolderLibrary buildFolderTree(
 ) {
   final Map<String, _MutableNode> nodes = <String, _MutableNode>{};
 
-  _MutableNode ensure(String rawPath, {String? displayName}) {
+  _MutableNode ensure(
+    String rawPath, {
+    String? displayName,
+    bool createParents = true,
+  }) {
     final String key = _normalizePath(rawPath);
     final _MutableNode? existing = nodes[key];
     if (existing != null) return existing;
 
     final String parentKey = _parentPath(key);
-    final _MutableNode? parent = parentKey.isEmpty || parentKey == key
+    // Las raíces de escaneo y los nodos sintéticos no deben arrastrar a sus
+    // ancestros: son la cima de la jerarquía que se muestra al usuario.
+    final _MutableNode? parent =
+        !createParents || parentKey.isEmpty || parentKey == key
         ? null
         : ensure(parentKey);
     final _MutableNode node = _MutableNode(
@@ -129,7 +138,11 @@ FolderLibrary buildFolderTree(
   final List<_MutableNode> scanRoots = <_MutableNode>[];
   for (final LibraryFolder folder in folders) {
     if (folder.path.trim().isEmpty) continue;
-    final _MutableNode root = ensure(folder.path, displayName: folder.name);
+    final _MutableNode root = ensure(
+      folder.path,
+      displayName: folder.name,
+      createParents: false,
+    );
     if (!scanRoots.contains(root)) scanRoots.add(root);
   }
 
@@ -141,7 +154,11 @@ FolderLibrary buildFolderTree(
     if (!track.isLocal && !track.isDownloaded) continue;
 
     if (track.isDownloaded) {
-      downloads ??= ensure('polaris://descargas', displayName: 'Descargas');
+      downloads ??= ensure(
+        'polaris://descargas',
+        displayName: 'Descargas',
+        createParents: false,
+      );
       downloads.direct.add(track);
       continue;
     }
@@ -157,7 +174,11 @@ FolderLibrary buildFolderTree(
     }
 
     if (owner == null) {
-      other ??= ensure('polaris://otros', displayName: 'Otros');
+      other ??= ensure(
+        'polaris://otros',
+        displayName: 'Otros',
+        createParents: false,
+      );
       other.direct.add(track);
       continue;
     }
@@ -181,28 +202,30 @@ FolderLibrary buildFolderTree(
   if (downloads != null) collect(downloads);
 
   final Map<_MutableNode, FolderNode> frozen = <_MutableNode, FolderNode>{};
-  FolderNode freeze(_MutableNode node) {
+  FolderNode freeze(_MutableNode node, FolderNode? parent) {
     final FolderNode? cached = frozen[node];
     if (cached != null) return cached;
     final FolderNode result = FolderNode._(
       path: node.path,
       name: node.name,
-      parent: node.parent == null ? null : freeze(node.parent!),
-      children: <FolderNode>[
-        for (final _MutableNode child in node.children) freeze(child),
-      ],
+      parent: parent,
       directTracks: List<Track>.unmodifiable(node.direct),
       descendantTracks: node.descendants,
     );
+    // Se registra antes de bajar a los hijos: cada hijo apunta a este padre y,
+    // sin esta entrada, la recursión volvería a empezar hasta agotar la pila.
     frozen[node] = result;
+    result._children = <FolderNode>[
+      for (final _MutableNode child in node.children) freeze(child, result),
+    ];
     return result;
   }
 
   final List<FolderNode> roots = <FolderNode>[
-    for (final _MutableNode root in scanRoots) freeze(root),
+    for (final _MutableNode root in scanRoots) freeze(root, null),
   ];
   if (other != null && !scanRoots.contains(other)) {
-    roots.add(freeze(other));
+    roots.add(freeze(other, null));
   }
 
   final Map<String, FolderNode> byPath = <String, FolderNode>{};
@@ -218,7 +241,7 @@ FolderLibrary buildFolderTree(
   }
   final FolderNode? downloadsNode = downloads == null
       ? null
-      : freeze(downloads);
+      : freeze(downloads, null);
   if (downloadsNode != null) byPath[downloadsNode.path] = downloadsNode;
 
   return FolderLibrary._(

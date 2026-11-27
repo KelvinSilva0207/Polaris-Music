@@ -79,6 +79,251 @@ enum ProgressBarType {
   final String description;
 }
 
+/// Tratamiento de la línea activa de letras según el lenguaje visual.
+enum LyricHighlight {
+  pill('Píldora', 'La línea activa se envuelve en una píldora suave.'),
+  underline('Subrayado', 'Un trazo fino marca la línea en curso.'),
+  glow('Resplandor', 'La línea activa brilla sobre el fondo.'),
+  bar('Barra', 'Una barra lateral ancla la línea activa.'),
+  none('Sin marco', 'Solo cambia el peso y el color de la tipografía.');
+
+  const LyricHighlight(this.label, this.description);
+
+  final String label;
+  final String description;
+}
+
+/// Dibujo de la rejilla de fondo del ecualizador.
+enum EqGridStyle {
+  lines('Líneas', 'Rejilla clásica de líneas suaves.'),
+  dots('Puntos', 'Rejilla de puntos discretos.'),
+  dense('Densa', 'Rejilla técnica de alta densidad.'),
+  none('Sin rejilla', 'Curva limpia sobre fondo sólido.');
+
+  const EqGridStyle(this.label, this.description);
+
+  final String label;
+  final String description;
+}
+
+/// Lenguaje visual completo de un preset.
+///
+/// No es una paleta: define geometría, bordes, relieve, ritmo tipográfico,
+/// resaltado de letras, rejilla del ecualizador y forma del progreso. Cada
+/// preset del catálogo tiene un valor distinto para que el cambio de tema no
+/// se lea como un simple cambio de color.
+enum DesignLanguage {
+  violetGlass(
+    'Vidrio violeta',
+    'Paneles de cristal amplios, bordes luminosos y curvas suaves.',
+  ),
+  monolith(
+    'Monolito',
+    'Geometría casi cuadrada, bordes inexistentes y tipografía técnica.',
+  ),
+  bronzeNeumorphic(
+    'Neumórfico bronce',
+    'Relieve 3D suave, carátula circular y sombras envolventes.',
+  ),
+  vinylWave(
+    'Vinilo Wave',
+    'Vinilo asomante, onda continua y superficies líquidas cálidas.',
+  ),
+  cyberNeon(
+    'Neón cibernético',
+    'Cantos vivos, rejilla técnica y acentos luminosos segmentados.',
+  ),
+  nordicFrost(
+    'Escarcha nórdica',
+    'Papel frío, filetes finos y paneles ligeros muy legibles.',
+  ),
+  rgbSpectrum(
+    'Espectro RGB',
+    'Tarjeta 3D, flujo cromático y curva luminosa orgánica.',
+  ),
+  emeraldStudio(
+    'Estudio esmeralda',
+    'Superficies planas, rejilla de estudio y etiquetas compactas.',
+  ),
+  crimsonVelvet(
+    'Terciopelo carmesí',
+    'Radios generosos, brillo ámbar y anillo de progreso envolvente.',
+  ),
+  lightEditorial(
+    'Editorial claro',
+    'Papel, reglas finas, letras con subrayado y ritmo de revista.',
+  ),
+  darkFlat(
+    'Oscuro plano',
+    'Carbón sin relieve, separadores discretos y barras delgadas.',
+  );
+
+  const DesignLanguage(this.label, this.description);
+
+  final String label;
+  final String description;
+
+  /// Radio de filas, tarjetas de biblioteca y cajas de herramientas.
+  double get tileRadius => switch (this) {
+    DesignLanguage.violetGlass => 16,
+    DesignLanguage.monolith => 4,
+    DesignLanguage.bronzeNeumorphic => 24,
+    DesignLanguage.vinylWave => 18,
+    DesignLanguage.cyberNeon => 8,
+    DesignLanguage.nordicFrost => 20,
+    DesignLanguage.rgbSpectrum => 22,
+    DesignLanguage.emeraldStudio => 10,
+    DesignLanguage.crimsonVelvet => 28,
+    DesignLanguage.lightEditorial => 2,
+    DesignLanguage.darkFlat => 12,
+  };
+
+  /// Grosor del borde de filas y controles. `0` elimina el contorno.
+  double get borderWidth => switch (this) {
+    DesignLanguage.violetGlass => 1,
+    DesignLanguage.monolith => 0,
+    DesignLanguage.bronzeNeumorphic => 0,
+    DesignLanguage.vinylWave => 1,
+    DesignLanguage.cyberNeon => 1.4,
+    DesignLanguage.nordicFrost => 1,
+    DesignLanguage.rgbSpectrum => 1,
+    DesignLanguage.emeraldStudio => 0,
+    DesignLanguage.crimsonVelvet => 1,
+    DesignLanguage.lightEditorial => 1,
+    DesignLanguage.darkFlat => 0,
+  };
+
+  bool get hairlineDividers => switch (this) {
+    DesignLanguage.violetGlass => false,
+    DesignLanguage.monolith => true,
+    DesignLanguage.bronzeNeumorphic => false,
+    DesignLanguage.vinylWave => false,
+    DesignLanguage.cyberNeon => false,
+    DesignLanguage.nordicFrost => true,
+    DesignLanguage.rgbSpectrum => false,
+    DesignLanguage.emeraldStudio => true,
+    DesignLanguage.crimsonVelvet => false,
+    DesignLanguage.lightEditorial => true,
+    DesignLanguage.darkFlat => true,
+  };
+
+  bool get glowEdge => switch (this) {
+    DesignLanguage.violetGlass => true,
+    DesignLanguage.monolith => false,
+    DesignLanguage.bronzeNeumorphic => false,
+    DesignLanguage.vinylWave => true,
+    DesignLanguage.cyberNeon => true,
+    DesignLanguage.nordicFrost => false,
+    DesignLanguage.rgbSpectrum => true,
+    DesignLanguage.emeraldStudio => false,
+    DesignLanguage.crimsonVelvet => true,
+    DesignLanguage.lightEditorial => false,
+    DesignLanguage.darkFlat => false,
+  };
+
+  bool get raisedTile => this == DesignLanguage.bronzeNeumorphic;
+
+  /// Barra de progreso segmentada (estilo técnico) frente a riel continuo.
+  bool get segmentedProgress => switch (this) {
+    DesignLanguage.monolith ||
+    DesignLanguage.cyberNeon ||
+    DesignLanguage.emeraldStudio => true,
+    _ => false,
+  };
+
+  double get progressThickness => switch (this) {
+    DesignLanguage.monolith => 2,
+    DesignLanguage.lightEditorial => 2,
+    DesignLanguage.emeraldStudio => 3,
+    DesignLanguage.cyberNeon => 4,
+    DesignLanguage.darkFlat => 4,
+    DesignLanguage.nordicFrost => 5,
+    DesignLanguage.violetGlass => 6,
+    DesignLanguage.vinylWave => 7,
+    DesignLanguage.rgbSpectrum => 7,
+    DesignLanguage.crimsonVelvet => 8,
+    DesignLanguage.bronzeNeumorphic => 8,
+  };
+
+  LyricHighlight get lyricHighlight => switch (this) {
+    DesignLanguage.violetGlass ||
+    DesignLanguage.bronzeNeumorphic ||
+    DesignLanguage.crimsonVelvet => LyricHighlight.pill,
+    DesignLanguage.nordicFrost ||
+    DesignLanguage.lightEditorial => LyricHighlight.underline,
+    DesignLanguage.vinylWave ||
+    DesignLanguage.rgbSpectrum => LyricHighlight.glow,
+    DesignLanguage.monolith ||
+    DesignLanguage.emeraldStudio ||
+    DesignLanguage.darkFlat => LyricHighlight.bar,
+    DesignLanguage.cyberNeon => LyricHighlight.none,
+  };
+
+  EqGridStyle get eqGrid => switch (this) {
+    DesignLanguage.violetGlass ||
+    DesignLanguage.nordicFrost ||
+    DesignLanguage.lightEditorial => EqGridStyle.lines,
+    DesignLanguage.monolith ||
+    DesignLanguage.emeraldStudio ||
+    DesignLanguage.rgbSpectrum ||
+    DesignLanguage.darkFlat => EqGridStyle.dots,
+    DesignLanguage.cyberNeon => EqGridStyle.dense,
+    DesignLanguage.bronzeNeumorphic ||
+    DesignLanguage.crimsonVelvet => EqGridStyle.none,
+    DesignLanguage.vinylWave => EqGridStyle.lines,
+  };
+
+  /// Etiquetas en mayúsculas para los lenguajes técnicos/editoriales.
+  bool get uppercaseLabels => switch (this) {
+    DesignLanguage.monolith ||
+    DesignLanguage.cyberNeon ||
+    DesignLanguage.emeraldStudio ||
+    DesignLanguage.lightEditorial => true,
+    _ => false,
+  };
+
+  double get tileArtworkRadius => switch (this) {
+    DesignLanguage.bronzeNeumorphic || DesignLanguage.crimsonVelvet => 999,
+    DesignLanguage.monolith || DesignLanguage.lightEditorial => 2,
+    DesignLanguage.cyberNeon => 4,
+    DesignLanguage.emeraldStudio => 6,
+    DesignLanguage.darkFlat => 10,
+    DesignLanguage.violetGlass => 12,
+    DesignLanguage.vinylWave => 14,
+    DesignLanguage.nordicFrost => 16,
+    DesignLanguage.rgbSpectrum => 18,
+  };
+
+  double get navRadius => switch (this) {
+    DesignLanguage.monolith => 6,
+    DesignLanguage.lightEditorial => 4,
+    DesignLanguage.cyberNeon => 8,
+    DesignLanguage.emeraldStudio => 10,
+    DesignLanguage.darkFlat => 12,
+    DesignLanguage.violetGlass => 16,
+    DesignLanguage.vinylWave => 18,
+    DesignLanguage.nordicFrost => 20,
+    DesignLanguage.bronzeNeumorphic => 22,
+    DesignLanguage.rgbSpectrum => 22,
+    DesignLanguage.crimsonVelvet => 26,
+  };
+
+  static DesignLanguage forPreset(AppThemePreset preset) => switch (preset) {
+    AppThemePreset.dark => DesignLanguage.darkFlat,
+    AppThemePreset.light => DesignLanguage.lightEditorial,
+    AppThemePreset.rgbDynamic => DesignLanguage.rgbSpectrum,
+    AppThemePreset.polarisVioletGlass => DesignLanguage.violetGlass,
+    AppThemePreset.bronzeVinyl => DesignLanguage.bronzeNeumorphic,
+    AppThemePreset.vinylWave => DesignLanguage.vinylWave,
+    AppThemePreset.cyberNeon => DesignLanguage.cyberNeon,
+    AppThemePreset.nordicFrost => DesignLanguage.nordicFrost,
+    AppThemePreset.emeraldStudio => DesignLanguage.emeraldStudio,
+    AppThemePreset.crimsonVelvet => DesignLanguage.crimsonVelvet,
+    AppThemePreset.monolithMinimal => DesignLanguage.monolith,
+    AppThemePreset.custom => DesignLanguage.violetGlass,
+  };
+}
+
 /// Origen de los colores del fondo y del acento.
 enum ColorPaletteMode {
   dynamicArtwork('Dinámico', 'Extrae la paleta de la carátula actual'),
@@ -185,6 +430,7 @@ class AppThemeConfig {
     required this.surface,
     required this.backdrop,
     this.finish = SurfaceFinish.glass,
+    this.designLanguage = DesignLanguage.violetGlass,
     this.secondary = const Color(0xFF22D3EE),
     this.surfaceOpacity = 0.94,
     this.rgbHue = 267,
@@ -220,6 +466,9 @@ class AppThemeConfig {
 
   /// Segunda capa del tema: material de todas las superficies.
   final SurfaceFinish finish;
+
+  /// Lenguaje visual completo: geometría, bordes, letras, ecualizador y ritmo.
+  final DesignLanguage designLanguage;
 
   /// Color secundario para brillos, degradados y flujo cromático.
   final Color secondary;
@@ -274,6 +523,7 @@ class AppThemeConfig {
 
   static const AppThemeConfig polarisVioletGlass = AppThemeConfig(
     preset: AppThemePreset.polarisVioletGlass,
+    designLanguage: DesignLanguage.violetGlass,
     cardStyle: CardStyle.glassmorphic,
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.linearClassic,
@@ -301,6 +551,7 @@ class AppThemeConfig {
 
   static const AppThemeConfig monolithMinimal = AppThemeConfig(
     preset: AppThemePreset.monolithMinimal,
+    designLanguage: DesignLanguage.monolith,
     cardStyle: CardStyle.flatMinimal,
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.waveform,
@@ -328,6 +579,7 @@ class AppThemeConfig {
 
   static const AppThemeConfig bronzeVinyl = AppThemeConfig(
     preset: AppThemePreset.bronzeVinyl,
+    designLanguage: DesignLanguage.bronzeNeumorphic,
     cardStyle: CardStyle.neumorphic,
     artworkShape: ArtworkShape.circleVinyl,
     progressBarType: ProgressBarType.circularAroundArtwork,
@@ -356,6 +608,7 @@ class AppThemeConfig {
   /// Coral vivo sobre ciruela profunda: carátula con vinilo asomante y onda.
   static const AppThemeConfig vinylWave = AppThemeConfig(
     preset: AppThemePreset.vinylWave,
+    designLanguage: DesignLanguage.vinylWave,
     cardStyle: CardStyle.glassmorphic,
     artworkShape: ArtworkShape.vinylWave,
     progressBarType: ProgressBarType.waveform,
@@ -384,6 +637,7 @@ class AppThemeConfig {
   /// Carbón profundo con acento violeta y acabado mate.
   static const AppThemeConfig dark = AppThemeConfig(
     preset: AppThemePreset.dark,
+    designLanguage: DesignLanguage.darkFlat,
     cardStyle: CardStyle.flatMinimal,
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.linearClassic,
@@ -406,6 +660,7 @@ class AppThemeConfig {
   /// Blanco perlado con tinta oscura: Cola y Letras mantienen contraste.
   static const AppThemeConfig light = AppThemeConfig(
     preset: AppThemePreset.light,
+    designLanguage: DesignLanguage.lightEditorial,
     cardStyle: CardStyle.flatMinimal,
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.linearClassic,
@@ -435,6 +690,7 @@ class AppThemeConfig {
   /// Espectro HSV con flujo cromático suave opcional.
   static const AppThemeConfig rgbDynamic = AppThemeConfig(
     preset: AppThemePreset.rgbDynamic,
+    designLanguage: DesignLanguage.rgbSpectrum,
     cardStyle: CardStyle.glassmorphic,
     artworkShape: ArtworkShape.card3D,
     progressBarType: ProgressBarType.waveform,
@@ -459,6 +715,7 @@ class AppThemeConfig {
   /// Neón cian/magenta sobre cristal oscuro.
   static const AppThemeConfig cyberNeon = AppThemeConfig(
     preset: AppThemePreset.cyberNeon,
+    designLanguage: DesignLanguage.cyberNeon,
     cardStyle: CardStyle.glassmorphic,
     artworkShape: ArtworkShape.card3D,
     progressBarType: ProgressBarType.waveform,
@@ -482,6 +739,7 @@ class AppThemeConfig {
   /// Blanco nórdico con azul frío y vidrio ligero.
   static const AppThemeConfig nordicFrost = AppThemeConfig(
     preset: AppThemePreset.nordicFrost,
+    designLanguage: DesignLanguage.nordicFrost,
     cardStyle: CardStyle.glassmorphic,
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.linearClassic,
@@ -511,6 +769,7 @@ class AppThemeConfig {
   /// Verde esmeralda sobre carbón, acabado sólido.
   static const AppThemeConfig emeraldStudio = AppThemeConfig(
     preset: AppThemePreset.emeraldStudio,
+    designLanguage: DesignLanguage.emeraldStudio,
     cardStyle: CardStyle.flatMinimal,
     artworkShape: ArtworkShape.squareRounded,
     progressBarType: ProgressBarType.waveform,
@@ -534,6 +793,7 @@ class AppThemeConfig {
   /// Carmesí profundo con gradientes envolventes.
   static const AppThemeConfig crimsonVelvet = AppThemeConfig(
     preset: AppThemePreset.crimsonVelvet,
+    designLanguage: DesignLanguage.crimsonVelvet,
     cardStyle: CardStyle.glassmorphic,
     artworkShape: ArtworkShape.circleVinyl,
     progressBarType: ProgressBarType.circularAroundArtwork,
@@ -718,6 +978,7 @@ class AppThemeConfig {
     Color? surface,
     List<Color>? backdrop,
     SurfaceFinish? finish,
+    DesignLanguage? designLanguage,
     Color? secondary,
     double? surfaceOpacity,
     double? rgbHue,
@@ -764,6 +1025,7 @@ class AppThemeConfig {
       surface: surface ?? this.surface,
       backdrop: backdrop ?? this.backdrop,
       finish: finish ?? this.finish,
+      designLanguage: designLanguage ?? this.designLanguage,
       secondary: secondary ?? this.secondary,
       surfaceOpacity: surfaceOpacity ?? this.surfaceOpacity,
       rgbHue: rgbHue ?? this.rgbHue,
@@ -797,6 +1059,7 @@ class AppThemeConfig {
     'surface': surface.toARGB32(),
     'backdrop': backdrop.map((Color color) => color.toARGB32()).toList(),
     'finish': finish.name,
+    'designLanguage': designLanguage.name,
     'secondary': secondary.toARGB32(),
     'surfaceOpacity': surfaceOpacity,
     'rgbHue': rgbHue,
@@ -850,6 +1113,9 @@ class AppThemeConfig {
           ? base.backdrop
           : backdrop,
       finish: _enumByName(SurfaceFinish.values, json['finish']) ?? base.finish,
+      designLanguage:
+          _enumByName(DesignLanguage.values, json['designLanguage']) ??
+          base.designLanguage,
       secondary: _color(json['secondary'], base.secondary),
       surfaceOpacity: _clamp01(
         _double(json['surfaceOpacity'], base.surfaceOpacity),
@@ -901,6 +1167,7 @@ class AppThemeConfig {
           surface == other.surface &&
           listEquals(backdrop, other.backdrop) &&
           finish == other.finish &&
+          designLanguage == other.designLanguage &&
           secondary == other.secondary &&
           surfaceOpacity == other.surfaceOpacity &&
           rgbHue == other.rgbHue &&
@@ -933,6 +1200,7 @@ class AppThemeConfig {
     surface,
     Object.hashAll(backdrop),
     finish,
+    designLanguage,
     secondary,
     surfaceOpacity,
     rgbHue,

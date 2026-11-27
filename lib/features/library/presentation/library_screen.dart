@@ -352,7 +352,11 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
                   ),
                   LibraryView.albums || LibraryView.artists =>
                     LibraryGroupsView(view: view, scale: artworkScale),
-                  LibraryView.folders => FoldersView(scale: artworkScale),
+                  LibraryView.folders => FoldersView(
+                    scale: artworkScale,
+                    onManageFolders: _manageFolders,
+                    scanError: scan.error,
+                  ),
                 },
               ),
             ),

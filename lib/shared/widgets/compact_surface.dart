@@ -31,11 +31,20 @@ class CompactPanel extends StatelessWidget {
     final BorderRadius radius = BorderRadius.circular(style.radius);
 
     final bool matte = style.tokens.finish == SurfaceFinish.matte;
+    final DesignLanguage language = style.tokens.designLanguage;
+    final Border? outline = language.borderWidth == 0
+        ? null
+        : Border.all(
+            color: style.accent.withValues(
+              alpha: language.glowEdge ? 0.30 : 0.18,
+            ),
+            width: language.borderWidth,
+          );
     final BoxDecoration surface = switch (style.tokens.finish) {
       SurfaceFinish.matte => BoxDecoration(
         color: fill.withValues(alpha: alpha),
         borderRadius: radius,
-        border: Border.all(color: style.accent.withValues(alpha: 0.20)),
+        border: outline,
       ),
       SurfaceFinish.liquid => BoxDecoration(
         gradient: LinearGradient(
@@ -47,46 +56,59 @@ class CompactPanel extends StatelessWidget {
           ],
         ),
         borderRadius: radius,
-        border: Border.all(color: style.accent.withValues(alpha: 0.24)),
+        border: outline,
       ),
       SurfaceFinish.glass => BoxDecoration(
         color: fill.withValues(alpha: alpha),
         borderRadius: radius,
-        border: Border.all(color: style.accent.withValues(alpha: 0.28)),
+        border: outline,
       ),
     };
 
     // Sombra y recorte comparten el mismo radio, pero la sombra se pinta en un
     // DecoratedBox exterior: si el ClipRRect envolviera al DecoratedBox con
     // boxShadow, recortaría el resplandor y dejaría solo el marco flotante.
-    final List<BoxShadow>? shadows = switch (style.tokens.finish) {
-      SurfaceFinish.matte => null,
-      SurfaceFinish.liquid =>
-        style.glow
-            ? <BoxShadow>[
-                BoxShadow(
-                  color: style.accent.withValues(alpha: 0.16),
-                  blurRadius: 20,
-                  spreadRadius: 1,
-                ),
-              ]
-            : null,
-      SurfaceFinish.glass =>
-        style.glow
-            ? <BoxShadow>[
-                BoxShadow(
-                  color: style.accent.withValues(alpha: 0.22),
-                  blurRadius: 26,
-                  spreadRadius: 1,
-                ),
-                BoxShadow(
-                  color: style.tokens.shadowColor.withValues(alpha: 0.36),
-                  blurRadius: 18,
-                  offset: const Offset(0, 10),
-                ),
-              ]
-            : null,
-    };
+    final List<BoxShadow>? shadows = language.raisedTile
+        ? <BoxShadow>[
+            BoxShadow(
+              color: style.tokens.neumorphicLight.withValues(alpha: 0.85),
+              blurRadius: 12,
+              offset: const Offset(-3, -3),
+            ),
+            BoxShadow(
+              color: style.tokens.neumorphicDark.withValues(alpha: 0.75),
+              blurRadius: 16,
+              offset: const Offset(4, 5),
+            ),
+          ]
+        : switch (style.tokens.finish) {
+            SurfaceFinish.matte => null,
+            SurfaceFinish.liquid =>
+              style.glow
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: style.accent.withValues(alpha: 0.16),
+                        blurRadius: 20,
+                        spreadRadius: 1,
+                      ),
+                    ]
+                  : null,
+            SurfaceFinish.glass =>
+              style.glow
+                  ? <BoxShadow>[
+                      BoxShadow(
+                        color: style.accent.withValues(alpha: 0.22),
+                        blurRadius: 26,
+                        spreadRadius: 1,
+                      ),
+                      BoxShadow(
+                        color: style.tokens.shadowColor.withValues(alpha: 0.36),
+                        blurRadius: 18,
+                        offset: const Offset(0, 10),
+                      ),
+                    ]
+                  : null,
+          };
 
     Widget inner = DecoratedBox(
       decoration: surface,

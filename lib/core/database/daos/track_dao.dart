@@ -228,10 +228,13 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
     ),
   );
 
+  /// Las estadísticas se escriben sin notificar a los streams de `tracks`:
+  /// invalidarlos al terminar cada pista obligaría a releer y reconstruir toda
+  /// la biblioteca cada vez que mpv cambia de canción.
   Future<void> incrementSkip(int id) => customUpdate(
     'UPDATE tracks SET skip_count = skip_count + 1 WHERE id = ?',
     variables: [Variable.withInt(id)],
-    updates: {tracks},
+    updates: const <ResultSetImplementation>{},
   );
 
   Future<void> registerPlay(int id, {required bool completed}) => customUpdate(
@@ -242,7 +245,7 @@ class TrackDao extends DatabaseAccessor<AppDatabase> with _$TrackDaoMixin {
       Variable.withDateTime(DateTime.now()),
       Variable.withInt(id),
     ],
-    updates: {tracks},
+    updates: const <ResultSetImplementation>{},
   );
 
   Future<List<TrackRow>> topTracks({int limit = 25}) =>

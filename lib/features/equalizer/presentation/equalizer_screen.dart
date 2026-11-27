@@ -190,7 +190,10 @@ class _GraphicPanel extends StatelessWidget {
     final String layoutId = state.config.layoutId;
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
-      decoration: context.tokens.panelDecoration(radius: 20, elevated: false),
+      decoration: context.tokens.panelDecoration(
+        radius: context.tokens.tileRadius + 4,
+        elevated: false,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[

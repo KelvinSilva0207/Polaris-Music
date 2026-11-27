@@ -817,20 +817,21 @@ class AudioEngineService implements AudioOutputEngine {
     _emit(_state);
   }
 
-  /// Resuelve la pista que corresponde a un `Media.uri` de mpv.
+  /// Índice URI normalizada → pista para traducir la playlist de mpv.
   ///
-  /// Es la traducción definitiva índice de mpv → pista: funciona tanto con la
-  /// cola original como con la barajada, porque compara la ruta del archivo y
-  /// no una posición de lista que mpv ya ha reordenado.
-  Track? _trackForUri(String uri) {
-    final String normalized = normalizeMediaUri(uri);
+  /// Funciona tanto con la cola original como con la barajada porque compara la
+  /// ruta del archivo y no una posición de lista que mpv ya haya reordenado.
+  Map<String, Track> _tracksByUri() {
+    final Map<String, Track> byUri = <String, Track>{};
+    // La cola activa va primero: con shuffle ambos espejos pueden tener el
+    // mismo archivo en posiciones distintas y mpv habla su orden, no el nuestro.
     for (final Track track in _state.activeQueue) {
-      if (normalizeMediaUri(track.path) == normalized) return track;
+      byUri.putIfAbsent(normalizeMediaUri(track.path), () => track);
     }
     for (final Track track in _state.queue) {
-      if (normalizeMediaUri(track.path) == normalized) return track;
+      byUri.putIfAbsent(normalizeMediaUri(track.path), () => track);
     }
-    return null;
+    return byUri;
   }
 
   static bool _samePlaylistOrder(List<Track> a, List<Track> b) {
@@ -843,8 +844,11 @@ class AudioEngineService implements AudioOutputEngine {
 
   void _onPlaylistChanged(Playlist playlist) {
     final int eventIndex = playlist.index;
+    // Construimos el índice una sola vez por evento. Antes cada Media recorría
+    // toda la cola activa y toda la canónica (O(n²)) justo al cambiar de pista.
+    final Map<String, Track> byUri = _tracksByUri();
     final List<Track> mapped = playlist.medias
-        .map((Media media) => _trackForUri(media.uri))
+        .map((Media media) => byUri[normalizeMediaUri(media.uri)])
         .whereType<Track>()
         .toList(growable: false);
 
@@ -1564,9 +1568,10 @@ class AudioEngineService implements AudioOutputEngine {
     final int newIndex = incomingIndex < 0 || activeLength == 0
         ? _state.index
         : incomingIndex.clamp(0, activeLength - 1);
+    final Map<String, Track> byUri = _tracksByUri();
     final Track? resolved =
         incomingIndex >= 0 && incomingIndex < incomingPlaylist.medias.length
-        ? _trackForUri(incomingPlaylist.medias[incomingIndex].uri)
+        ? byUri[normalizeMediaUri(incomingPlaylist.medias[incomingIndex].uri)]
         : null;
     // Red de seguridad: un Media que no pueda resolverse (URI remota con
     // esquema distinto, pista efímera, etc.) nunca debe dejar la vista sin

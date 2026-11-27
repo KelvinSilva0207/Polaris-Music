@@ -25,6 +25,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     this.islandRadius = 28,
     this.glassEnabled = false,
     this.finish = SurfaceFinish.glass,
+    this.designLanguage = DesignLanguage.violetGlass,
     this.secondary = const Color(0xFF22D3EE),
     this.surfaceOpacity = 0.94,
     this.brightness = Brightness.dark,
@@ -68,6 +69,9 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   /// Acabado de superficie (segunda capa del sistema de temas).
   final SurfaceFinish finish;
 
+  /// Lenguaje visual completo del preset activo.
+  final DesignLanguage designLanguage;
+
   /// Acento secundario para brillos y degradados orgánicos.
   final Color secondary;
 
@@ -105,6 +109,14 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
   bool get isLight => brightness == Brightness.light;
   bool get isLiquid => finish == SurfaceFinish.liquid;
   bool get isMatte => finish == SurfaceFinish.matte;
+
+  /// Atajos del lenguaje visual para los widgets que no necesitan el enum.
+  bool get segmentedProgress => designLanguage.segmentedProgress;
+  double get progressThickness => designLanguage.progressThickness;
+  bool get glowEdge => designLanguage.glowEdge;
+  bool get hairlineDividers => designLanguage.hairlineDividers;
+  double get tileRadius => designLanguage.tileRadius;
+  double get navRadius => designLanguage.navRadius;
 
   /// Tinta principal legible sobre el panel activo.
   Color get foreground => ColorMath.onColor(panelOverlay);
@@ -288,10 +300,12 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
       color: effective == null ? baseColor : null,
       gradient: effective,
       borderRadius: BorderRadius.circular(radius ?? panelRadius),
-      border: borderColor == null
-          ? specularPanelBorder
-          : Border.all(color: borderColor),
-      boxShadow: elevated ? panelShadows(glow: glow) : null,
+      border: borderColor != null
+          ? Border.all(color: borderColor, width: designLanguage.borderWidth)
+          : designLanguage.borderWidth == 0
+          ? null
+          : specularPanelBorder,
+      boxShadow: elevated ? panelShadows(glow: glowEdge ? glow : null) : null,
     );
   }
 
@@ -312,6 +326,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     double? islandRadius,
     bool? glassEnabled,
     SurfaceFinish? finish,
+    DesignLanguage? designLanguage,
     Color? secondary,
     double? surfaceOpacity,
     Brightness? brightness,
@@ -340,6 +355,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     islandRadius: islandRadius ?? this.islandRadius,
     glassEnabled: glassEnabled ?? this.glassEnabled,
     finish: finish ?? this.finish,
+    designLanguage: designLanguage ?? this.designLanguage,
     secondary: secondary ?? this.secondary,
     surfaceOpacity: surfaceOpacity ?? this.surfaceOpacity,
     brightness: brightness ?? this.brightness,
@@ -375,6 +391,7 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
       islandRadius: lerpDouble(islandRadius, other.islandRadius, t),
       glassEnabled: t < 0.5 ? glassEnabled : other.glassEnabled,
       finish: t < 0.5 ? finish : other.finish,
+      designLanguage: t < 0.5 ? designLanguage : other.designLanguage,
       secondary: Color.lerp(secondary, other.secondary, t) ?? secondary,
       surfaceOpacity: lerpDouble(surfaceOpacity, other.surfaceOpacity, t),
       brightness: t < 0.5 ? brightness : other.brightness,

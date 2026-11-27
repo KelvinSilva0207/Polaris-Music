@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/track.dart';
+import '../../../core/theme/app_theme_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/lrc_parser.dart';
 import '../../../shared/widgets/motion_scope.dart';
@@ -105,9 +106,12 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
       ),
       data: (LyricsResult? result) {
         if (result == null || result.isEmpty) {
+          final bool unreadable = result?.issue == LyricsIssue.unreadableFile;
           return _LyricsEmpty(
             immersive: widget.immersive,
-            title: 'Sin letra para esta canción',
+            title: unreadable
+                ? 'No se pudo leer el archivo de letra'
+                : 'Sin letra para esta canción',
             retryLabel: 'Buscar letra',
             onRetry:
                 widget.onDownload ??
@@ -128,6 +132,8 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
         if (active != null) _scrollToActive(active);
 
         final PolarisTokens tokens = context.tokens;
+        final DesignLanguage language = tokens.designLanguage;
+        final LyricHighlight highlight = language.lyricHighlight;
         final FontWeight bodyWeight =
             tokens.typography?.lyrics ?? FontWeight.w600;
         final double activeSize = widget.immersive ? 34 : 22;
@@ -235,7 +241,16 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                                     : isPast
                                     ? context.onPanel.withValues(alpha: 0.52)
                                     : context.onPanel.withValues(alpha: 0.92),
-                                shadows: isActive
+                                decoration:
+                                    isActive &&
+                                        highlight == LyricHighlight.underline
+                                    ? TextDecoration.underline
+                                    : null,
+                                decorationColor: tokens.karaokeColor.withValues(
+                                  alpha: 0.75,
+                                ),
+                                shadows:
+                                    isActive && highlight == LyricHighlight.glow
                                     ? <Shadow>[
                                         Shadow(
                                           color: tokens.karaokeColor.withValues(
@@ -249,17 +264,23 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                                     : null,
                               ),
                               textAlign: TextAlign.center,
-                              child:
-                                  widget.karaoke &&
-                                      isActive &&
-                                      line.words.isNotEmpty
-                                  ? _KaraokeLineText(
-                                      line: line,
-                                      document: document,
-                                      index: index,
-                                      accent: tokens.karaokeColor,
-                                    )
-                                  : Text(line.text.isEmpty ? '♪' : line.text),
+                              child: _decorateLyricLine(
+                                highlight: highlight,
+                                active: isActive,
+                                accent: tokens.karaokeColor,
+                                radius: language.tileRadius,
+                                child:
+                                    widget.karaoke &&
+                                        isActive &&
+                                        line.words.isNotEmpty
+                                    ? _KaraokeLineText(
+                                        line: line,
+                                        document: document,
+                                        index: index,
+                                        accent: tokens.karaokeColor,
+                                      )
+                                    : Text(line.text.isEmpty ? '♪' : line.text),
+                              ),
                             ),
                           ),
                         ),
@@ -281,6 +302,49 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
 /// Solo se monta para la línea en curso, así que el tick de posición no
 /// reconstruye toda la lista. Las marcas `<mm:ss.xx>` se usan si existen; si no,
 /// se reparte la duración de la línea entre sus palabras.
+/// Aplica el marco propio del lenguaje visual a la línea activa de letra.
+///
+/// El resaltado de `glow` y `none` no añade contenedor: la animación de color
+/// y peso basta. Las demás variantes envuelven el texto sin cambiar su ritmo.
+Widget _decorateLyricLine({
+  required LyricHighlight highlight,
+  required bool active,
+  required Color accent,
+  required double radius,
+  required Widget child,
+}) {
+  if (!active) return child;
+  return switch (highlight) {
+    LyricHighlight.pill => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: accent.withValues(alpha: 0.34)),
+      ),
+      child: child,
+    ),
+    LyricHighlight.bar => Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        Container(
+          width: 3,
+          height: 24,
+          decoration: BoxDecoration(
+            color: accent,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Flexible(child: child),
+      ],
+    ),
+    LyricHighlight.underline ||
+    LyricHighlight.glow ||
+    LyricHighlight.none => child,
+  };
+}
+
 class _KaraokeLineText extends ConsumerWidget {
   const _KaraokeLineText({
     required this.line,

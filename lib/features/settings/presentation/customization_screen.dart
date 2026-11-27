@@ -677,7 +677,7 @@ class _ThemeCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  config.finish.label,
+                  config.designLanguage.label,
                   style: TextStyle(
                     color: ink.withValues(alpha: 0.65),
                     fontSize: 9.5,
@@ -1370,11 +1370,14 @@ class _ThemePreview extends StatelessWidget {
                               const SizedBox(height: 4),
                             const SizedBox(height: 8),
                             Text(
-                              config.finish.label,
+                              config.designLanguage.label,
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
-                                letterSpacing: 0.8,
+                                letterSpacing:
+                                    config.designLanguage.uppercaseLabels
+                                    ? 1.4
+                                    : 0.8,
                                 color: context.inkAlpha(0.54),
                               ),
                             ),

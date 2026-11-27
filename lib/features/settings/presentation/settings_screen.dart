@@ -602,7 +602,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: Text('Créditos y tecnologías'),
             subtitle: Text('Flutter, media_kit, Drift y más'),
             trailing: Icon(Icons.chevron_right_rounded),
-            onTap: () => _showCredits(context),
+            onTap: () => unawaited(_showCredits(context)),
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -778,11 +778,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await AppShutdown.quit('Ajustes');
   }
 
-  void _showCredits(BuildContext context) {
+  Future<void> _showCredits(BuildContext context) async {
+    final String version = await ref.read(currentVersionProvider.future);
+    if (!context.mounted) return;
     showAboutDialog(
       context: context,
       applicationName: AppConstants.appName,
-      applicationVersion: AppConstants.appVersionFallback,
+      applicationVersion: version,
       applicationIcon: const PolarisLogo(size: 44),
       applicationLegalese:
           '© ${DateTime.now().year} Kelvin Silva · Hecho con cariño para '

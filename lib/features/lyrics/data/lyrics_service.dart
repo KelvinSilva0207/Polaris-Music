@@ -10,17 +10,25 @@ import '../../../core/utils/logger.dart';
 import '../../../core/utils/lrc_parser.dart';
 import '../../../core/utils/text_decoder.dart';
 
+/// Motivo por el que no se pudo mostrar una letra.
+///
+/// Solo se usa dentro del panel de letras: nunca se convierte en SnackBar ni
+/// en aviso global. `none` significa simplemente que la canción no tiene letra.
+enum LyricsIssue { none, unreadableFile }
+
 /// Letra resuelta para una pista.
 class LyricsResult {
   const LyricsResult({
     required this.document,
     required this.source,
     this.fromCache = false,
+    this.issue = LyricsIssue.none,
   });
 
   final LrcDocument document;
   final String source;
   final bool fromCache;
+  final LyricsIssue issue;
 
   bool get isEmpty => document.lines.isEmpty;
   bool get synced => document.synced;
@@ -57,6 +65,11 @@ class LyricsService {
     final LyricsResult? cached = _memory[track.id];
     if (cached != null) return cached;
 
+    // Un archivo local ilegible no debe convertirse en un error global: se
+    // recuerda el motivo y, si no hay otra fuente, se devuelve junto a la letra
+    // vacía para que el panel pueda distinguirlo de "sin letra".
+    LyricsIssue issue = LyricsIssue.none;
+
     final File? local = await FileUtils.siblingLyrics(track.path);
     if (local != null) {
       try {
@@ -68,30 +81,36 @@ class LyricsService {
         _cacheResult(track.id, result);
         return result;
       } catch (error, stack) {
+        issue = LyricsIssue.unreadableFile;
         AppLog.w(_tag, 'No se pudo leer ${local.path}', error, stack);
       }
     }
 
     final LyricRow? row = await _dao.forTrack(track.id);
     if (row != null && row.content.trim().isNotEmpty) {
-      final LyricsResult result = LyricsResult(
-        document: LrcDocument.parse(row.content),
-        source: row.source,
-        fromCache: true,
-      );
-      _cacheResult(track.id, result);
-      return result;
+      try {
+        final LyricsResult result = LyricsResult(
+          document: LrcDocument.parse(row.content),
+          source: row.source,
+          fromCache: true,
+        );
+        _cacheResult(track.id, result);
+        return result;
+      } catch (error, stack) {
+        issue = LyricsIssue.unreadableFile;
+        AppLog.w(_tag, 'No se pudo parsear la letra guardada', error, stack);
+      }
     }
 
-    if (!allowOnline) return null;
+    if (!allowOnline) return _emptyResult(issue);
 
     final _OnlineLyrics? online = await _fetchOnline(track);
-    if (online == null) return null;
+    if (online == null) return _emptyResult(issue);
 
     final String content = online.synced && online.syncedLyrics.isNotEmpty
         ? online.syncedLyrics
         : online.plainLyrics;
-    if (content.trim().isEmpty) return null;
+    if (content.trim().isEmpty) return _emptyResult(issue);
 
     // Las pistas de streaming no existen en Drift: la letra se mantiene solo
     // en memoria para no violar la clave foránea de `Lyrics`.
@@ -110,6 +129,9 @@ class LyricsService {
     _cacheResult(track.id, result);
     return result;
   }
+
+  LyricsResult _emptyResult(LyricsIssue issue) =>
+      LyricsResult(document: LrcDocument.empty(), source: 'none', issue: issue);
 
   /// Descarga la letra desde LRCLIB, sustituyendo la caché en memoria.
   Future<LyricsResult?> download(Track track) async {

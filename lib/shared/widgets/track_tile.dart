@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/track.dart';
+import '../../core/theme/app_theme_config.dart';
 import '../../core/theme/theme_tokens.dart';
 import '../../core/utils/file_utils.dart';
 import '../../core/utils/formatters.dart';
@@ -73,6 +74,7 @@ class TrackTile extends ConsumerWidget {
     final bool current = currentId == track.id;
     final ThemeData theme = Theme.of(context);
     final Color accent = context.accent;
+    final DesignLanguage language = context.tokens.designLanguage;
 
     return GestureDetector(
       onSecondaryTapDown: (TapDownDetails details) =>
@@ -80,7 +82,15 @@ class TrackTile extends ConsumerWidget {
       child: ListTile(
         key: ValueKey<int>(track.id),
         contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(language.tileRadius),
+          side: language.borderWidth == 0
+              ? BorderSide.none
+              : BorderSide(
+                  color: context.tokens.borderColor.withValues(alpha: 0.70),
+                  width: language.borderWidth,
+                ),
+        ),
         tileColor: current ? accent.withValues(alpha: 0.12) : null,
         leading: Row(
           mainAxisSize: MainAxisSize.min,
@@ -105,7 +115,7 @@ class TrackTile extends ConsumerWidget {
                   key: ValueKey<int>(track.id),
                   path: track.artworkPath,
                   size: artworkSize,
-                  radius: 10,
+                  radius: language.tileArtworkRadius,
                 ),
                 if (current)
                   Positioned(
@@ -122,7 +132,7 @@ class TrackTile extends ConsumerWidget {
           ],
         ),
         title: Text(
-          track.title,
+          language.uppercaseLabels ? track.title.toUpperCase() : track.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(

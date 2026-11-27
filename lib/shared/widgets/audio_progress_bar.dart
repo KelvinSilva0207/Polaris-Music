@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_theme_config.dart';
 import '../../core/theme/motion_config.dart';
 import '../../core/theme/theme_tokens.dart';
 import '../../core/utils/formatters.dart';
@@ -50,6 +51,7 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
   @override
   Widget build(BuildContext context) {
     final PolarisTokens tokens = context.tokens;
+    final DesignLanguage language = tokens.designLanguage;
     final Color accent = widget.accent ?? tokens.progressColor;
     final double intensity = context.motion.intensity;
     final Duration position = ref.watch(
@@ -77,7 +79,9 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
       widget.onSeekFraction?.call(fraction);
     }
 
-    final double railHeight = widget.compact ? 6 : 9;
+    final double railHeight = widget.compact
+        ? math.max(4.0, language.progressThickness * 0.7)
+        : language.progressThickness;
     final double thumbWidth = _dragFraction != null
         ? 8
         : (_interacting ? 7 : 5);
@@ -152,7 +156,9 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                           height: railHeight,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(railHeight),
+                              borderRadius: BorderRadius.circular(
+                                language.segmentedProgress ? 2 : railHeight,
+                              ),
                               color: context.inkAlpha(0.10),
                               border: Border.all(color: context.inkAlpha(0.06)),
                             ),
@@ -182,7 +188,9 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                           width: math.max(railHeight, shown * width),
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(railHeight),
+                              borderRadius: BorderRadius.circular(
+                                language.segmentedProgress ? 2 : railHeight,
+                              ),
                               gradient: LinearGradient(
                                 colors: <Color>[
                                   accent.withValues(alpha: 0.85),
@@ -193,6 +201,19 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
                             ),
                           ),
                         ),
+                        if (language.segmentedProgress && shown > 0)
+                          Positioned(
+                            left: 0,
+                            top: railTop,
+                            height: railHeight,
+                            width: math.max(railHeight, shown * width),
+                            child: CustomPaint(
+                              painter: _SegmentsPainter(
+                                color: context.inkAlpha(0.62),
+                                step: math.max(6.0, railHeight * 1.6),
+                              ),
+                            ),
+                          ),
                         // Pulgar: la posición salta con la pista (sin animar);
                         // solo crece al interactuar. Un `Transform.scale` sobre
                         // una caja fija evita interpolar `width`/`height` y
@@ -263,6 +284,28 @@ class _AudioProgressBarState extends ConsumerState<AudioProgressBar> {
       ],
     );
   }
+}
+
+/// Muescas que convierten el riel continuo en una escala segmentada.
+class _SegmentsPainter extends CustomPainter {
+  const _SegmentsPainter({required this.color, required this.step});
+
+  final Color color;
+  final double step;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = color
+      ..strokeWidth = 1;
+    for (double x = step; x < size.width; x += step) {
+      canvas.drawLine(Offset(x, 1), Offset(x, size.height - 1), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SegmentsPainter old) =>
+      old.color != color || old.step != step;
 }
 
 class _TimePill extends StatelessWidget {

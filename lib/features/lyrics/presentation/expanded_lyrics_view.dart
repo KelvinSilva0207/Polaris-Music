@@ -120,7 +120,7 @@ class _ExpandedLyricsViewState extends ConsumerState<ExpandedLyricsView> {
 
     return PolarisSurface(
       padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
-      borderRadius: 26,
+      borderRadius: context.tokens.tileRadius + 6,
       glowColor: widget.accent,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

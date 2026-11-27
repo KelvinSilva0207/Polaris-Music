@@ -458,57 +458,17 @@ class _QueueButton extends ConsumerWidget {
     return Semantics(
       button: true,
       label: 'Cola / Lista de reproducción, $count pistas',
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: accent.withValues(alpha: 0.28)),
-          color: accent.withValues(alpha: 0.08),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: onPressed,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-              child: Row(
-                children: <Widget>[
-                  Icon(Icons.queue_music_rounded, color: accent, size: 21),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Text(
-                          'Cola / Lista de reproducción',
-                          style: TextStyle(
-                            color: context.ink,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          count == 1
-                              ? '1 pista en la cola'
-                              : '$count pistas en la cola',
-                          style: TextStyle(
-                            color: context.inkAlpha(0.54),
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: context.inkAlpha(0.50),
-                    size: 20,
-                  ),
-                ],
-              ),
-            ),
+      child: IconButton(
+        tooltip: 'Cola ($count)',
+        onPressed: onPressed,
+        color: accent,
+        icon: const Icon(Icons.queue_music_rounded, size: 22),
+        style: IconButton.styleFrom(
+          backgroundColor: accent.withValues(alpha: 0.08),
+          minimumSize: const Size(44, 44),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: accent.withValues(alpha: 0.28)),
           ),
         ),
       ),
@@ -555,7 +515,7 @@ class _QueueSheet extends ConsumerWidget {
         ),
         child: PolarisSurface(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-          borderRadius: 24,
+          borderRadius: context.tokens.tileRadius + 8,
           glowColor: accent,
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1678,77 +1638,136 @@ class _QuickActionsState extends ConsumerState<_QuickActions>
     final output = ref.watch(
       audioOutputSelectionProvider.select((s) => s.state),
     );
-    final ButtonStyle style = OutlinedButton.styleFrom(
-      foregroundColor: accent,
-      side: BorderSide(color: accent.withValues(alpha: 0.35)),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    final Widget equalizerIcon = SizedBox(
+      width: 20,
+      height: 20,
+      child: AnimatedBuilder(
+        animation: _bars,
+        child: Icon(Icons.graphic_eq_rounded, size: 20),
+        builder: (BuildContext context, Widget? child) {
+          if (!_bars.isAnimating) return child ?? const SizedBox.shrink();
+          return CustomPaint(
+            painter: _EqualizerBarsPainter(
+              phase: _bars.value,
+              color: accent,
+              intensity: _intensity,
+            ),
+          );
+        },
+      ),
     );
-    final ButtonStyle pureStyle = OutlinedButton.styleFrom(
-      foregroundColor: accent,
-      side: BorderSide(color: accent.withValues(alpha: 0.9), width: 1.4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-    );
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 10,
-      runSpacing: 8,
-      children: <Widget>[
-        Tooltip(
-          message: 'Salida actual: ${output.selected.label}',
-          child: OutlinedButton.icon(
-            onPressed: () => unawaited(AudioOutputSheet.show(context)),
-            icon: const Icon(Icons.speaker_outlined, size: 18),
-            label: const Text('Salida'),
-            style: style,
-          ),
-        ),
-        OutlinedButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (BuildContext context) => Scaffold(
-                appBar: AppBar(title: Text('Ecualizador')),
-                body: const EqualizerScreen(),
+
+    // El reproductor conserva solo iconos: las acciones secundarias viven en
+    // este desplegable para no competir con los controles de transporte.
+    return PopupMenuButton<String>(
+      tooltip: 'Más controles del reproductor',
+      color: context.tokens.panelOverlay,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: context.tokens.panelBorder),
+      ),
+      icon: Icon(
+        Icons.more_horiz_rounded,
+        size: 22,
+        color: context.inkAlpha(0.62),
+      ),
+      onSelected: (String action) {
+        switch (action) {
+          case 'output':
+            unawaited(AudioOutputSheet.show(context));
+          case 'eq':
+            Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (BuildContext context) => Scaffold(
+                  appBar: AppBar(title: const Text('Ecualizador')),
+                  body: const EqualizerScreen(),
+                ),
               ),
-            ),
-          ),
-          icon: SizedBox(
-            width: 18,
-            height: 18,
-            child: AnimatedBuilder(
-              animation: _bars,
-              child: Icon(Icons.graphic_eq_rounded, size: 18),
-              builder: (BuildContext context, Widget? child) {
-                if (!_bars.isAnimating) return child ?? const SizedBox.shrink();
-                final double phase = _bars.value;
-                return CustomPaint(
-                  painter: _EqualizerBarsPainter(
-                    phase: phase,
-                    color: accent,
-                    intensity: _intensity,
-                  ),
-                );
-              },
-            ),
-          ),
-          label: Text('Ecualizador'),
-          style: style,
+            );
+          case 'pure':
+            ref.read(equalizerControllerProvider.notifier).togglePure();
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        _quickAction(
+          value: 'output',
+          icon: const Icon(Icons.speaker_outlined, size: 20),
+          label: 'Salida',
+          subtitle: 'Salida actual: ${output.selected.label}',
+          accent: accent,
         ),
-        Tooltip(
-          message: pure
-              ? 'Bypass activo: sin ecualizador, sub-armónico ni limitador.'
-              : 'Deja pasar el audio sin filtros; tu curva se conserva.',
-          child: OutlinedButton.icon(
-            onPressed: () =>
-                ref.read(equalizerControllerProvider.notifier).togglePure(),
-            icon: Icon(
-              pure ? Icons.filter_alt_off : Icons.filter_alt_outlined,
-              size: 18,
-            ),
-            label: Text(pure ? 'Puro activo' : 'Modo puro'),
-            style: pure ? pureStyle : style,
+        _quickAction(
+          value: 'eq',
+          icon: equalizerIcon,
+          label: 'Ecualizador',
+          subtitle: 'Curva, sub-armónico y limitador',
+          accent: accent,
+        ),
+        _quickAction(
+          value: 'pure',
+          icon: Icon(
+            pure ? Icons.filter_alt_off : Icons.filter_alt_outlined,
+            size: 20,
           ),
+          label: pure ? 'Puro activo' : 'Modo puro',
+          subtitle: pure
+              ? 'Bypass activo: sin filtros.'
+              : 'Sin filtros; tu curva se conserva.',
+          accent: accent,
+          selected: pure,
         ),
       ],
+    );
+  }
+
+  PopupMenuItem<String> _quickAction({
+    required String value,
+    required Widget icon,
+    required String label,
+    required String subtitle,
+    required Color accent,
+    bool selected = false,
+  }) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: <Widget>[
+          IconTheme(
+            data: IconThemeData(
+              color: selected ? accent : context.inkAlpha(0.72),
+              size: 20,
+            ),
+            child: SizedBox(width: 24, child: icon),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: context.onSurface,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: context.onSurface.withValues(alpha: 0.62),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1835,91 +1854,47 @@ class _MediaPanel extends ConsumerWidget {
     final Color idleInk = panelInk.withValues(alpha: 0.88);
     final Color segmentIdle = context.tokens.surface.withValues(alpha: 0.62);
     final Color segmentActive = accent.withValues(alpha: 0.26);
-    final ThemeData theme = Theme.of(context);
+    // Las pestañas pasan a ser solo iconos con tooltip; el estado activo se
+    // mantiene con el mismo acento que usaba el segmented button.
+    final Widget queueTab = _PanelIconButton(
+      tooltip: 'Cola',
+      icon: Icons.queue_music_rounded,
+      selected: !lyricsVisible,
+      foreground: panelInk,
+      idleForeground: idleInk,
+      selectedBackground: segmentActive,
+      idleBackground: segmentIdle,
+      onPressed: () {
+        if (lyricsVisible) onOpenLyrics();
+        onTabChanged(0);
+      },
+    );
+    final Widget lyricsTab = _PanelIconButton(
+      tooltip: 'Letras',
+      icon: Icons.lyrics_outlined,
+      selected: lyricsVisible,
+      foreground: panelInk,
+      idleForeground: idleInk,
+      selectedBackground: segmentActive,
+      idleBackground: segmentIdle,
+      onPressed: () {
+        if (!lyricsVisible) onOpenLyrics();
+        onTabChanged(0);
+      },
+    );
 
     final Widget panel = PolarisSurface(
       padding: EdgeInsets.fromLTRB(12, 12, 12, fluid ? 0 : 8),
-      borderRadius: 22,
+      borderRadius: context.tokens.tileRadius + 4,
       glowColor: accent,
       child: Column(
         children: <Widget>[
           Row(
             children: <Widget>[
-              Expanded(
-                child: Theme(
-                  data: theme.copyWith(
-                    segmentedButtonTheme: SegmentedButtonThemeData(
-                      style: ButtonStyle(
-                        backgroundColor: WidgetStateProperty.resolveWith<Color>(
-                          (Set<WidgetState> states) =>
-                              states.contains(WidgetState.selected)
-                              ? segmentActive
-                              : segmentIdle,
-                        ),
-                        foregroundColor: WidgetStateProperty.resolveWith<Color>(
-                          (Set<WidgetState> states) =>
-                              states.contains(WidgetState.selected)
-                              ? panelInk
-                              : idleInk,
-                        ),
-                        iconColor: WidgetStateProperty.resolveWith<Color>(
-                          (Set<WidgetState> states) =>
-                              states.contains(WidgetState.selected)
-                              ? panelInk
-                              : idleInk,
-                        ),
-                        side: WidgetStateProperty.all(
-                          BorderSide(color: context.tokens.panelBorder),
-                        ),
-                        padding: WidgetStateProperty.all(
-                          const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                        ),
-                        shape: WidgetStateProperty.all(
-                          RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        textStyle: WidgetStateProperty.all(
-                          theme.textTheme.labelLarge?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ) ??
-                              TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  child: SegmentedButton<int>(
-                    segments: const <ButtonSegment<int>>[
-                      ButtonSegment<int>(
-                        value: 0,
-                        label: Text('Cola'),
-                        icon: Icon(Icons.queue_music_rounded, size: 18),
-                      ),
-                      ButtonSegment<int>(
-                        value: 1,
-                        label: Text('Letras'),
-                        icon: Icon(Icons.lyrics_outlined, size: 18),
-                      ),
-                    ],
-                    selected: <int>{lyricsVisible ? 1 : 0},
-                    showSelectedIcon: false,
-                    onSelectionChanged: (Set<int> value) {
-                      if (value.first == 1) {
-                        if (!lyricsVisible) onOpenLyrics();
-                      } else if (lyricsVisible) {
-                        onOpenLyrics();
-                      }
-                      onTabChanged(0);
-                    },
-                  ),
-                ),
-              ),
+              queueTab,
+              const SizedBox(width: 6),
+              lyricsTab,
+              const Spacer(),
               if (tab == 0)
                 IconButton(
                   tooltip: 'Vaciar cola',
@@ -1950,6 +1925,47 @@ class _MediaPanel extends ConsumerWidget {
             constraints: BoxConstraints(maxHeight: height!),
             child: panel,
           );
+  }
+}
+
+/// Pestaña compacta del panel cola/letras: icono, tooltip y estado activo.
+class _PanelIconButton extends StatelessWidget {
+  const _PanelIconButton({
+    required this.tooltip,
+    required this.icon,
+    required this.selected,
+    required this.foreground,
+    required this.idleForeground,
+    required this.selectedBackground,
+    required this.idleBackground,
+    required this.onPressed,
+  });
+
+  final String tooltip;
+  final IconData icon;
+  final bool selected;
+  final Color foreground;
+  final Color idleForeground;
+  final Color selectedBackground;
+  final Color idleBackground;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      color: selected ? foreground : idleForeground,
+      icon: Icon(icon, size: 20),
+      style: IconButton.styleFrom(
+        backgroundColor: selected ? selectedBackground : idleBackground,
+        minimumSize: const Size(44, 40),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: context.tokens.panelBorder),
+        ),
+      ),
+    );
   }
 }
 

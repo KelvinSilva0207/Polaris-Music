@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:polaris_music/core/theme/app_theme.dart';
 import 'package:polaris_music/core/theme/app_theme_config.dart';
 import 'package:polaris_music/core/theme/color_math.dart';
 import 'package:polaris_music/core/theme/theme_tokens.dart';
@@ -85,6 +86,92 @@ void main() {
 
       final AppThemeConfig restored = AppThemeConfig.fromJson(theme.toJson());
       expect(restored, theme);
+    });
+  });
+
+  group('Lenguaje visual por tema', () {
+    test(
+      'los diez temas del catálogo tienen un lenguaje propio y distinto',
+      () {
+        expect(AppThemeConfig.catalog, hasLength(10));
+        final List<DesignLanguage> languages = AppThemeConfig.catalog
+            .map((AppThemeConfig entry) => entry.designLanguage)
+            .toList();
+        expect(languages.toSet(), hasLength(10));
+        for (final AppThemeConfig entry in AppThemeConfig.catalog) {
+          expect(
+            entry.designLanguage,
+            DesignLanguage.forPreset(entry.preset),
+            reason: '${entry.preset.name} debe mapear a su lenguaje visual',
+          );
+        }
+      },
+    );
+
+    test('cada lenguaje cambia geometría, letras y ecualizador', () {
+      expect(
+        DesignLanguage.values.toSet(),
+        hasLength(DesignLanguage.values.length),
+      );
+      final Set<double> radii = DesignLanguage.values
+          .map((DesignLanguage language) => language.tileRadius)
+          .toSet();
+      final Set<LyricHighlight> highlights = DesignLanguage.values
+          .map((DesignLanguage language) => language.lyricHighlight)
+          .toSet();
+      final Set<EqGridStyle> grids = DesignLanguage.values
+          .map((DesignLanguage language) => language.eqGrid)
+          .toSet();
+      expect(radii.length, greaterThanOrEqualTo(8));
+      expect(highlights, LyricHighlight.values.toSet());
+      expect(grids, EqGridStyle.values.toSet());
+
+      expect(DesignLanguage.monolith.tileRadius, 4);
+      expect(DesignLanguage.monolith.segmentedProgress, isTrue);
+      expect(DesignLanguage.cyberNeon.eqGrid, EqGridStyle.dense);
+      expect(
+        DesignLanguage.lightEditorial.lyricHighlight,
+        LyricHighlight.underline,
+      );
+      expect(DesignLanguage.bronzeNeumorphic.raisedTile, isTrue);
+      expect(DesignLanguage.darkFlat.hairlineDividers, isTrue);
+    });
+
+    test('el lenguaje sobrevive a copyWith y al viaje JSON', () {
+      const AppThemeConfig theme = AppThemeConfig.vinylWave;
+      expect(
+        theme.copyWith(accent: const Color(0xFF112233)).designLanguage,
+        DesignLanguage.vinylWave,
+      );
+      expect(
+        AppThemeConfig.fromJson(theme.toJson()).designLanguage,
+        DesignLanguage.vinylWave,
+      );
+      expect(theme.toJson()['designLanguage'], 'vinylWave');
+      expect(
+        AppThemeConfig.fromJson(<String, Object?>{'designLanguage': 'noExiste'})
+            .designLanguage,
+        DesignLanguage.violetGlass,
+      );
+    });
+
+    test('los tokens y el borde de panel reflejan el lenguaje activo', () {
+      final PolarisTokens tokens = AppTheme.fromConfig(
+        AppThemeConfig.monolithMinimal,
+      ).extension<PolarisTokens>()!;
+      expect(tokens.designLanguage, DesignLanguage.monolith);
+      expect(tokens.segmentedProgress, isTrue);
+      expect(tokens.progressThickness, 2);
+      final BoxDecoration decoration = tokens.panelDecoration(radius: 12);
+      expect(decoration.border, isNull);
+
+      final PolarisTokens glass = AppTheme.fromConfig(AppThemeConfig.cyberNeon)
+          .extension<PolarisTokens>()!;
+      final BoxDecoration glassDecoration = glass.panelDecoration(
+        radius: 12,
+        borderColor: const Color(0xFFFFFFFF),
+      );
+      expect(glassDecoration.border?.top.width, 1.4);
     });
   });
 

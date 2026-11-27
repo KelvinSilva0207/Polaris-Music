@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/models/equalizer_config.dart';
+import '../../../core/theme/app_theme_config.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/frequency_response.dart';
 
@@ -17,6 +18,8 @@ class EqCurvePainter extends CustomPainter {
     required this.surfaceColor,
     this.active = true,
     this.gridColor = const Color(0x1AFFFFFF),
+    this.gridStyle = EqGridStyle.lines,
+    this.radius = 14,
   });
 
   final EqualizerConfig config;
@@ -27,6 +30,8 @@ class EqCurvePainter extends CustomPainter {
   /// para que la UI no muestre un refuerzo que no está sonando.
   final bool active;
   final Color gridColor;
+  final EqGridStyle gridStyle;
+  final double radius;
 
   static const double dbSpan = AppConstants.eqMaxGain;
   static const int _curveSamples = 192;
@@ -35,25 +40,11 @@ class EqCurvePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final Rect area = Offset.zero & size;
     canvas.drawRRect(
-      RRect.fromRectAndRadius(area, const Radius.circular(14)),
+      RRect.fromRectAndRadius(area, Radius.circular(radius)),
       Paint()..color = surfaceColor,
     );
 
-    final Paint grid = Paint()
-      ..color = gridColor
-      ..strokeWidth = 1;
-    for (final double hz in <double>[100, 1000, 10000]) {
-      final double x = FrequencyResponse.xFor(hz, size.width);
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
-    }
-    for (final double db in <double>[
-      AppConstants.eqMaxGain,
-      0,
-      AppConstants.eqMinGain,
-    ]) {
-      final double y = yForDb(db, size.height);
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
-    }
+    _drawGrid(canvas, size);
 
     final Color curveColor = active ? accent : accent.withValues(alpha: 0.32);
     final Path line = Path();
@@ -112,6 +103,56 @@ class EqCurvePainter extends CustomPainter {
     }
   }
 
+  /// Rejilla del panel: líneas, puntos, malla densa o sin rejilla según el
+  /// lenguaje visual del preset activo.
+  void _drawGrid(Canvas canvas, Size size) {
+    if (gridStyle == EqGridStyle.none) return;
+    final Paint grid = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    final List<double> columns = <double>[
+      100,
+      1000,
+      10000,
+    ].map((double hz) => FrequencyResponse.xFor(hz, size.width)).toList();
+    final List<double> rows = <double>[
+      AppConstants.eqMaxGain,
+      0,
+      AppConstants.eqMinGain,
+    ].map((double db) => yForDb(db, size.height)).toList();
+
+    switch (gridStyle) {
+      case EqGridStyle.lines:
+        for (final double x in columns) {
+          canvas.drawLine(Offset(x, 0), Offset(x, size.height), grid);
+        }
+        for (final double y in rows) {
+          canvas.drawLine(Offset(0, y), Offset(size.width, y), grid);
+        }
+      case EqGridStyle.dots:
+        for (final double x in columns) {
+          for (final double y in rows) {
+            canvas.drawCircle(Offset(x, y), 1.6, grid);
+          }
+        }
+      case EqGridStyle.dense:
+        const int steps = 16;
+        final Paint fine = Paint()
+          ..color = gridColor.withValues(alpha: 0.55)
+          ..strokeWidth = 0.6;
+        for (int i = 1; i < steps; i++) {
+          final double x = size.width * i / steps;
+          canvas.drawLine(Offset(x, 0), Offset(x, size.height), fine);
+        }
+        for (int i = 1; i < 8; i++) {
+          final double y = size.height * i / 8;
+          canvas.drawLine(Offset(0, y), Offset(size.width, y), fine);
+        }
+      case EqGridStyle.none:
+        break;
+    }
+  }
+
   static double yForDb(double db, double height) {
     final double clamped = db.clamp(-dbSpan, dbSpan);
     return height / 2 - (clamped / dbSpan) * (height / 2);
@@ -123,7 +164,9 @@ class EqCurvePainter extends CustomPainter {
       oldDelegate.active != active ||
       oldDelegate.accent != accent ||
       oldDelegate.surfaceColor != surfaceColor ||
-      oldDelegate.gridColor != gridColor;
+      oldDelegate.gridColor != gridColor ||
+      oldDelegate.gridStyle != gridStyle ||
+      oldDelegate.radius != radius;
 }
 
 /// Panel con la curva, la escala en dB y las etiquetas de frecuencia.
@@ -137,6 +180,7 @@ class EqCurveView extends StatelessWidget {
   Widget build(BuildContext context) {
     // Las etiquetas viven fuera del painter: reciben la tinta del tema aquí.
     final Color labelColor = context.inkAlpha(0.54);
+    final DesignLanguage language = context.tokens.designLanguage;
     const double height = 128;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -151,6 +195,8 @@ class EqCurveView extends StatelessWidget {
                   accent: context.tokens.accent,
                   surfaceColor: context.tokens.panelColor,
                   gridColor: context.inkAlpha(0.12),
+                  gridStyle: language.eqGrid,
+                  radius: language.tileRadius,
                   active: active,
                 ),
               ),

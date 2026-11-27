@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +10,7 @@ import '../core/providers/app_providers.dart';
 import '../core/providers/compact_style_provider.dart';
 import '../core/providers/update_prompt_provider.dart';
 import '../core/services/window_service.dart';
+import '../core/theme/app_theme_config.dart';
 import '../core/theme/compact_style_config.dart';
 import '../core/theme/compact_theme_scope.dart';
 import '../core/theme/theme_tokens.dart';
@@ -27,7 +27,6 @@ import '../features/player/presentation/tray_mini_player.dart';
 import '../features/settings/presentation/settings_screen.dart';
 import '../features/settings/presentation/update_dialog.dart';
 import '../shared/widgets/directional_transitions.dart';
-import '../shared/widgets/liquid_nav_bar.dart';
 import '../shared/widgets/motion_scope.dart';
 import '../shared/widgets/window_title_bar.dart';
 import 'app_navigation.dart';
@@ -267,9 +266,9 @@ class _AppShellState extends ConsumerState<AppShell>
         child: Builder(
           builder: (BuildContext context) {
             final bool android = Platform.isAndroid;
-            // La barra va abajo en todas las plataformas: reservamos su altura
-            // para que el mini-reproductor quede justo encima. En Android se
-            // añade además el área del sistema (gestos/navegación).
+            // Reservamos el hueco inferior para el mini-reproductor y el botón
+            // de navegación de tres puntos. En Android se añade además el área
+            // del sistema (gestos/navegación).
             final double navClearance = android
                 ? MediaQuery.viewPaddingOf(context).bottom + 84
                 : 84;
@@ -385,7 +384,7 @@ class _AppShellState extends ConsumerState<AppShell>
                     ),
                   ),
                 ),
-                const _FloatingNavBar(),
+                const _NavOverflowMenu(),
                 if (Platform.isWindows) const _SidePeekTab(),
               ],
             );
@@ -396,19 +395,16 @@ class _AppShellState extends ConsumerState<AppShell>
   }
 }
 
-/// Barra flotante de las cuatro secciones principales.
-///
-/// Abajo en todas las plataformas, igual que en el teléfono. En Android se
-/// respeta el SafeArea inferior; en escritorio se limita el ancho para que no
-/// se estire en ventanas grandes y siga pareciendo una barra flotante.
-class _FloatingNavBar extends ConsumerWidget {
-  const _FloatingNavBar();
+/// Menú compacto de navegación: sustituye a la barra flotante por un único
+/// botón de tres puntos. Todas las secciones siguen accesibles, pero solo se
+/// muestra el icono hasta que se abre el desplegable.
+class _NavOverflowMenu extends ConsumerWidget {
+  const _NavOverflowMenu();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final AppSection selected = ref.watch(appSectionProvider);
-    void changeSection(AppSection section) =>
-        ref.read(appSectionProvider.notifier).state = section;
+    final DesignLanguage language = context.tokens.designLanguage;
 
     return SafeArea(
       top: false,
@@ -416,26 +412,85 @@ class _FloatingNavBar extends ConsumerWidget {
       left: false,
       right: false,
       child: Align(
-        alignment: Alignment.bottomCenter,
-        child: LayoutBuilder(
-          builder: (BuildContext context, BoxConstraints constraints) {
-            final double width = Platform.isAndroid
-                ? double.infinity
-                : math.min<double>(
-                    620,
-                    math.max<double>(280, constraints.maxWidth - 40),
-                  );
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-              child: SizedBox(
-                width: width,
-                child: LiquidNavBar(
-                  selected: selected,
-                  onChanged: changeSection,
-                ),
+        alignment: Alignment.bottomRight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 0, 14, 12),
+          child: PopupMenuButton<AppSection>(
+            tooltip: 'Navegación',
+            color: context.tokens.panelOverlay,
+            surfaceTintColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(language.navRadius),
+              side: language.borderWidth == 0
+                  ? BorderSide.none
+                  : BorderSide(
+                      color: context.tokens.panelBorder,
+                      width: language.borderWidth,
+                    ),
+            ),
+            offset: const Offset(0, -224),
+            icon: Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: context.tokens.panelOverlay,
+                borderRadius: BorderRadius.circular(language.navRadius),
+                border: language.borderWidth == 0
+                    ? null
+                    : Border.all(
+                        color: context.tokens.panelBorder,
+                        width: language.borderWidth,
+                      ),
+                boxShadow: language.glowEdge
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: context.accent.withValues(alpha: 0.22),
+                          blurRadius: 16,
+                        ),
+                      ]
+                    : null,
               ),
-            );
-          },
+              child: Icon(
+                Icons.more_vert_rounded,
+                size: 22,
+                color: context.ink,
+              ),
+            ),
+            onSelected: (AppSection section) =>
+                ref.read(appSectionProvider.notifier).state = section,
+            itemBuilder: (BuildContext context) => AppSection.values
+                .map(
+                  (AppSection section) => PopupMenuItem<AppSection>(
+                    value: section,
+                    child: Row(
+                      children: <Widget>[
+                        Icon(
+                          section == selected
+                              ? section.activeIcon
+                              : section.icon,
+                          size: 20,
+                          color: section == selected
+                              ? context.accent
+                              : context.inkAlpha(0.70),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          language.uppercaseLabels
+                              ? section.label.toUpperCase()
+                              : section.label,
+                          style: TextStyle(
+                            fontWeight: section == selected
+                                ? FontWeight.w800
+                                : FontWeight.w500,
+                            color: context.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
         ),
       ),
     );
