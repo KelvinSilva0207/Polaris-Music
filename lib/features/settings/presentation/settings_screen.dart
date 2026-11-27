@@ -67,12 +67,37 @@ enum _SettingsArea {
 /// devuelven `SizedBox.shrink()`) para que estos índices no cambien según la
 /// plataforma.
 const Map<_SettingsArea, List<int>> _areaSections = <_SettingsArea, List<int>>{
-  _SettingsArea.appearance: <int>[0, 6],
+  _SettingsArea.appearance: <int>[0],
   _SettingsArea.audio: <int>[1, 4, 5],
   _SettingsArea.content: <int>[2, 3],
   _SettingsArea.accounts: <int>[8, 13],
-  _SettingsArea.system: <int>[7, 9, 10, 11],
-  _SettingsArea.about: <int>[12, 14, 15, 16],
+  // La isla y el restablecimiento son comportamiento del sistema, no datos
+  // de apariencia ni información «Acerca de».
+  _SettingsArea.system: <int>[6, 7, 9, 10, 11, 14],
+  _SettingsArea.about: <int>[12, 15, 16],
+};
+
+/// Términos por sección para el buscador. Incluye sinónimos y variantes sin
+/// tilde para que «parametrico» encuentre el ecualizador y «isla» la encuentre
+/// aunque esté ahora en Sistema.
+const Map<int, String> _sectionSearchTerms = <int, String>{
+  0: 'apariencia apariência tema temas color colores tipografia tipografía fuentes animacion animación movimiento galeria galería vinilo minimalista',
+  1: 'reproduccion reproducción replaygain volumen crossfade gapless silencios pausa auriculares transicion transición modo puro escuchar',
+  2: 'biblioteca escanear escanear al iniciar indexar carpetas duplicados listas m3u metrolist gestionar',
+  3: 'inicio estadisticas estadísticas escuchas historial reproducciones reproducidas playcount',
+  4: 'ecualizador equalizer eq dsp parametrico paramétrico bandas filtros pure puro ganancia curva',
+  5: 'atajos atajos de teclado hotkeys windows teclas combinar',
+  6: 'isla dinamica dinámica island flotante minimizar mini reproductor window windows',
+  7: 'ventana window siempre encima borde ocultar tamaño posicion posición',
+  8: 'perfiles perfiles de tema backups respaldo exportar importar json zip cuenta',
+  9: 'permisos permisos audio almacenamiento notificaciones sistema acceso',
+  10: 'carpetas carpetas storage rutas music musica directorios almacenamiento',
+  11: 'cerrar salir quitar kill android apagar',
+  12: 'actualizaciones update actualizar version versión changelog descargar instalar release github',
+  13: 'scrobbling scrobble lastfm last.fm cuenta ultimo últfm conectar',
+  14: 'restablecer reset defecto limpiar preferencias valores iniciales',
+  15: 'diagnostico diagnóstico beta crash log errores compartir exportar limpiar informe',
+  16: 'acerca creditos créditos github introduccion introducción onboarding licencia version',
 };
 
 /// Ajustes de Polaris Music: apariencia, audio, ventana, respaldos y más.
@@ -87,6 +112,16 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   _SettingsArea _area = _SettingsArea.appearance;
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  String _searchTerm = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -643,53 +678,207 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ];
 
     final List<int> indices = _areaSections[_area]!;
-    return ListView(
-      // KEY por área: al cambiar, la lista se reconstruye y el scroll vuelve
-      // arriba en lugar de quedarse a media altura del área anterior.
-      key: ValueKey<_SettingsArea>(_area),
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
-      children: <Widget>[
-        Text(
-          'Ajustes',
-          style: Theme.of(context).textTheme.headlineMedium
-              ?.copyWith(fontSize: 30),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          'Personaliza Polaris a tu manera',
-          style: TextStyle(color: context.inkAlpha(0.54)),
-        ),
-        const SizedBox(height: 20),
-        Text(
-          'Áreas',
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.2,
-            color: context.inkAlpha(0.48),
-          ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
+    final String query = _searchTerm.trim().toLowerCase();
+    final List<int> matches = query.isEmpty
+        ? <int>[]
+        : _sectionSearchEntries(query);
+
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        // En ventanas anchas las áreas viven en un rail fijo; en móvil se
+        // conservan los chips para no robar ancho a las opciones.
+        final bool wide = constraints.maxWidth >= 860;
+
+        final Widget content = ListView(
+          // KEY por área: al cambiar, la lista se reconstruye y el scroll vuelve
+          // arriba. El texto de búsqueda NO entra en la key: el TextField debe
+          // conservar el foco mientras se escribe.
+          key: ValueKey<_SettingsArea>(_area),
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
           children: <Widget>[
-            for (final _SettingsArea area in _SettingsArea.values)
-              _ModeButton(
-                icon: area.icon,
-                label: area.label,
-                selected: area == _area,
-                onPressed: () => setState(() => _area = area),
+            Text(
+              'Ajustes',
+              style: Theme.of(context).textTheme.headlineMedium
+                  ?.copyWith(fontSize: 30),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Personaliza Polaris a tu manera',
+              style: TextStyle(color: context.inkAlpha(0.54)),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _searchController,
+              onChanged: (String value) =>
+                  setState(() => _searchTerm = value.trim()),
+              decoration: InputDecoration(
+                hintText: 'Buscar ajustes…',
+                prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                suffixIcon: _searchTerm.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Limpiar búsqueda',
+                        icon: const Icon(Icons.close_rounded),
+                        onPressed: () => setState(_clearSearch),
+                      ),
+                filled: true,
+                fillColor: context.inkAlpha(0.04),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: context.inkAlpha(0.12)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: context.inkAlpha(0.12)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: context.accent, width: 1.2),
+                ),
               ),
+            ),
+            const SizedBox(height: 14),
+            _QuickActions(
+              onTheme: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) =>
+                      const CustomizationScreen(),
+                ),
+              ),
+              onEqualizer: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (BuildContext context) => const EqualizerScreen(),
+                ),
+              ),
+              onLibrary: () => widget.onNavigate(AppSection.library),
+              onUpdates: () => setState(() {
+                _clearSearch();
+                _area = _SettingsArea.about;
+              }),
+            ),
+            const SizedBox(height: 18),
+            if (query.isNotEmpty) ...<Widget>[
+              Text(
+                'Resultados para “$_searchTerm”',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: context.accent,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (matches.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Text(
+                    'No hay ajustes con ese nombre. Prueba con “tema”, '
+                    '“ecualizador”, “isla” o “carpetas”.',
+                    style: TextStyle(color: context.inkAlpha(0.58)),
+                  ),
+                )
+              else
+                for (final int index in matches) ...<Widget>[
+                  if (index != matches.first) const SizedBox(height: 16),
+                  sections[index],
+                ],
+            ] else ...<Widget>[
+              if (!wide) ...<Widget>[
+                Text(
+                  'Áreas',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: context.inkAlpha(0.48),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: <Widget>[
+                    for (final _SettingsArea area in _SettingsArea.values)
+                      _ModeButton(
+                        icon: area.icon,
+                        label: area.label,
+                        selected: area == _area,
+                        onPressed: () => setState(() => _area = area),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+              ],
+              for (final int index in indices) ...<Widget>[
+                if (index != indices.first) const SizedBox(height: 16),
+                sections[index],
+              ],
+            ],
           ],
-        ),
-        const SizedBox(height: 20),
-        for (final int index in indices) ...<Widget>[
-          if (index != indices.first) const SizedBox(height: 16),
-          sections[index],
-        ],
-      ],
+        );
+
+        if (!wide) return content;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Container(
+              width: 218,
+              padding: const EdgeInsets.fromLTRB(12, 20, 12, 120),
+              decoration: BoxDecoration(
+                color: context.inkAlpha(0.035),
+                border: Border(
+                  right: BorderSide(color: context.inkAlpha(0.09)),
+                ),
+              ),
+              child: ListView(
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Icon(Icons.tune_rounded, size: 18, color: context.accent),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Navegación',
+                        style: Theme.of(context).textTheme.titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  for (final _SettingsArea area in _SettingsArea.values)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: _AreaRailButton(
+                        icon: area.icon,
+                        label: area.label,
+                        count: _areaSections[area]!.length,
+                        selected: area == _area && query.isEmpty,
+                        onPressed: () => setState(() {
+                          _clearSearch();
+                          _area = area;
+                        }),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(child: content),
+          ],
+        );
+      },
     );
+  }
+
+  /// Secciones cuyas palabras clave contienen la búsqueda, en orden natural.
+  List<int> _sectionSearchEntries(String query) {
+    return _sectionSearchTerms.entries
+        .where((MapEntry<int, String> entry) => entry.value.contains(query))
+        .map((MapEntry<int, String> entry) => entry.key)
+        .toList()
+      ..sort();
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    _searchTerm = '';
   }
 
   /// Limpia una configuración de prueba sin tocar datos del usuario.
@@ -1579,6 +1768,161 @@ class _ModeButton extends StatelessWidget {
             icon: Icon(icon, size: 18, color: tokens.accent),
             label: Text(label),
           );
+  }
+}
+
+/// Accesos directos a los destinos más usados, siempre a la vista.
+class _QuickActions extends StatelessWidget {
+  const _QuickActions({
+    required this.onTheme,
+    required this.onEqualizer,
+    required this.onLibrary,
+    required this.onUpdates,
+  });
+
+  final VoidCallback onTheme;
+  final VoidCallback onEqualizer;
+  final VoidCallback onLibrary;
+  final VoidCallback onUpdates;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: <Widget>[
+        _QuickAction(
+          icon: Icons.palette_outlined,
+          label: 'Temas',
+          onTap: onTheme,
+        ),
+        _QuickAction(
+          icon: Icons.graphic_eq_rounded,
+          label: 'Ecualizador',
+          onTap: onEqualizer,
+        ),
+        _QuickAction(
+          icon: Icons.library_music_outlined,
+          label: 'Biblioteca',
+          onTap: onLibrary,
+        ),
+        _QuickAction(
+          icon: Icons.system_update_alt_rounded,
+          label: 'Actualizaciones',
+          onTap: onUpdates,
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickAction extends StatelessWidget {
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final PolarisTokens tokens = context.tokens;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(tokens.tileRadius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+          decoration: tokens.panelDecoration(
+            radius: tokens.tileRadius,
+            elevated: false,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Icon(icon, size: 17, color: tokens.accent),
+              const SizedBox(width: 7),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón del rail de áreas en ventanas anchas, con contador de secciones.
+class _AreaRailButton extends StatelessWidget {
+  const _AreaRailButton({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final int count;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final PolarisTokens tokens = context.tokens;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(tokens.tileRadius),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: selected
+              ? BoxDecoration(
+                  color: tokens.accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(tokens.tileRadius),
+                  border: Border.all(
+                    color: tokens.accent.withValues(alpha: 0.45),
+                  ),
+                )
+              : null,
+          child: Row(
+            children: <Widget>[
+              Icon(
+                icon,
+                size: 18,
+                color: selected ? tokens.accent : context.inkAlpha(0.66),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                    color: selected ? tokens.accent : null,
+                  ),
+                ),
+              ),
+              Text(
+                '$count',
+                style: TextStyle(fontSize: 10, color: context.inkAlpha(0.42)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
