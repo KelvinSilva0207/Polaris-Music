@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../../core/models/track.dart' show StreamAlternative;
+import '../../../core/utils/logger.dart';
 import '../domain/music_source.dart';
 import '../domain/online_catalog_items.dart';
 import '../domain/online_track.dart';
@@ -28,12 +29,22 @@ class _AudioCandidate {
   bool get isMp4 => mime.contains('audio/mp4');
 }
 
+/// Cliente anónimo del endpoint `player` y host al que se le pregunta.
+class _PlayerClient {
+  const _PlayerClient(this.client, this.host);
+
+  final String client;
+  final String host;
+}
+
 /// Cliente InnerTube anónimo de YouTube Music (sin cuenta de Google).
 ///
-/// `search` y `browse` usan el cliente web de música; `player` usa el cliente
-/// iOS, que entrega URLs de audio directas sin iniciar sesión. Nunca se envían
-/// credenciales: solo el `context` público (`clientName`, `clientVersion`,
-/// `hl`, `gl` y `visitorData`) y las cabeceras que acompañan a ese cliente.
+/// `search` y `browse` usan el cliente web de música. `player` prueba una cadena
+/// de clientes (IOS → ANDROID_MUSIC → ANDROID_VR → TVHTML5_SIMPLY_EMBEDDED_
+/// PLAYER → WEB_REMIX) hasta encontrar URLs de audio directas sin firma: si un
+/// cliente solo devuelve `signatureCipher`/`cipher` se pasa al siguiente sin
+/// descifrar nada. Nunca se envían credenciales: solo el `context` público y
+/// las cabeceras propias de cada cliente.
 class YouTubeMusicSource
     implements MusicSourceProvider, CancellableMusicSourceProvider {
   YouTubeMusicSource({Dio? dio, ArtworkCache? artworkCache})
@@ -57,6 +68,8 @@ class YouTubeMusicSource
   static const String _web = 'WEB_REMIX';
   static const String _androidMusic = 'ANDROID_MUSIC';
   static const String _ios = 'IOS';
+  static const String _androidVr = 'ANDROID_VR';
+  static const String _tvEmbedded = 'TVHTML5_SIMPLY_EMBEDDED_PLAYER';
 
   /// El cliente web cambia de versión cada pocas semanas; una versión fija
   /// acaba devolviendo 404. Se intenta leer de la homepage y este valor es el
@@ -64,6 +77,13 @@ class YouTubeMusicSource
   static const String _fallbackWebVersion = '1.20261117.06.00';
   static const String _fallbackAndroidMusicVersion = '7.20250311.01.00';
   static const String _iosVersion = '20.10.4';
+  static const String _androidVrVersion = '1.60.19';
+  static const String _tvEmbeddedVersion = '2.0';
+
+  /// Sonda de rango acotada: una URL caducada se descarta antes de llegar a
+  /// `media_kit` o al descargador, sin dejar la cola esperando indefinidamente.
+  static const Duration _probeTimeout = Duration(seconds: 5);
+  static const Duration _probeCacheTtl = Duration(minutes: 2);
 
   /// YouTube solo sirve la página completa con un User-Agent de navegador; con
   /// el User-Agent de la app responde una página mínima sin los datos del
@@ -74,6 +94,9 @@ class YouTubeMusicSource
   static const String _iosUserAgent =
       'com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_1 '
       'like Mac OS X;)';
+  static const String _androidVrUserAgent =
+      'com.google.android.apps.youtube.vr.oculus/1.60.19 '
+      '(Linux; U; Android 12L; en_US; Quest 3; Build/SQ3A.220705.003; gzip)';
 
   /// `browseId` válido para el inicio de YouTube Music: devuelve estanterías
   /// con `musicResponsiveListItemRenderer` y `videoId` anidados.
@@ -95,7 +118,13 @@ class YouTubeMusicSource
     _web: _fallbackWebVersion,
     _androidMusic: _fallbackAndroidMusicVersion,
     _ios: _iosVersion,
+    _androidVr: _androidVrVersion,
+    _tvEmbedded: _tvEmbeddedVersion,
   };
+
+  /// URLs ya sondadas recientemente. Reproductor y descargas comparten la
+  /// misma instancia del proveedor, así que no repiten la sonda por cada uso.
+  final Map<String, DateTime> _probedUrls = <String, DateTime>{};
 
   String? _visitorData;
   bool _contextLoaded = false;
@@ -201,6 +230,15 @@ class YouTubeMusicSource
           ..['osName'] = 'Android'
           ..['osVersion'] = '15'
           ..['deviceModel'] = 'Pixel 9';
+      case _androidVr:
+        data
+          ..['androidSdkVersion'] = 32
+          ..['osName'] = 'Android'
+          ..['osVersion'] = '12L'
+          ..['deviceMake'] = 'Oculus'
+          ..['deviceModel'] = 'Quest 3';
+      case _tvEmbedded:
+        data['clientScreen'] = 'EMBED';
     }
     return <String, dynamic>{'client': data};
   }
@@ -211,15 +249,23 @@ class YouTubeMusicSource
       _web => 67,
       _ios => 5,
       _androidMusic => 21,
+      _androidVr => 28,
+      _tvEmbedded => 85,
       _ => 67,
+    };
+    final String host = client == _web ? _musicHost : _wwwHost;
+    final String userAgent = switch (client) {
+      _ios => _iosUserAgent,
+      _androidVr => _androidVrUserAgent,
+      _ => _browserUserAgent,
     };
     final Map<String, String> headers = <String, String>{
       'Content-Type': 'application/json',
-      'User-Agent': client == _ios ? _iosUserAgent : _browserUserAgent,
+      'User-Agent': userAgent,
       'X-YouTube-Client-Name': '$clientId',
       'X-YouTube-Client-Version': version,
-      'Origin': 'https://$_musicHost',
-      'Referer': 'https://$_musicHost/',
+      'Origin': 'https://$host',
+      'Referer': 'https://$host/',
     };
     final String? visitor = _visitorData;
     if (visitor != null && visitor.isNotEmpty) {
@@ -971,12 +1017,18 @@ class YouTubeMusicSource
       'com.google.android.apps.youtube.music/'
           '${_versions[_androidMusic] ?? _fallbackAndroidMusicVersion} '
           '(Linux; U; Android 15; Pixel 9; gzip)',
+    _androidVr =>
+      'com.google.android.apps.youtube.vr.oculus/'
+          '${_versions[_androidVr] ?? _androidVrVersion} '
+          '(Linux; U; Android 12L; en_US; Quest 3; Build/SQ3A.220705.003; gzip)',
     _ => _browserUserAgent,
   };
 
   int _clientIdFor(String client) => switch (client) {
     _ios => 5,
     _androidMusic => 21,
+    _androidVr => 28,
+    _tvEmbedded => 85,
     _ => 67,
   };
 
@@ -1015,10 +1067,13 @@ class YouTubeMusicSource
     return Map<String, String>.unmodifiable(headers);
   }
 
-  /// InnerTube marca los formatos protegidos con `signatureCipher` (o con un
-  /// parámetro `s` en la URL). sin descifrar esa firma mpv solo obtiene 403.
+  /// InnerTube marca los formatos protegidos con `signatureCipher`, con la
+  /// clave `cipher` o con un parámetro `s` en la URL. Sin descifrar esa firma
+  /// mpv solo obtiene 403, así que el formato se descarta y se prueba otro
+  /// cliente antes de rendirse.
   static bool _needsCipher(Map<String, dynamic> format, String url) {
     if (SourceJson.text(format['signatureCipher']).isNotEmpty) return true;
+    if (SourceJson.text(format['cipher']).isNotEmpty) return true;
     final Uri? uri = Uri.tryParse(url);
     if (uri == null) return false;
     return uri.queryParameters.containsKey('s') ||
@@ -1038,6 +1093,9 @@ class YouTubeMusicSource
           'videoId': videoId,
           'contentCheckOk': true,
           'racyCheckOk': true,
+          // El reproductor incrustado exige declarar la página que lo aloja.
+          if (client == _tvEmbedded)
+            'thirdParty': <String, dynamic>{'embedUrl': 'https://$host/'},
         },
         client: client,
         host: host,
@@ -1045,7 +1103,13 @@ class YouTubeMusicSource
       final String state = SourceJson.text(
         SourceJson.map(payload['playabilityStatus'])?['status'],
       );
-      if (state.isNotEmpty && state != 'OK') return const <_AudioCandidate>[];
+      if (state.isNotEmpty && state != 'OK') {
+        OnlineDiagnostics.report(
+          _tag,
+          'Cliente $client sin acceso al vídeo ($state)',
+        );
+        return const <_AudioCandidate>[];
+      }
 
       final Map<String, dynamic>? streaming = SourceJson.map(
         payload['streamingData'],
@@ -1078,18 +1142,99 @@ class YouTubeMusicSource
         (_AudioCandidate a, _AudioCandidate b) =>
             (b.isMp4 ? 1 : 0) - (a.isMp4 ? 1 : 0),
       );
+      if (found.isEmpty) {
+        OnlineDiagnostics.report(
+          _tag,
+          'Cliente $client solo entregó formatos con firma o sin URL directa',
+        );
+      }
       return found;
-    } on Object {
-      // Un cliente caído no impide probar los demás.
+    } on RequestCanceledException {
+      rethrow;
+    } on Object catch (error, stack) {
+      // Un cliente caído no impide probar los siguientes de la cadena.
+      OnlineDiagnostics.report(
+        _tag,
+        'Cliente $client falló al pedir el stream; se prueba el siguiente',
+        error: error,
+        stack: stack,
+      );
       return const <_AudioCandidate>[];
     }
   }
 
-  /// Resuelve el audio probando IOS → ANDROID_MUSIC → WEB_REMIX.
+  /// Comprueba con un GET de un byte que la URL sigue sirviendo audio.
   ///
-  /// Todas las URLs devueltas son directas y llevan las cabeceras de su propio
-  /// cliente. La primera es la principal; el resto viajan como alternativas
-  /// para que el motor (y la descarga) puedan reintentar sin consultar de nuevo.
+  /// La sonda está acotada a 5 s y su resultado se reutiliza unos minutos:
+  /// reproductor y descargas comparten esta instancia, así que una URL ya
+  /// comprobada no se vuelve a consultar. Un cliente rechazado solo provoca
+  /// que se pruebe el siguiente, nunca que se detenga la cola.
+  Future<bool> _probeAudioUrl(_AudioCandidate candidate) async {
+    final DateTime? probedAt = _probedUrls[candidate.url];
+    if (probedAt != null &&
+        DateTime.now().difference(probedAt) < _probeCacheTtl) {
+      return true;
+    }
+    try {
+      final Response<dynamic> response = await _dio.get<dynamic>(
+        candidate.url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          headers: <String, dynamic>{
+            ...candidate.headers,
+            'Range': 'bytes=0-0',
+            'Accept-Encoding': 'identity',
+          },
+          connectTimeout: _probeTimeout,
+          receiveTimeout: _probeTimeout,
+          validateStatus: (int? status) =>
+              status != null && status >= 200 && status < 300,
+        ),
+      );
+      final int? status = response.statusCode;
+      final List<String>? types = response.headers['content-type'];
+      final String contentType = (types == null || types.isEmpty)
+          ? ''
+          : types.first.toLowerCase();
+      final bool plausible =
+          contentType.isEmpty ||
+          contentType.startsWith('audio/') ||
+          contentType.startsWith('application/octet-stream') ||
+          contentType.startsWith('video/');
+      if ((status == 200 || status == 206) && plausible) {
+        _probedUrls[candidate.url] = DateTime.now();
+        return true;
+      }
+      OnlineDiagnostics.report(
+        _tag,
+        'URL de ${candidate.client} rechazada por la sonda '
+        '(HTTP $status, tipo ${contentType.isEmpty ? 'desconocido' : contentType})',
+      );
+    } on Object catch (error, stack) {
+      OnlineDiagnostics.report(
+        _tag,
+        'No se pudo validar el audio de ${candidate.client}; se descarta esa URL',
+        error: error,
+        stack: stack,
+      );
+    }
+    _probedUrls.remove(candidate.url);
+    return false;
+  }
+
+  /// Clientes `player`, en orden, hasta conseguir una URL directa válida.
+  ///
+  /// IOS y ANDROID_MUSIC suelen entregarla; ANDROID_VR y el reproductor
+  /// incrustado son el respaldo cuando el vídeo solo ofrece `signatureCipher`.
+  /// WEB_REMIX queda de último porque casi siempre firma sus formatos.
+  static const List<_PlayerClient> _playerClients = <_PlayerClient>[
+    _PlayerClient(_ios, _wwwHost),
+    _PlayerClient(_androidMusic, _wwwHost),
+    _PlayerClient(_androidVr, _wwwHost),
+    _PlayerClient(_tvEmbedded, _wwwHost),
+    _PlayerClient(_web, _musicHost),
+  ];
+
   @override
   Future<ResolvedStream> resolveStream(OnlineTrack track) async {
     if (track.sourceId.isEmpty) {
@@ -1100,16 +1245,26 @@ class YouTubeMusicSource
       );
     }
 
-    final List<_AudioCandidate> candidates = <_AudioCandidate>[
-      ...await _collectAudioCandidates(_ios, _wwwHost, track.sourceId),
-      ...await _collectAudioCandidates(_androidMusic, _wwwHost, track.sourceId),
-    ];
-    // WEB_REMIX suele devolver firmas cifradas; solo merece la pena si aún no
-    // tenemos una alternativa distinta del cliente iOS.
-    if (candidates.length < 2) {
-      candidates.addAll(
-        await _collectAudioCandidates(_web, _musicHost, track.sourceId),
+    final List<_AudioCandidate> candidates = <_AudioCandidate>[];
+    final Set<String> seen = <String>{};
+    for (int i = 0; i < _playerClients.length; i++) {
+      final _PlayerClient entry = _playerClients[i];
+      final List<_AudioCandidate> found = await _collectAudioCandidates(
+        entry.client,
+        entry.host,
+        track.sourceId,
       );
+      if (found.isEmpty) continue;
+      final List<bool> valid = await Future.wait<bool>(
+        found.map(_probeAudioUrl),
+      );
+      for (int j = 0; j < found.length; j++) {
+        if (!valid[j] || !seen.add(found[j].url)) continue;
+        candidates.add(found[j]);
+      }
+      // Con principal y respaldo ya validados no seguimos consultando. Si solo
+      // hay una URL, se insiste hasta ANDROID_VR antes de aceptarla.
+      if (candidates.length >= 2 || (candidates.isNotEmpty && i >= 2)) break;
     }
 
     if (candidates.isEmpty) {
@@ -1122,6 +1277,20 @@ class YouTubeMusicSource
     }
 
     final _AudioCandidate primary = candidates.first;
+    if (primary.client == _playerClients.first.client) {
+      AppLog.i(
+        _tag,
+        'Stream de audio resuelto y validado con ${primary.client}',
+      );
+    } else {
+      // El cambio de cliente es el dato útil para el diagnóstico Beta; el
+      // éxito del cliente habitual se queda solo en el log de la app.
+      OnlineDiagnostics.report(
+        _tag,
+        'Stream de audio validado con ${primary.client} '
+        'después de probar otros clientes',
+      );
+    }
     return ResolvedStream(
       url: primary.url,
       extension: primary.mime.contains('webm') ? 'webm' : 'm4a',

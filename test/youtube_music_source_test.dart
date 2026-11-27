@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:polaris_music/core/services/audio_engine_service.dart';
+import 'package:polaris_music/features/online_music/data/online_diagnostics.dart';
 import 'package:polaris_music/features/online_music/data/source_helpers.dart';
 import 'package:polaris_music/features/online_music/data/youtube_music_source.dart';
 import 'package:polaris_music/features/online_music/domain/music_source.dart';
@@ -29,6 +30,9 @@ class _FakeAdapter implements HttpClientAdapter {
   static const Map<String, List<String>> _jsonHeaders = <String, List<String>>{
     'Content-Type': <String>['application/json; charset=utf-8'],
   };
+  static const Map<String, List<String>> _audioHeaders = <String, List<String>>{
+    'Content-Type': <String>['audio/mp4'],
+  };
 
   @override
   Future<ResponseBody> fetch(
@@ -38,6 +42,9 @@ class _FakeAdapter implements HttpClientAdapter {
   ) async {
     requests.add(options);
     if (options.method == 'GET') {
+      if (options.headers['Range'] == 'bytes=0-0') {
+        return ResponseBody.fromString('x', 206, headers: _audioHeaders);
+      }
       return ResponseBody.fromString(homeHtml, 200, headers: _htmlHeaders);
     }
     final String endpoint = options.path.split('?').first.split('/').last;
@@ -55,10 +62,23 @@ class _FakeAdapter implements HttpClientAdapter {
 /// Devuelve un payload distinto según el cliente InnerTube que pregunta, para
 /// comprobar la cadena IOS → ANDROID_MUSIC sin depender de la red.
 class _ClientAwareAdapter implements HttpClientAdapter {
-  _ClientAwareAdapter(this.payloads);
+  _ClientAwareAdapter(
+    this.payloads, {
+    this.probeStatuses = const <String, int>{},
+  });
 
   final Map<String, Map<String, dynamic>> payloads;
+
+  /// Estado de la sonda por fragmento de URL; por defecto responde 206.
+  final Map<String, int> probeStatuses;
   final List<RequestOptions> requests = <RequestOptions>[];
+
+  static const Map<String, List<String>> _audioHeaders = <String, List<String>>{
+    'Content-Type': <String>['audio/mp4'],
+  };
+  static const Map<String, List<String>> _jsonHeaders = <String, List<String>>{
+    'Content-Type': <String>['application/json; charset=utf-8'],
+  };
 
   @override
   Future<ResponseBody> fetch(
@@ -68,6 +88,17 @@ class _ClientAwareAdapter implements HttpClientAdapter {
   ) async {
     requests.add(options);
     if (options.method == 'GET') {
+      if (options.headers['Range'] == 'bytes=0-0') {
+        int status = 206;
+        for (final MapEntry<String, int> entry in probeStatuses.entries) {
+          if (options.uri.toString().contains(entry.key)) status = entry.value;
+        }
+        return ResponseBody.fromString(
+          'x',
+          status,
+          headers: status >= 200 && status < 300 ? _audioHeaders : _jsonHeaders,
+        );
+      }
       return ResponseBody.fromString(
         '<script>{"INNERTUBE_CLIENT_VERSION":"9.9.9"}</script>',
         200,
@@ -259,6 +290,52 @@ Map<String, dynamic> _playerPayload() => <String, dynamic>{
   },
 };
 
+Map<String, dynamic> _signedOnlyPayload() => <String, dynamic>{
+  'playabilityStatus': <String, dynamic>{'status': 'OK'},
+  'streamingData': <String, dynamic>{
+    'adaptiveFormats': <Object?>[
+      <String, dynamic>{
+        'mimeType': 'audio/mp4',
+        'url': 'https://googlevideo.example/signed.m4a?s=firma',
+        'signatureCipher': 's=firma&url=xxx',
+      },
+    ],
+  },
+};
+
+Map<String, dynamic> _cipherOnlyPayload() => <String, dynamic>{
+  'playabilityStatus': <String, dynamic>{'status': 'OK'},
+  'streamingData': <String, dynamic>{
+    'adaptiveFormats': <Object?>[
+      <String, dynamic>{
+        'mimeType': 'audio/mp4',
+        'url': 'https://googlevideo.example/cifrado.m4a',
+        'cipher': 's=firma&url=xxx',
+      },
+    ],
+  },
+};
+
+Map<String, dynamic> _directPayload(
+  String url, {
+  String mime = 'audio/mp4; codecs="mp4a.40.2"',
+}) => <String, dynamic>{
+  'playabilityStatus': <String, dynamic>{'status': 'OK'},
+  'streamingData': <String, dynamic>{
+    'adaptiveFormats': <Object?>[
+      <String, dynamic>{'mimeType': mime, 'url': url},
+    ],
+  },
+};
+
+const OnlineTrack _demoTrack = OnlineTrack(
+  externalId: 'youtube:abc12345678',
+  sourceId: 'abc12345678',
+  title: 'Canción demo',
+  artist: 'Artista demo',
+  durationMs: 207000,
+);
+
 Map<String, dynamic> _clientOf(RequestOptions request) =>
     ((request.data! as Map<String, dynamic>)['context']
             as Map<String, dynamic>)['client']
@@ -446,6 +523,154 @@ void main() {
       expect(_clientOf(posts[0])['clientName'], 'IOS');
       expect(_clientOf(posts[1])['clientName'], 'ANDROID_MUSIC');
     });
+
+    test('sin URL directa en IOS/Android se prueba ANDROID_VR', () async {
+      final _ClientAwareAdapter adapter = _ClientAwareAdapter(
+        <String, Map<String, dynamic>>{
+          'IOS': _signedOnlyPayload(),
+          'ANDROID_MUSIC': _signedOnlyPayload(),
+          'ANDROID_VR': _directPayload(
+            'https://googlevideo.example/vr.m4a?c=VR',
+          ),
+        },
+      );
+      final Dio dio = Dio()..httpClientAdapter = adapter;
+      final YouTubeMusicSource source = YouTubeMusicSource(
+        dio: dio,
+        artworkCache: ArtworkCache(dio: dio),
+      );
+
+      final ResolvedStream stream = await source.resolveStream(_demoTrack);
+
+      expect(stream.clientLabel, 'ANDROID_VR');
+      expect(stream.url, endsWith('vr.m4a?c=VR'));
+      expect(
+        stream.httpHeaders['User-Agent'],
+        contains('youtube.vr.oculus/1.60.19'),
+      );
+      expect(stream.httpHeaders['X-YouTube-Client-Name'], '28');
+      expect(stream.alternatives, isEmpty);
+
+      final List<RequestOptions> posts = adapter.requests
+          .where((RequestOptions r) => r.method == 'POST')
+          .toList();
+      expect(
+        posts.map((RequestOptions r) => _clientOf(r)['clientName']),
+        <Object?>['IOS', 'ANDROID_MUSIC', 'ANDROID_VR'],
+      );
+      final List<RequestOptions> probes = adapter.requests
+          .where(
+            (RequestOptions r) =>
+                r.method == 'GET' && r.headers['Range'] == 'bytes=0-0',
+          )
+          .toList();
+      expect(probes, hasLength(1));
+    });
+
+    test(
+      'el reproductor incrustado es el último respaldo con URL directa',
+      () async {
+        final _ClientAwareAdapter adapter = _ClientAwareAdapter(
+          <String, Map<String, dynamic>>{
+            'IOS': _cipherOnlyPayload(),
+            'ANDROID_MUSIC': _signedOnlyPayload(),
+            'ANDROID_VR': _cipherOnlyPayload(),
+            'TVHTML5_SIMPLY_EMBEDDED_PLAYER': _directPayload(
+              'https://googlevideo.example/embed.webm?c=TV',
+              mime: 'audio/webm; codecs="opus"',
+            ),
+          },
+        );
+        final Dio dio = Dio()..httpClientAdapter = adapter;
+        final YouTubeMusicSource source = YouTubeMusicSource(
+          dio: dio,
+          artworkCache: ArtworkCache(dio: dio),
+        );
+
+        final ResolvedStream stream = await source.resolveStream(_demoTrack);
+
+        expect(stream.clientLabel, 'TVHTML5_SIMPLY_EMBEDDED_PLAYER');
+        expect(stream.extension, 'webm');
+        expect(stream.httpHeaders['X-YouTube-Client-Name'], '85');
+        expect(stream.httpHeaders['User-Agent'], startsWith('Mozilla/'));
+
+        final List<RequestOptions> posts = adapter.requests
+            .where((RequestOptions r) => r.method == 'POST')
+            .toList();
+        expect(_clientOf(posts.last)['clientScreen'], 'EMBED');
+        expect(
+          (posts.last.data! as Map<String, dynamic>)['thirdParty'],
+          <String, dynamic>{'embedUrl': 'https://www.youtube.com/'},
+        );
+        expect(
+          posts.map((RequestOptions r) => _clientOf(r)['clientName']),
+          isNot(contains('WEB_REMIX')),
+        );
+      },
+    );
+
+    test(
+      'una URL que no responde se descarta en favor de su alternativa',
+      () async {
+        final _ClientAwareAdapter adapter = _ClientAwareAdapter(
+          <String, Map<String, dynamic>>{
+            'IOS': _directPayload('https://googlevideo.example/ios.m4a?c=IOS'),
+            'ANDROID_MUSIC': _directPayload(
+              'https://googlevideo.example/android.m4a?c=ANDROID',
+            ),
+          },
+          probeStatuses: <String, int>{'ios.m4a': 403},
+        );
+        final Dio dio = Dio()..httpClientAdapter = adapter;
+        final YouTubeMusicSource source = YouTubeMusicSource(
+          dio: dio,
+          artworkCache: ArtworkCache(dio: dio),
+        );
+
+        final ResolvedStream stream = await source.resolveStream(_demoTrack);
+
+        expect(stream.url, endsWith('android.m4a?c=ANDROID'));
+        expect(stream.clientLabel, 'ANDROID_MUSIC');
+      },
+    );
+
+    test(
+      'los clientes probados quedan registrados en el diagnóstico',
+      () async {
+        final List<String> reports = <String>[];
+        OnlineDiagnostics.setReporter(
+          (String tag, String message, {Object? error, StackTrace? stack}) =>
+              reports.add(message),
+        );
+        addTearDown(() => OnlineDiagnostics.setReporter(null));
+
+        final _ClientAwareAdapter adapter = _ClientAwareAdapter(
+          <String, Map<String, dynamic>>{
+            'IOS': _signedOnlyPayload(),
+            'ANDROID_MUSIC': _signedOnlyPayload(),
+            'ANDROID_VR': _directPayload(
+              'https://googlevideo.example/vr.m4a?c=VR',
+            ),
+          },
+        );
+        final Dio dio = Dio()..httpClientAdapter = adapter;
+        final YouTubeMusicSource source = YouTubeMusicSource(
+          dio: dio,
+          artworkCache: ArtworkCache(dio: dio),
+        );
+
+        await source.resolveStream(_demoTrack);
+
+        expect(
+          reports.any((String message) => message.contains('ANDROID_VR')),
+          isTrue,
+        );
+        expect(
+          reports.any((String message) => message.contains('IOS')),
+          isTrue,
+        );
+      },
+    );
 
     test(
       'los errores de apertura se muestran sin la URL de googlevideo',
