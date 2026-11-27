@@ -53,7 +53,11 @@ class PolarisSurface extends StatelessWidget {
           glow: glowColor,
           gradient: finishGradient,
         ),
-        child: child,
+        // El panel pinta un DecoratedBox con color. Sin un Material propio
+        // debajo, los ListTile/SwitchListTile dibujan su tileColor y sus
+        // splashes en un ancestro lejano y Flutter avisa de que quedan
+        // ocultos. Transparency no pinta nada: solo da superficie de tinta.
+        child: Material(type: MaterialType.transparency, child: child),
       );
     }
 
@@ -75,7 +79,7 @@ class PolarisSurface extends StatelessWidget {
             gradient: finishGradient,
             phase: phase,
           ),
-          child: child,
+          child: Material(type: MaterialType.transparency, child: child),
         ),
       ),
     );

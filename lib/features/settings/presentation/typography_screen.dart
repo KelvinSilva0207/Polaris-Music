@@ -343,86 +343,89 @@ class _SurfaceFontTile extends ConsumerWidget {
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: context.inkAlpha(0.07)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(surface.label),
-              subtitle: Text(
-                custom ? 'Tipografía propia' : 'Hereda la tipografía global',
-                style: const TextStyle(fontSize: 11),
+        child: Material(
+          type: MaterialType.transparency,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(surface.label),
+                subtitle: Text(
+                  custom ? 'Tipografía propia' : 'Hereda la tipografía global',
+                  style: const TextStyle(fontSize: 11),
+                ),
+                value: custom,
+                onChanged: (bool value) {
+                  final CompactStyleController controller = ref.read(
+                    compactStylesProvider.notifier,
+                  );
+                  if (value) {
+                    controller.update(
+                      surface,
+                      style.copyWith(
+                        fontFamilyId: ref.read(typographyProvider).familyId,
+                        fontScale: ref.read(typographyProvider).scale,
+                      ),
+                    );
+                  } else {
+                    controller.update(
+                      surface,
+                      style.copyWith(fontFamilyId: null, fontScale: null),
+                    );
+                  }
+                },
               ),
-              value: custom,
-              onChanged: (bool value) {
-                final CompactStyleController controller = ref.read(
-                  compactStylesProvider.notifier,
-                );
-                if (value) {
-                  controller.update(
-                    surface,
-                    style.copyWith(
-                      fontFamilyId: ref.read(typographyProvider).familyId,
-                      fontScale: ref.read(typographyProvider).scale,
-                    ),
-                  );
-                } else {
-                  controller.update(
-                    surface,
-                    style.copyWith(fontFamilyId: null, fontScale: null),
-                  );
-                }
-              },
-            ),
-            if (custom) ...<Widget>[
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: <Widget>[
-                  ChoiceChip(
-                    label: const Text('Heredar fuente'),
-                    selected: selected == _inherit,
-                    onSelected: (_) => ref
-                        .read(compactStylesProvider.notifier)
-                        .setFontFamily(surface, null),
-                  ),
-                  for (final FontOption option in options)
+              if (custom) ...<Widget>[
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: <Widget>[
                     ChoiceChip(
-                      label: Text(option.label),
-                      selected: selected == option.id,
+                      label: const Text('Heredar fuente'),
+                      selected: selected == _inherit,
                       onSelected: (_) => ref
                           .read(compactStylesProvider.notifier)
-                          .setFontFamily(surface, option.id),
+                          .setFontFamily(surface, null),
                     ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _Slider(
-                label: 'Escala',
-                value: scale,
-                min: 0.8,
-                max: 1.4,
-                format: (double v) => '${(v * 100).round()}%',
-                onChanged: (double v) => ref
-                    .read(compactStylesProvider.notifier)
-                    .setFontScale(surface, v),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Vista previa tipográfica',
-                style: TextStyle(
-                  fontFamily: resolveFontFamily(
-                    selected == _inherit
-                        ? ref.watch(typographyProvider).familyId
-                        : selected,
-                  ),
-                  fontSize: 13 * scale,
-                  fontWeight: FontWeight.w700,
-                  color: accent,
+                    for (final FontOption option in options)
+                      ChoiceChip(
+                        label: Text(option.label),
+                        selected: selected == option.id,
+                        onSelected: (_) => ref
+                            .read(compactStylesProvider.notifier)
+                            .setFontFamily(surface, option.id),
+                      ),
+                  ],
                 ),
-              ),
+                const SizedBox(height: 8),
+                _Slider(
+                  label: 'Escala',
+                  value: scale,
+                  min: 0.8,
+                  max: 1.4,
+                  format: (double v) => '${(v * 100).round()}%',
+                  onChanged: (double v) => ref
+                      .read(compactStylesProvider.notifier)
+                      .setFontScale(surface, v),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Vista previa tipográfica',
+                  style: TextStyle(
+                    fontFamily: resolveFontFamily(
+                      selected == _inherit
+                          ? ref.watch(typographyProvider).familyId
+                          : selected,
+                    ),
+                    fontSize: 13 * scale,
+                    fontWeight: FontWeight.w700,
+                    color: accent,
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
@@ -445,16 +448,19 @@ class _Section extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: context.inkAlpha(0.07)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Text(
-            title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 12),
-          ...children,
-        ],
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            ...children,
+          ],
+        ),
       ),
     );
   }
