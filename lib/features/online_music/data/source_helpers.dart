@@ -9,6 +9,7 @@ import '../../../core/utils/file_utils.dart';
 import '../../../core/utils/logger.dart';
 import '../domain/music_source.dart';
 import '../domain/request_cancellation.dart';
+import 'online_diagnostics.dart';
 
 /// Error de dominio lanzado por un proveedor cuando no puede resolver audio.
 @immutable
@@ -45,7 +46,7 @@ class MusicSourceErrorMapper {
       return MusicSourceStatus(
         available: false,
         issue: error.issue,
-        detail: error.message,
+        detail: _detail(error.message),
         checkedAt: DateTime.now(),
       );
     }
@@ -110,10 +111,12 @@ class MusicSourceErrorMapper {
     );
   }
 
-  /// Recorta el detalle técnico para que el banner siga siendo legible y no
-  /// arrastre cuerpos de respuesta completos ni credenciales.
+  /// Recorta y sanitiza el detalle técnico para que el banner siga siendo
+  /// legible y no arrastre URLs firmadas, tokens ni cuerpos de respuesta.
   static String _detail(String raw) {
-    final String clean = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final String clean = OnlineDiagnostics.sanitize(raw)
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
     if (clean.isEmpty) return 'sin detalle técnico';
     return clean.length <= 160 ? clean : '${clean.substring(0, 157)}…';
   }

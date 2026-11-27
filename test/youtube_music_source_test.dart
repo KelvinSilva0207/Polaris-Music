@@ -376,6 +376,37 @@ void main() {
       },
     );
 
+    test(
+      'detecta versión y visitor con comillas escapadas como \\u0022',
+      () async {
+        final _FakeAdapter adapter = _FakeAdapter(
+          homeHtml:
+              r'<script>{\u0022INNERTUBE_CLIENT_VERSION\u0022:'
+              r'\u00227.7.7\u0022,\u0022VISITOR_DATA\u0022:'
+              r'\u0022visitor-escape\u0022}</script>',
+          responses: <String, Map<String, dynamic>>{
+            'search': _catalogPayload(),
+          },
+        );
+        final Dio dio = Dio()..httpClientAdapter = adapter;
+        final YouTubeMusicSource source = YouTubeMusicSource(
+          dio: dio,
+          artworkCache: ArtworkCache(dio: dio),
+        );
+
+        final SourceResult result = await source.search('demo');
+
+        expect(result.status.available, isTrue);
+        final RequestOptions request = adapter.requests.firstWhere(
+          (RequestOptions r) =>
+              r.method == 'POST' && r.path.contains('/search?'),
+        );
+        final Map<String, dynamic> client = _clientOf(request);
+        expect(client['clientVersion'], '7.7.7');
+        expect(client['visitorData'], 'visitor-escape');
+      },
+    );
+
     test('trending usa browse con un browseId válido', () async {
       final _Harness harness = _Harness(
         responses: <String, Map<String, dynamic>>{'browse': _catalogPayload()},
@@ -720,6 +751,30 @@ void main() {
       expect(result.status.detail, contains('requested entity was not found'));
     });
 
+    test('un 404 vuelve a leer la homepage una sola vez', () async {
+      final _Harness harness = _Harness(
+        responses: <String, Map<String, dynamic>>{
+          'search': <String, dynamic>{
+            'error': <String, dynamic>{
+              'message': 'Requested entity was not found.',
+            },
+          },
+        },
+        statuses: <String, int>{'search': 404},
+      );
+
+      await harness.source.search('demo');
+
+      final int homeReads = harness.adapter.requests
+          .where(
+            (RequestOptions request) =>
+                request.method == 'GET' &&
+                request.headers['Range'] != 'bytes=0-0',
+          )
+          .length;
+      expect(homeReads, 2); // inicial + refresco tras el 404, sin duplicado.
+    });
+
     test('el mapper conserva el motivo de errores de parseo', () {
       final MusicSourceStatus status = MusicSourceErrorMapper.map(
         const FormatException('unexpected token'),
@@ -729,6 +784,35 @@ void main() {
       expect(status.issue, MusicSourceIssue.unavailable);
       expect(status.detail, contains('FormatException'));
       expect(status.detail, contains('unexpected token'));
+    });
+
+    test('el mapper oculta URLs firmadas en el detalle técnico', () {
+      final RequestOptions request = RequestOptions(path: '/x');
+      final MusicSourceStatus status = MusicSourceErrorMapper.map(
+        DioException(
+          requestOptions: request,
+          response: Response<dynamic>(
+            statusCode: 404,
+            data: <String, dynamic>{
+              'message':
+                  'No encontrado: https://rr3.googlevideo.com/'
+                  'videoplayback?id=abc&pot=secret&sig=firma'
+                  '&expire=1700000000',
+            },
+            requestOptions: request,
+          ),
+        ),
+        MusicSourceId.youtube,
+      );
+
+      expect(status.issue, MusicSourceIssue.unavailable);
+      expect(status.detail, contains('(404)'));
+      expect(status.detail, contains('no encontrado'));
+      expect(status.detail, isNot(contains('googlevideo.com')));
+      expect(status.detail, isNot(contains('videoplayback')));
+      expect(status.detail, isNot(contains('pot=secret')));
+      expect(status.detail, isNot(contains('sig=firma')));
+      expect(status.detail, isNot(contains('expire=1700000000')));
     });
   });
 }

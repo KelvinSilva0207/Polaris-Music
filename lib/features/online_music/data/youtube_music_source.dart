@@ -181,15 +181,19 @@ class YouTubeMusicSource
         ),
       );
       final String html = '${response.data ?? ''}';
-      final String? version =
-          _match(html, r'"INNERTUBE_CLIENT_VERSION":"([^"]+)"') ??
-          _match(html, r'\\"INNERTUBE_CLIENT_VERSION\\":\\"([^"\\]+)\\"');
+      // La homepage puede escapar las comillas como \" o como \u0022 según el
+      // build; se normalizan antes de leer los campos del INITIAL_DATA.
+      final String normalized = html
+          .replaceAll(RegExp(r'\\?u0022', caseSensitive: false), '"')
+          .replaceAll(r'\"', '"');
+      final String? version = _match(
+        normalized,
+        r'"INNERTUBE_CLIENT_VERSION":"([^"]+)"',
+      );
       if (version != null && version.isNotEmpty) {
         _versions[_web] = version;
       }
-      final String? visitor =
-          _match(html, r'"VISITOR_DATA":"([^"]+)"') ??
-          _match(html, r'\\"VISITOR_DATA\\":\\"([^"\\]+)\\"');
+      final String? visitor = _match(normalized, r'"VISITOR_DATA":"([^"]+)"');
       if (visitor != null && visitor.isNotEmpty) _visitorData = visitor;
     } on Object catch (error, stack) {
       // Sin homepage no hay versión fresca: se conserva el último valor known
@@ -337,7 +341,8 @@ class YouTubeMusicSource
         throw const RequestCanceledException();
       }
       if (error.response?.statusCode != 404 || !retryOn404) rethrow;
-      _contextLoaded = false;
+      // _ensureContext ya descargó la homepage. Si se marca como no cargada,
+      // la llamada recursiva vuelve a descargarla: se refresca una sola vez.
       await _discoverContext();
       return _post(
         path,
