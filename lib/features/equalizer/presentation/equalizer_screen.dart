@@ -63,6 +63,7 @@ class EqualizerScreen extends ConsumerWidget {
             mode: state.mode,
             subEnabled: state.sub.enabled,
             pure: state.pure,
+            degraded: state.dspDegraded,
           )
         else
           const _DspNotice(),
@@ -270,17 +271,22 @@ class _DspStatus extends StatelessWidget {
     required this.mode,
     required this.subEnabled,
     required this.pure,
+    required this.degraded,
   });
 
   final bool enabled;
   final EqMode mode;
   final bool subEnabled;
   final bool pure;
+  final bool degraded;
 
   @override
   Widget build(BuildContext context) {
     final Color accent = context.tokens.accent;
-    final Color color = pure
+    final bool limited = enabled && !pure && degraded;
+    final Color color = limited
+        ? Colors.orange.shade300
+        : pure
         ? Colors.amber.shade300
         : enabled
         ? accent
@@ -295,7 +301,9 @@ class _DspStatus extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Icon(
-            pure
+            limited
+                ? Icons.warning_amber_rounded
+                : pure
                 ? Icons.filter_alt_off
                 : enabled
                 ? Icons.graphic_eq_rounded
@@ -306,7 +314,9 @@ class _DspStatus extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              pure
+              limited
+                  ? 'DSP limitado · ${mode.label} (usa una cadena segura)'
+                  : pure
                   ? 'Puro · curva conservada'
                   : enabled
                   ? 'DSP activo · ${mode.label}${subEnabled ? ' · sub' : ''}'

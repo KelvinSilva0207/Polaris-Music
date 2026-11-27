@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
 
 import '../debug/memory_probe.dart';
@@ -22,6 +23,29 @@ typedef LocalAccessRefresher = Future<bool> Function();
 /// Lo inyecta el DI porque el motor no conoce el catálogo online. Devuelve
 /// `null` cuando la pista ya no se puede resolver; la cola sigue con su orden.
 typedef StreamRefresher = Future<Track?> Function(Track track);
+
+/// Escritura/lectura de la propiedad `af` de mpv.
+///
+/// Producción usa el [PlatformPlayer] nativo. Inyectar una implementación en
+/// memoria permite probar la degradación del DSP sin abrir un archivo ni
+/// recrear reproductores.
+abstract class AudioFilterSink {
+  Future<void> write(String filter);
+
+  Future<String> read();
+}
+
+class _MpvAudioFilterSink implements AudioFilterSink {
+  const _MpvAudioFilterSink(this._player);
+
+  final NativePlayer _player;
+
+  @override
+  Future<void> write(String filter) => _player.setProperty('af', filter);
+
+  @override
+  Future<String> read() async => (await _player.getProperty('af')).toString();
+}
 
 /// Motor de reproducción basado en media_kit (libmpv).
 ///
@@ -240,6 +264,7 @@ class AudioEngineService implements AudioOutputEngine {
     this.isBackgrounded,
     this.refreshLocalAccess,
     this.refreshStream,
+    this.filterSink,
   }) : _player = player ?? _createPlayer();
 
   static const String _tag = 'AudioEngine';
@@ -253,6 +278,9 @@ class AudioEngineService implements AudioOutputEngine {
 
   /// Resuelve de nuevo una pista online cuando todas sus URLs han expirado.
   final StreamRefresher? refreshStream;
+
+  /// Inyectado solo en pruebas; en producción se usa el deck nativo.
+  final AudioFilterSink? filterSink;
 
   /// Deck principal. No es `final` porque al terminar un crossfade se intercambia
   /// con el deck entrante; el handler `_onPlaylistChanged` no se modifica.
@@ -313,6 +341,18 @@ class AudioEngineService implements AudioOutputEngine {
   String _appliedAudioFilter = '';
   DateTime? _lastFilterFailure;
   static const Duration _filterFailureDebounce = Duration(milliseconds: 900);
+
+  /// mpv acepta `af` aunque no pueda reconstruir el grafo en la pista abierta;
+  /// la lectura de la propiedad no distingue ese caso. Al cambiar de pista
+  /// reenviamos la cadena intentada para que la configuración no quede muerta.
+  bool _audioFilterNeedsReapply = false;
+
+  /// Dice si la cadena que suena es un fallback (o bypass) del plan pedido.
+  /// La UI lo usa para no anunciar un DSP activo que no está sonando.
+  final ValueNotifier<bool> _audioFilterDegraded = ValueNotifier<bool>(false);
+
+  /// Estado del DSP para la capa de presentación.
+  ValueListenable<bool> get audioFilterDegraded => _audioFilterDegraded;
 
   /// Control de accesos locales: se pide una sola vez por ronda para no
   /// encadenar diálogos de permisos al restaurar una cola larga.
@@ -406,45 +446,58 @@ class AudioEngineService implements AudioOutputEngine {
     _audioFilterPlan = List<String>.unmodifiable(plan);
     _audioFilterStep = 0;
     _lastFilterFailure = null;
+    _audioFilterDegraded.value = false;
     // Modo puro llega como cadena vacía: no hay nada que reintentar. Si el
     // reproductor aún no está listo, la cadena se aplica en initialize/open.
-    await _applyAudioFilterStep();
+    // `force` evita que una configuración idéntica a la anterior se descarte
+    // después de un fallo silencioso de mpv.
+    await _applyAudioFilterStep(force: true);
   }
 
   bool get _canApplyAudioFilter =>
-      _initialized && !_disposed && _player.platform is NativePlayer;
+      _initialized &&
+      !_disposed &&
+      (filterSink != null || _player.platform is NativePlayer);
 
-  Future<void> _applyAudioFilterStep() async {
-    if (!_canApplyAudioFilter) return;
+  AudioFilterSink _sink() =>
+      filterSink ?? _MpvAudioFilterSink(_player.platform as NativePlayer);
+
+  Future<void> _applyAudioFilterStep({bool force = false}) async {
+    if (!_canApplyAudioFilter || _audioFilterPlan.isEmpty) return;
     final int step = _audioFilterStep.clamp(0, _audioFilterPlan.length - 1);
-    await _writeAudioFilter(_audioFilterPlan[step]);
+    await _writeAudioFilter(_audioFilterPlan[step], force: force);
   }
 
   /// Escribe `af` en libmpv sin convertir un rechazo del DSP en error de pista.
-  Future<void> _writeAudioFilter(String filter) async {
-    final PlatformPlayer? platform = _player.platform;
-    if (platform is! NativePlayer || _disposed) return;
+  Future<void> _writeAudioFilter(String filter, {bool force = false}) async {
+    if (_disposed || !_canApplyAudioFilter) return;
+    final AudioFilterSink sink = _sink();
     final String previous = _appliedAudioFilter;
-    if (filter == previous) return;
+    // Antes un simple `filter == previous` impedía reintentar la misma cadena
+    // tras un fallo silencioso de reinit. Solo se omite si nunca hubo fallo.
+    if (!force && filter == previous && !_audioFilterNeedsReapply) return;
 
     try {
-      await platform.setProperty('af', filter);
+      await sink.write(filter);
 
       String? applied;
       try {
-        applied = (await platform.getProperty('af')).toString();
+        applied = await sink.read();
       } catch (_) {
         // Algunas versiones de mpv no exponen la lectura antes del primer
         // archivo; en ese caso confiamos en setProperty.
         applied = null;
       }
       if (applied != null && !_filterWasApplied(filter, applied)) {
-        await platform.setProperty('af', previous);
+        await _restoreFilter(sink, previous);
         AppLog.w(_tag, 'libmpv rechazó la cadena DSP; se restauró la anterior');
+        await _advanceFilterFallback();
         return;
       }
 
       _appliedAudioFilter = filter;
+      _audioFilterNeedsReapply = filter.isNotEmpty;
+      _audioFilterDegraded.value = _audioFilterPlan.first != filter;
       // El deck entrante debe llevar la misma cadena cuando el relevo ocurra
       // mientras el usuario está ajustando el ecualizador.
       final PlatformPlayer? fadePlatform = _fadePlayer?.platform;
@@ -460,13 +513,29 @@ class AudioEngineService implements AudioOutputEngine {
       // cuando libmpv está reconstruyendo el grafo de audio.
       AppLog.iFast(_tag, filter.isEmpty ? 'DSP desactivado' : 'DSP: $filter');
     } catch (error, stack) {
-      try {
-        await platform.setProperty('af', previous);
-      } catch (_) {
-        // Nada más que hacer: el reproductor sigue con su cadena anterior.
-      }
+      await _restoreFilter(sink, previous);
       AppLog.w(_tag, 'No se pudo aplicar el filtro de audio', error, stack);
+      await _advanceFilterFallback();
     }
+  }
+
+  Future<void> _restoreFilter(AudioFilterSink sink, String filter) async {
+    try {
+      await sink.write(filter);
+    } catch (_) {
+      // Nada más que hacer: el reproductor sigue con su cadena anterior.
+    }
+    _appliedAudioFilter = filter;
+  }
+
+  /// Retrocede al siguiente candidato y lo escribe aunque sea igual al actual.
+  Future<void> _advanceFilterFallback() async {
+    if (_audioFilterStep < _audioFilterPlan.length - 1) {
+      _audioFilterStep++;
+    }
+    _audioFilterDegraded.value =
+        _audioFilterPlan.first != _audioFilterPlan[_audioFilterStep];
+    await _applyAudioFilterStep(force: true);
   }
 
   /// mpv avisa del fallo al intentar inicializar el filtro en la pista abierta.
@@ -480,10 +549,25 @@ class AudioEngineService implements AudioOutputEngine {
     }
     _lastFilterFailure = now;
     AppLog.w(_tag, 'DSP rechazado por libmpv; degradando cadena', message);
-    if (_audioFilterStep < _audioFilterPlan.length - 1) {
-      _audioFilterStep++;
-    }
-    await _applyAudioFilterStep();
+    await _advanceFilterFallback();
+  }
+
+  /// Vuelve a intentar el plan completo al abrir la pista siguiente.
+  ///
+  /// `setProperty('af')` puede aceptar una cadena que mpv no logra inicializar
+  /// hasta el próximo archivo. Reenviarla aquí (sin `open`, `pause` ni `stop`)
+  /// permite recuperar el DSP en esa pista en vez de dejarlo degradado.
+  @visibleForTesting
+  Future<void> reassertAudioFilter() => _reassertAudioFilterOnTrackChange();
+
+  Future<void> _reassertAudioFilterOnTrackChange() async {
+    if (!_canApplyAudioFilter || _audioFilterPlan.isEmpty) return;
+    if (!_audioFilterNeedsReapply && _audioFilterStep == 0) return;
+    _audioFilterStep = 0;
+    _audioFilterNeedsReapply = false;
+    // Una degradación reciente no debe silenciar el reintento de esta pista.
+    _lastFilterFailure = null;
+    await _applyAudioFilterStep(force: true);
   }
 
   /// Emite un error con caducidad para que el banner no quede colgado.
@@ -898,6 +982,7 @@ class AudioEngineService implements AudioOutputEngine {
     if (trackChanged) {
       AppLog.i(_tag, 'Pista actual: ${track.artist} - ${track.title}');
       unawaited(_applyVolume());
+      unawaited(_reassertAudioFilterOnTrackChange());
     }
   }
 
@@ -1724,6 +1809,7 @@ class AudioEngineService implements AudioOutputEngine {
     _subscriptions.clear();
     await _states.close();
     await _positionEvents.close();
+    _audioFilterDegraded.dispose();
     await _releaseFadeDeck();
     await _player.dispose();
   }

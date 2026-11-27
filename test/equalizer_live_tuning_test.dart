@@ -6,6 +6,7 @@ import 'package:drift/drift.dart'
         SqlDialect,
         TransactionExecutor,
         driftRuntimeOptions;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_kit/media_kit.dart' hide Track;
@@ -27,9 +28,13 @@ class _RecordingEngine extends AudioEngineService {
     : super(player: Player(platformPlayer: _SilentPlatformPlayer()));
 
   final List<String> filters = <String>[];
+  final ValueNotifier<bool> degraded = ValueNotifier<bool>(false);
 
   @override
   bool get dspAvailable => true;
+
+  @override
+  ValueListenable<bool> get audioFilterDegraded => degraded;
 
   @override
   Future<void> setAudioFilter(
@@ -170,5 +175,79 @@ void main() {
 
     final String raw = settings.getString(AppConstants.keyEqConfig)!;
     expect(EqualizerConfig.deserialize(raw).bands.first, 4);
+  });
+
+  test(
+    'tocar pure justo tras arrastrar conserva el valor y aplica bypass',
+    () async {
+      final FakeSettingsService settings = FakeSettingsService();
+      await settings.setBool(AppConstants.keyEqEnabled, true);
+      final _RecordingEngine engine = _RecordingEngine();
+      final EqualizerController controller = build(
+        settings: settings,
+        engine: engine,
+      );
+      addTearDown(controller.dispose);
+      await controller.load();
+
+      await controller.setBand(0, 6);
+      await controller.setPure(true);
+
+      final String raw = settings.getString(AppConstants.keyEqConfig)!;
+      expect(EqualizerConfig.deserialize(raw).bands.first, 6);
+      expect(engine.filters.last, '');
+    },
+  );
+
+  test(
+    'el paramétrico ajustado llega al motor con su frecuencia y ganancia',
+    () async {
+      final FakeSettingsService settings = FakeSettingsService();
+      await settings.setBool(AppConstants.keyEqEnabled, true);
+      final _RecordingEngine engine = _RecordingEngine();
+      final EqualizerController controller = build(
+        settings: settings,
+        engine: engine,
+      );
+      addTearDown(controller.dispose);
+      await controller.load();
+
+      await controller.setMode(EqMode.parametric);
+      await controller.setParametricFilter(
+        0,
+        controller.state.filters.first.copyWith(
+          frequencyHz: 120,
+          gainDb: 6,
+          q: 2,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 220));
+
+      expect(controller.state.mode, EqMode.parametric);
+      expect(engine.filters.last, contains('f=120'));
+      expect(engine.filters.last, contains('g=6.00'));
+      expect(
+        EqualizerConfig.deserialize(
+          settings.getString(AppConstants.keyEqConfig)!,
+        ).filters.first.gainDb,
+        6,
+      );
+    },
+  );
+
+  test('el estado refleja que libmpv degradó el DSP', () async {
+    final _RecordingEngine engine = _RecordingEngine();
+    final EqualizerController controller = build(
+      settings: FakeSettingsService(),
+      engine: engine,
+    );
+    addTearDown(controller.dispose);
+    await controller.load();
+
+    expect(controller.state.dspDegraded, isFalse);
+    engine.degraded.value = true;
+    expect(controller.state.dspDegraded, isTrue);
+    engine.degraded.value = false;
+    expect(controller.state.dspDegraded, isFalse);
   });
 }

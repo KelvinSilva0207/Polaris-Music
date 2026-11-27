@@ -27,6 +27,7 @@ class EqualizerState {
     this.usingDeviceProfile = false,
     this.pure = false,
     this.perDeviceProfiles = false,
+    this.dspDegraded = false,
   });
 
   final bool enabled;
@@ -50,6 +51,10 @@ class EqualizerState {
   /// detectada y por tanto no llegue ningún evento del servicio.
   final bool perDeviceProfiles;
 
+  /// `true` cuando libmpv degradó la cadena pedida a un fallback. La UI debe
+  /// decirlo en vez de anunciar un DSP activo que no está sonando.
+  final bool dspDegraded;
+
   List<double> get bands => config.bands;
   double get preampDb => config.preampDb;
   EqMode get mode => config.mode;
@@ -67,6 +72,7 @@ class EqualizerState {
     bool? usingDeviceProfile,
     bool? pure,
     bool? perDeviceProfiles,
+    bool? dspDegraded,
   }) => EqualizerState(
     enabled: enabled ?? this.enabled,
     pure: pure ?? this.pure,
@@ -79,6 +85,7 @@ class EqualizerState {
         : activeDeviceName as String?,
     usingDeviceProfile: usingDeviceProfile ?? this.usingDeviceProfile,
     perDeviceProfiles: perDeviceProfiles ?? this.perDeviceProfiles,
+    dspDegraded: dspDegraded ?? this.dspDegraded,
   );
 
   static const Object _unset = Object();
@@ -92,7 +99,14 @@ class EqualizerState {
 /// sin libmpv nativo el DSP se omite y la UI lo indica.
 class EqualizerController extends StateNotifier<EqualizerState> {
   EqualizerController(this._dao, this._settings, this._engine, [this._profiles])
-    : super(const EqualizerState());
+    : super(const EqualizerState()) {
+    _dspDegradedListener = () {
+      if (!_controllerDisposed) {
+        state = state.copyWith(dspDegraded: _engine.audioFilterDegraded.value);
+      }
+    };
+    _engine.audioFilterDegraded.addListener(_dspDegradedListener);
+  }
 
   final EqDao _dao;
   final SettingsService _settings;
@@ -106,6 +120,8 @@ class EqualizerController extends StateNotifier<EqualizerState> {
 
   Timer? _dspDebounce;
   StreamSubscription<EqualizerConfig?>? _profileSub;
+  late final VoidCallback _dspDegradedListener;
+  bool _controllerDisposed = false;
 
   /// Perfil global (fuente de verdad cuando no hay perfil de dispositivo).
   EqualizerConfig _globalConfig = const EqualizerConfig();
@@ -153,6 +169,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
       selectedPreset: presetName,
       loaded: true,
       perDeviceProfiles: _profiles?.enabled ?? false,
+      dspDegraded: _engine.audioFilterDegraded.value,
     );
 
     if (_profiles != null) {
@@ -169,7 +186,9 @@ class EqualizerController extends StateNotifier<EqualizerState> {
   /// (o vuelve al global). Nunca escribe `af` directamente; [_applyDsp] sigue
   /// siendo el único productor de la cadena de filtros.
   Future<void> _onActiveProfile(EqualizerConfig? profile) async {
-    _dspDebounce?.cancel();
+    // El usuario puede cambiar de salida justo al soltar un deslizador: sin
+    // este flush el perfil anterior perdería el último valor.
+    await _flushPendingDsp();
     if (profile != null && _profiles != null) {
       state = state.copyWith(
         config: profile,
@@ -223,6 +242,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
   }
 
   Future<void> setEnabled(bool value) async {
+    await _flushPendingDsp();
     state = state.copyWith(enabled: value);
     await _settings.setBool(AppConstants.keyEqEnabled, value);
     await _applyDsp();
@@ -235,6 +255,7 @@ class EqualizerController extends StateNotifier<EqualizerState> {
   /// Es la única fuente de verdad del modo puro: persistimos la preferencia y
   /// recalculamos `af` para que el silencio de filtros sea inmediato.
   Future<void> setPure(bool value) async {
+    await _flushPendingDsp();
     if (state.pure == value) return;
     state = state.copyWith(pure: value);
     await _settings.setPureAudio(value);
@@ -447,10 +468,21 @@ class EqualizerController extends StateNotifier<EqualizerState> {
   void _scheduleDsp() {
     _dspDebounce?.cancel();
     _dspDebounce = Timer(_liveDspWindow, () {
-      _dspDebounce = null;
-      unawaited(_persistConfig());
-      unawaited(_applyDsp());
+      unawaited(_flushPendingDsp().then((_) => _applyDsp()));
     });
+  }
+
+  /// Cancela la ventana de arrastre y guarda el valor final antes de que otra
+  /// acción cambie el alcance de la configuración (salida, pure, enabled).
+  ///
+  /// No vuelve a aplicar el DSP aquí: quien llama ya va a hacerlo con el estado
+  /// final, y duplicarlo reconstruiría el grafo dos veces.
+  Future<void> _flushPendingDsp() async {
+    final Timer? timer = _dspDebounce;
+    if (timer == null) return;
+    _dspDebounce = null;
+    if (timer.isActive) timer.cancel();
+    await _persistConfig();
   }
 
   /// Guarda la configuración completa y mantiene las claves históricas.
@@ -535,12 +567,16 @@ class EqualizerController extends StateNotifier<EqualizerState> {
 
   @override
   void dispose() {
+    _controllerDisposed = true;
+    _engine.audioFilterDegraded.removeListener(_dspDegradedListener);
     // Si el usuario cierra la pantalla justo después de soltar un deslizador,
     // el temporizador aún no ha guardado el último valor: lo persistimos ahora.
     // No reaplicamos el DSP aquí: una invalidación del provider creará otro
     // controlador que aplicará su propia configuración al cargar.
-    if (_dspDebounce?.isActive ?? false) {
-      _dspDebounce!.cancel();
+    final Timer? timer = _dspDebounce;
+    if (timer != null) {
+      _dspDebounce = null;
+      if (timer.isActive) timer.cancel();
       // Capturamos el estado antes de llamar a `super.dispose()`: el notifier
       // ya no debe leerse después de liberarse.
       final EqualizerConfig config = state.config;
