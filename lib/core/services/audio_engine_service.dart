@@ -123,6 +123,18 @@ class AudioEngineService implements AudioOutputEngine {
         lower.contains('can not open');
   }
 
+  /// mpv precarga el `.lrc` hermano como subtítulo externo (`sub-auto=exact`).
+  ///
+  /// Ese sidecar no es audio: el lector de letras de la app lo abre por su
+  /// cuenta con `dart:io` y ya tiene su propio fallback (local → LRCLIB). Un
+  /// fallo del sidecar en mpv solo debe quedar en el log, nunca en la UI.
+  @visibleForTesting
+  static bool isExternalSidecarFailure(String message) {
+    final String lower = message.toLowerCase();
+    return lower.contains('can not open external file') ||
+        lower.contains('cannot open external file');
+  }
+
   /// Aviso de archivo local ilegible, sin exponer la ruta completa.
   static String localFileMessage(Track track) =>
       'No se encontró o no se puede leer “${track.title}”. '
@@ -766,6 +778,13 @@ class AudioEngineService implements AudioOutputEngine {
         }
       }),
       _player.stream.error.listen((String message) async {
+        // El `.lrc` hermano se intenta cargar como subtítulo externo en cada
+        // apertura. No es audio y el lector propio ya tiene su fallback: se
+        // ignora en silencio para no repetir el banner al cambiar de pista.
+        if (AudioEngineService.isExternalSidecarFailure(message)) {
+          AppLog.w(_tag, 'Sidecar externo ignorado', message);
+          return;
+        }
         // mpv mezcla en este stream los fallos de `af` con los de apertura.
         // Un filtro rechazado no debe convertirse en banner rojo: degradamos
         // la cadena y seguimos reproduciendo.

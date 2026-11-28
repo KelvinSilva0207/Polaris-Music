@@ -132,6 +132,31 @@ void main() {
     return (engine, platform, sink);
   }
 
+  test('un sidecar .lrc de mpv se ignora sin tocar el estado', () async {
+    const String raw =
+        'Can not open external file /storage/emulated/0/Music/Canción.lrc.';
+    expect(AudioEngineService.isExternalSidecarFailure(raw), isTrue);
+    expect(
+      AudioEngineService.isExternalSidecarFailure(
+        'Cannot open external file /storage/sdcard/Canción.lrc.',
+      ),
+      isTrue,
+    );
+    expect(
+      AudioEngineService.isExternalSidecarFailure('Failed to open audio.mp3.'),
+      isFalse,
+    );
+
+    final (engine, platform, _) = await build();
+    platform.emit(raw);
+    await pumpEvents();
+
+    expect(engine.state.error, isNull);
+    expect(engine.state.playing, isTrue);
+    expect(platform.calls, isNot(contains('pause')));
+    expect(platform.calls, isNot(contains('jump:1')));
+  });
+
   test('un fallo local se detiene en la pista sin encadenar saltos', () async {
     final (engine, platform, sink) = await build();
 
