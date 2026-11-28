@@ -194,7 +194,9 @@ class PlayerController extends StateNotifier<PlayerUiState> {
   double? _pendingVolume;
 
   void _onEngineState(PlaybackSnapshot snapshot) {
-    if (snapshot.completed && state.sleepEndsAtTrack) {
+    if (snapshot.completed &&
+        snapshot.error == null &&
+        state.sleepEndsAtTrack) {
       // El snapshot debe seguir hacia la UI: si se descarta aquí, el contador
       // y el icono play/pause se quedan en el último valor aunque la pista
       // ya haya terminado.

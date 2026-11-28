@@ -119,7 +119,8 @@ class AudioEngineService implements AudioOutputEngine {
         lower.contains('404') ||
         lower.contains('410') ||
         lower.contains('permission denied') ||
-        lower.contains('cannot open');
+        lower.contains('cannot open') ||
+        lower.contains('can not open');
   }
 
   /// Aviso de archivo local ilegible, sin exponer la ruta completa.
@@ -358,8 +359,12 @@ class AudioEngineService implements AudioOutputEngine {
   /// encadenar diálogos de permisos al restaurar una cola larga.
   DateTime? _lastAccessRefresh;
   bool _accessRefreshInFlight = false;
-  final Set<String> _notifiedMissingLocal = <String>{};
   bool _handlingLocalFailure = false;
+
+  /// Pista local que ha fallado y se mantiene en pantalla hasta que el usuario
+  /// elija explícitamente otra. Así ni mpv ni un evento duplicado pueden
+  /// encadenar saltos sobre una pista que no se puede abrir.
+  String? _heldLocalKey;
   Timer? _errorClearTimer;
 
   DateTime _lastPositionEmit = DateTime.fromMillisecondsSinceEpoch(0);
@@ -571,8 +576,19 @@ class AudioEngineService implements AudioOutputEngine {
   }
 
   /// Emite un error con caducidad para que el banner no quede colgado.
-  void _emitError(String message) {
-    _emit(_state.copyWith(buffering: false, error: message));
+  void _emitError(String message, {bool? playing}) {
+    _emit(
+      _state.copyWith(
+        playing: playing ?? _state.playing,
+        buffering: false,
+        completed: false,
+        error: message,
+      ),
+    );
+    _scheduleErrorClear(message);
+  }
+
+  void _scheduleErrorClear(String message) {
     _errorClearTimer?.cancel();
     _errorClearTimer = Timer(const Duration(seconds: 5), () {
       if (!_disposed && _state.error == message) {
@@ -617,44 +633,42 @@ class AudioEngineService implements AudioOutputEngine {
 
   /// mpv avisó de que no puede abrir un archivo local.
   ///
-  /// Antes de darlo por perdido se renuevan permisos (una sola vez por ronda) y
-  /// se reintenta la apertura; si sigue fallando se salta a la siguiente pista
-  /// con un único aviso claro, sin romper la cola ni dejar `buffering` colgado.
+  /// Renueva permisos una sola vez y reintenta. Si el archivo sigue ilegible se
+  /// detiene en esa pista con un único aviso claro: ni el motor ni mpv deben
+  /// encadenar saltos. La cola, el índice y la sesión quedan intactos.
   Future<void> _handleLocalOpenFailure(String message, Track failed) async {
     if (_handlingLocalFailure || _disposed) return;
+    final String key = _streamKey(failed);
+    if (_heldLocalKey == key) return;
     _handlingLocalFailure = true;
     try {
       final bool refreshed = await _refreshLocalAccess();
       if (refreshed && _isPlayable(failed)) {
         AppLog.i(_tag, 'Acceso local renovado; reabriendo la cola');
+        _heldLocalKey = null;
         await _open(autoPlay: true);
         return;
       }
-      await _skipUnavailableCurrent(failed);
+      await _holdFailedLocal(failed);
     } finally {
       _handlingLocalFailure = false;
     }
   }
 
-  /// Avanza desde la pista ilegible sin volver a caer en ella.
-  Future<void> _skipUnavailableCurrent(Track failed) async {
-    final List<Track> active = _state.activeQueue;
-    final int fallback = _nextPlayableIndex(
-      active,
-      _state.index + 1,
-      wrap: _state.repeat == RepeatMode.all,
-      excludeId: failed.id,
-    );
+  /// Pausa sin descargar la playlist y deja constancia del fallo en la pista
+  /// fallida. `stop()` vaciaría la playlist de mpv; aquí solo se pausa para que
+  /// no avance solo mientras el usuario decide qué hacer.
+  Future<void> _holdFailedLocal(Track failed) async {
     final String key = _streamKey(failed);
-    if (_notifiedMissingLocal.add(key)) {
-      _emitError(localFileMessage(failed));
+    final String message = localFileMessage(failed);
+    if (_heldLocalKey == key && _state.error == message) return;
+    _heldLocalKey = key;
+    try {
+      await _player.pause();
+    } on Object catch (error, stack) {
+      AppLog.w(_tag, 'No se pudo pausar tras un fallo local', error, stack);
     }
-    if (fallback < 0) {
-      await _player.stop();
-      _emit(_state.copyWith(playing: false, buffering: false));
-      return;
-    }
-    await playIndex(fallback);
+    _emitError(message, playing: false);
   }
 
   /// Lee una sola vez las propiedades reales del archivo/stream de mpv.
@@ -745,7 +759,9 @@ class AudioEngineService implements AudioOutputEngine {
         (bool value) => _emit(_state.copyWith(buffering: value)),
       ),
       _player.stream.completed.listen((bool value) {
-        if (value) {
+        // Un archivo que no se pudo abrir no es una pista terminada: contarlo
+        // como completada engañaría al temporizador de sueño y a las stats.
+        if (value && _state.error == null && _heldLocalKey == null) {
           _emit(_state.copyWith(playing: false, completed: true));
         }
       }),
@@ -927,6 +943,10 @@ class AudioEngineService implements AudioOutputEngine {
   }
 
   void _onPlaylistChanged(Playlist playlist) {
+    // mpv publica el cambio a la pista siguiente incluso cuando la actual no se
+    // pudo abrir. Mientras haya un fallo local retenido no aceptamos ese avance:
+    // la UI sigue señalando la pista fallida hasta una elección explícita.
+    if (_heldLocalKey != null) return;
     final int eventIndex = playlist.index;
     // Construimos el índice una sola vez por evento. Antes cada Media recorría
     // toda la cola activa y toda la canónica (O(n²)) justo al cambiar de pista.
@@ -1001,11 +1021,12 @@ class AudioEngineService implements AudioOutputEngine {
 
     await _cancelCrossfade();
     _resetPositionFeed();
-    // Cola nueva: los reintentos de la cola anterior ya no proceden.
+    // Cola nueva: los reintentos y el fallo retenido de la anterior ya no
+    // proceden.
+    _heldLocalKey = null;
     _streamAttempts.clear();
     _retryingStreams.clear();
     _refreshedStreams.clear();
-    _notifiedMissingLocal.clear();
     // Si una ruta local ya no es legible tras reiniciar Android, renovamos el
     // acceso antes de que `_open` decida saltarla.
     await _ensureQueueAccessible(tracks);
@@ -1088,36 +1109,15 @@ class AudioEngineService implements AudioOutputEngine {
     MemoryProbe.mark('queue:open:${order.length}');
 
     final int wanted = _state.index.clamp(0, order.length - 1);
-    // Si el archivo desapareció, arrancamos en la siguiente pista disponible sin
-    // tocar `queue`/`shuffledQueue`, para no desalinear el orden de mpv.
-    final int start = _nextPlayableIndex(order, wanted);
-    if (start < 0) {
-      _emitError(
-        order[wanted].isOnline
-            ? 'No hay pistas disponibles en la cola'
-            : localFileMessage(order[wanted]),
-      );
-      _emit(_state.copyWith(playing: false));
+    final Track target = order[wanted];
+    // Antes se buscaba la siguiente pista legible y se saltaba en silencio: eso
+    // encadenaba saltos al restaurar la sesión o tras un error de permisos. La
+    // pista elegida se conserva y se informa en ella sin mover la cola.
+    if (!_isPlayable(target)) {
+      await _holdFailedLocal(target);
       return;
     }
-    if (start != wanted) {
-      _state = _state.copyWith(
-        index: start,
-        currentTrack: order[start],
-        position: Duration.zero,
-        duration: order[start].duration,
-        buffering: false,
-      );
-      _emit(_state);
-      final Track skipped = order[wanted];
-      if (_notifiedMissingLocal.add(_streamKey(skipped))) {
-        _emitError(
-          skipped.isOnline
-              ? 'No se pudo abrir “${skipped.title}”. Se eligió otra pista.'
-              : localFileMessage(skipped),
-        );
-      }
-    }
+    final int start = wanted;
 
     final List<Media> medias = order.map(_mediaFor).toList(growable: false);
 
@@ -1348,6 +1348,7 @@ class AudioEngineService implements AudioOutputEngine {
 
   Future<void> clearQueue() async {
     await _cancelCrossfade();
+    _heldLocalKey = null;
     _state = PlaybackSnapshot(volume: _baseVolume * 100);
     _emit(_state);
     await _player.stop();
@@ -1373,28 +1374,14 @@ class AudioEngineService implements AudioOutputEngine {
     final List<Track> active = _state.activeQueue;
     if (index < 0 || index >= active.length) return;
     final Track target = active[index];
+    // Elegir una pista es una acción del usuario: disuelve cualquier fallo
+    // retenido, incluso si vuelve a elegir la misma pista para reintentarla.
+    _heldLocalKey = null;
     if (!_isPlayable(target)) {
       // Puede ser un permiso revocado al reiniciar, no un archivo borrado.
       await _ensureQueueAccessible(active);
       if (!_isPlayable(target)) {
-        final int fallback = _nextPlayableIndex(
-          active,
-          index + 1,
-          wrap: _state.repeat == RepeatMode.all,
-          excludeId: target.id,
-        );
-        if (_notifiedMissingLocal.add(_streamKey(target))) {
-          _emitError(
-            target.isOnline
-                ? 'No se pudo abrir “${target.title}”. Se eligió otra pista.'
-                : localFileMessage(target),
-          );
-        }
-        if (fallback < 0) {
-          _emit(_state.copyWith(playing: false, buffering: false));
-          return;
-        }
-        await playIndex(fallback);
+        await _holdFailedLocal(target);
         return;
       }
     }
@@ -1412,6 +1399,7 @@ class AudioEngineService implements AudioOutputEngine {
       buffering: false,
       completed: false,
       playing: true,
+      error: null,
     );
     _emit(_state);
     // Si la cola nativa no se abrió (sesión restaurada, open fallido o stop),
@@ -1426,6 +1414,13 @@ class AudioEngineService implements AudioOutputEngine {
   }
 
   Future<void> play() async {
+    if (_heldLocalKey != null) {
+      // Reanudar tras un fallo local vuelve a intentar esa misma pista; el
+      // aviso se reemite porque `playIndex` limpia el error antes de reabrir.
+      final int index = _state.index < 0 ? 0 : _state.index;
+      await playIndex(index);
+      return;
+    }
     _emit(_state.copyWith(playing: true, buffering: false));
     await _player.play();
   }
@@ -1439,6 +1434,7 @@ class AudioEngineService implements AudioOutputEngine {
 
   Future<void> stop() async {
     _resetPositionFeed();
+    _heldLocalKey = null;
     _emit(_state.copyWith(playing: false, position: Duration.zero));
     await _player.stop();
   }
