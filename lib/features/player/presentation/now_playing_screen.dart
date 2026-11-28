@@ -322,12 +322,20 @@ class _NowPlayingScreenState extends ConsumerState<NowPlayingScreen> {
                   child: SingleChildScrollView(
                     child: Padding(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                      child: _PlayerColumn(
-                        track: track,
-                        config: effectiveConfig,
-                        accent: accent,
-                        controller: controller,
-                        onOpenQueue: () => _openQueueSheet(accent),
+                      // La cola se abre desde el mismo panel que el resto de
+                      // controles: nada de botones flotando fuera del player.
+                      child: PolarisSurface(
+                        key: const ValueKey<String>('player-controls-surface'),
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                        borderRadius: context.tokens.tileRadius + 4,
+                        glowColor: accent,
+                        child: _PlayerColumn(
+                          track: track,
+                          config: effectiveConfig,
+                          accent: accent,
+                          controller: controller,
+                          onOpenQueue: () => _openQueueSheet(accent),
+                        ),
                       ),
                     ),
                   ),
@@ -373,11 +381,25 @@ class _PlayerColumn extends ConsumerWidget {
     final String? error = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.error),
     );
+    final bool playing = ref.watch(
+      playerControllerProvider.select((PlayerUiState s) => s.playing),
+    );
+    final AppSection selectedSection = ref.watch(appSectionProvider);
+
+    // El ⋮ ya no flota en el shell: vive en la cabecera, debajo del corazón.
+    final Widget moreControls = _QuickActions(
+      key: const ValueKey<String>('player-more'),
+      accent: accent,
+      playing: playing,
+      selectedSection: selectedSection,
+      onNavigate: (AppSection section) =>
+          ref.read(appSectionProvider.notifier).state = section,
+    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
-        _TrackHeader(track: track, accent: accent),
+        _TrackHeader(track: track, accent: accent, moreControls: moreControls),
         const SizedBox(height: 14),
         _ProgressSection(
           config: config,
@@ -391,15 +413,8 @@ class _PlayerColumn extends ConsumerWidget {
           controller: controller,
           accent: config.usesDynamicPalette ? accent : config.volumeColor,
         ),
-        const SizedBox(height: 6),
-        _QuickActions(
-          accent: accent,
-          playing: ref.watch(
-            playerControllerProvider.select((PlayerUiState s) => s.playing),
-          ),
-        ),
         if (onOpenQueue != null) ...<Widget>[
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           _QueueButton(accent: accent, onPressed: onOpenQueue!),
         ],
         if (sleepActive) _SleepBadge(controller: controller),
@@ -458,17 +473,28 @@ class _QueueButton extends ConsumerWidget {
     return Semantics(
       button: true,
       label: 'Cola / Lista de reproducción, $count pistas',
-      child: IconButton(
-        tooltip: 'Cola ($count)',
-        onPressed: onPressed,
-        color: accent,
-        icon: const Icon(Icons.queue_music_rounded, size: 22),
-        style: IconButton.styleFrom(
-          backgroundColor: accent.withValues(alpha: 0.08),
-          minimumSize: const Size(44, 44),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-            side: BorderSide(color: accent.withValues(alpha: 0.28)),
+      child: SizedBox(
+        width: double.infinity,
+        child: Tooltip(
+          message: 'Cola ($count)',
+          child: TextButton.icon(
+            onPressed: onPressed,
+            icon: Icon(Icons.queue_music_rounded, size: 20, color: accent),
+            label: Text(
+              'Cola / Lista de reproducción ($count)',
+              style: TextStyle(
+                color: context.onPanel,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            style: TextButton.styleFrom(
+              alignment: Alignment.centerLeft,
+              foregroundColor: context.onPanel,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              minimumSize: const Size(0, 40),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
           ),
         ),
       ),
@@ -579,10 +605,17 @@ class _QueueSheet extends ConsumerWidget {
 }
 
 class _TrackHeader extends ConsumerWidget {
-  const _TrackHeader({required this.track, required this.accent});
+  const _TrackHeader({
+    required this.track,
+    required this.accent,
+    required this.moreControls,
+  });
 
   final Track track;
   final Color accent;
+
+  /// Menú ⋮ del reproductor, colocado justo debajo del corazón.
+  final Widget moreControls;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -638,56 +671,70 @@ class _TrackHeader extends ConsumerWidget {
             ),
           ),
 
-          // Botón de propiedades (accesible con clic derecho en toda la UI)
-          Container(
-            margin: const EdgeInsets.only(left: 8),
-            child: IconButton(
-              onPressed: () => TrackPropertiesModal.show(
-                context: context,
-                track: track,
-                accent: accent,
-                // Lectura única al abrir el diálogo: sin streams ni polling.
-                technicalInfo: ref
-                    .read(audioEngineProvider)
-                    .readTechnicalInfo(),
-              ),
-              iconSize: 20,
-              tooltip: 'Propiedades de la pista',
-              icon: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[
-                      accent.withValues(alpha: 0.2),
-                      accent.withValues(alpha: 0.05),
-                    ],
+          // Acciones de la pista apiladas: propiedades y corazón arriba,
+          // menú ⋮ justo debajo del corazón y dentro del mismo panel.
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: <Widget>[
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  // Botón de propiedades (clic derecho en toda la UI).
+                  Container(
+                    margin: const EdgeInsets.only(left: 4),
+                    child: IconButton(
+                      onPressed: () => TrackPropertiesModal.show(
+                        context: context,
+                        track: track,
+                        accent: accent,
+                        // Lectura única al abrir el diálogo.
+                        technicalInfo: ref
+                            .read(audioEngineProvider)
+                            .readTechnicalInfo(),
+                      ),
+                      iconSize: 20,
+                      tooltip: 'Propiedades de la pista',
+                      icon: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: <Color>[
+                              accent.withValues(alpha: 0.2),
+                              accent.withValues(alpha: 0.05),
+                            ],
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.info_outline_rounded,
+                          color: accent,
+                          size: 18,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-                child: Icon(
-                  Icons.info_outline_rounded,
-                  color: accent,
-                  size: 18,
-                ),
+                  AnimatedFavoriteButton(
+                    key: ValueKey<int>(track.id),
+                    isFavorite: track.isFavorite,
+                    enabled: track.isPersisted,
+                    accent: accent,
+                    tooltip: !track.isPersisted
+                        ? 'Descarga la pista para guardarla'
+                        : track.isFavorite
+                        ? 'Quitar de favoritos'
+                        : 'Añadir a favoritos',
+                    onPressed: () => ref
+                        .read(playerControllerProvider.notifier)
+                        .setFavorite(!track.isFavorite),
+                  ),
+                ],
               ),
-            ),
-          ),
-
-          AnimatedFavoriteButton(
-            key: ValueKey<int>(track.id),
-            isFavorite: track.isFavorite,
-            enabled: track.isPersisted,
-            accent: accent,
-            tooltip: !track.isPersisted
-                ? 'Descarga la pista para guardarla'
-                : track.isFavorite
-                ? 'Quitar de favoritos'
-                : 'Añadir a favoritos',
-            onPressed: () => ref
-                .read(playerControllerProvider.notifier)
-                .setFavorite(!track.isFavorite),
+              const SizedBox(height: 2),
+              moreControls,
+            ],
           ),
         ],
       ),
@@ -1574,10 +1621,18 @@ class _SleepBadge extends ConsumerWidget {
 /// el mismo botón dos veces en la pantalla. Las barras solo se mueven mientras
 /// reproduce y el perfil de movimiento lo permite.
 class _QuickActions extends ConsumerStatefulWidget {
-  const _QuickActions({required this.accent, required this.playing});
+  const _QuickActions({
+    super.key,
+    required this.accent,
+    required this.playing,
+    required this.onNavigate,
+    this.selectedSection = AppSection.player,
+  });
 
   final Color accent;
   final bool playing;
+  final ValueChanged<AppSection> onNavigate;
+  final AppSection selectedSection;
 
   @override
   ConsumerState<_QuickActions> createState() => _QuickActionsState();
@@ -1632,6 +1687,7 @@ class _QuickActionsState extends ConsumerState<_QuickActions>
   @override
   Widget build(BuildContext context) {
     final Color accent = widget.accent;
+    final DesignLanguage language = context.tokens.designLanguage;
     final bool pure = ref.watch(
       equalizerControllerProvider.select((s) => s.pure),
     );
@@ -1657,8 +1713,8 @@ class _QuickActionsState extends ConsumerState<_QuickActions>
       ),
     );
 
-    // El reproductor conserva solo iconos: las acciones secundarias viven en
-    // este desplegable para no competir con los controles de transporte.
+    // El ⋮ sustituye al botón flotante del shell: reúne los controles
+    // secundarios y la navegación a las otras tres secciones.
     return PopupMenuButton<String>(
       tooltip: 'Más controles del reproductor',
       color: context.tokens.panelOverlay,
@@ -1668,11 +1724,20 @@ class _QuickActionsState extends ConsumerState<_QuickActions>
         side: BorderSide(color: context.tokens.panelBorder),
       ),
       icon: Icon(
-        Icons.more_horiz_rounded,
+        Icons.more_vert_rounded,
         size: 22,
         color: context.inkAlpha(0.62),
       ),
       onSelected: (String action) {
+        if (action.startsWith('section:')) {
+          final String name = action.substring('section:'.length);
+          widget.onNavigate(
+            AppSection.values.firstWhere(
+              (AppSection section) => section.name == name,
+            ),
+          );
+          return;
+        }
         switch (action) {
           case 'output':
             unawaited(AudioOutputSheet.show(context));
@@ -1716,6 +1781,26 @@ class _QuickActionsState extends ConsumerState<_QuickActions>
               : 'Sin filtros; tu curva se conserva.',
           accent: accent,
           selected: pure,
+        ),
+        const PopupMenuDivider(),
+        ...AppSection.values.map(
+          (AppSection section) => _quickAction(
+            value: 'section:${section.name}',
+            icon: Icon(
+              section == widget.selectedSection
+                  ? section.activeIcon
+                  : section.icon,
+              size: 20,
+            ),
+            label: language.uppercaseLabels
+                ? section.label.toUpperCase()
+                : section.label,
+            subtitle: section == widget.selectedSection
+                ? 'Sección actual'
+                : 'Ir a ${section.label}',
+            accent: accent,
+            selected: section == widget.selectedSection,
+          ),
         ),
       ],
     );

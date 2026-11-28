@@ -296,15 +296,28 @@ class PolarisTokens extends ThemeExtension<PolarisTokens> {
     final Color baseColor = color ?? (isMatte ? panelOverlay : panelColor);
     final Gradient? effective =
         gradient ?? finishGradient(phase, base: baseColor);
+    BoxBorder? border = borderColor != null
+        ? Border.all(color: borderColor, width: designLanguage.borderWidth)
+        : designLanguage.borderWidth == 0
+        ? null
+        : specularPanelBorder;
+    // Flutter no permite esquinas redondeadas con lados de colores distintos.
+    // El borde especular se conserva como color medio para que ningún panel
+    // con radio (polaris_surface, paneles de lista, ecualizador...) reviente al
+    // pintarse en modo debug.
+    if (border is Border && !border.isUniform) {
+      border = Border.all(
+        color:
+            Color.lerp(border.top.color, border.bottom.color, 0.5) ??
+            panelBorder,
+        width: (border.top.width + border.bottom.width) / 2,
+      );
+    }
     return BoxDecoration(
       color: effective == null ? baseColor : null,
       gradient: effective,
       borderRadius: BorderRadius.circular(radius ?? panelRadius),
-      border: borderColor != null
-          ? Border.all(color: borderColor, width: designLanguage.borderWidth)
-          : designLanguage.borderWidth == 0
-          ? null
-          : specularPanelBorder,
+      border: border,
       boxShadow: elevated ? panelShadows(glow: glowEdge ? glow : null) : null,
     );
   }

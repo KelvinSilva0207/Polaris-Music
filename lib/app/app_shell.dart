@@ -31,6 +31,13 @@ import '../shared/widgets/motion_scope.dart';
 import '../shared/widgets/window_title_bar.dart';
 import 'app_navigation.dart';
 
+/// Hueco inferior reservado por el shell.
+///
+/// En el reproductor no hay mini barra ni botón flotante: solo se conserva el
+/// inset del sistema para que la pantalla use todo el espacio visible.
+double navClearanceFor(AppSection section, double bottomInset) =>
+    section == AppSection.player ? bottomInset : bottomInset + 84;
+
 /// Estructura principal: barra flotante de cuatro secciones, mini reproductor
 /// persistente y adaptación a los modos de ventana de escritorio.
 class AppShell extends ConsumerStatefulWidget {
@@ -263,15 +270,14 @@ class _AppShellState extends ConsumerState<AppShell>
           _togglePlayback();
           return KeyEventResult.handled;
         },
-        child: Builder(
-          builder: (BuildContext context) {
+        child: Consumer(
+          builder: (BuildContext context, WidgetRef ref, Widget? _) {
+            final AppSection section = ref.watch(appSectionProvider);
             final bool android = Platform.isAndroid;
-            // Reservamos el hueco inferior para el mini-reproductor y el botón
-            // de navegación de tres puntos. En Android se añade además el área
-            // del sistema (gestos/navegación).
-            final double navClearance = android
-                ? MediaQuery.viewPaddingOf(context).bottom + 84
-                : 84;
+            final double bottomInset = android
+                ? MediaQuery.viewPaddingOf(context).bottom
+                : 0;
+            final double navClearance = navClearanceFor(section, bottomInset);
 
             return Stack(
               fit: StackFit.expand,
@@ -287,104 +293,93 @@ class _AppShellState extends ConsumerState<AppShell>
                       children: <Widget>[
                         if (Platform.isWindows) const WindowTitleBar(),
                         Expanded(
-                          child: Consumer(
-                            builder: (BuildContext context, WidgetRef ref, Widget? _) {
-                              final AppSection section = ref.watch(
-                                appSectionProvider,
-                              );
-                              return Column(
-                                children: <Widget>[
-                                  Expanded(
-                                    child: Padding(
-                                      // La barra va abajo en todas las
-                                      // plataformas; el hueco se reserva
-                                      // con `navClearance`.
-                                      padding: EdgeInsets.zero,
-                                      // Mantiene las cuatro secciones
-                                      // montadas (como el IndexedStack) pero
-                                      // desliza/desvanece según la dirección
-                                      // del cambio de índice. Cada hijo lleva
-                                      // su propio TickerMode para detener el
-                                      // vinilo y los pulsos de la pestaña
-                                      // oculta sin congelar la transición.
-                                      child: DirectionalSectionStack(
-                                        index: section.index,
-                                        duration: context.motion.duration(
-                                          const Duration(milliseconds: 340),
-                                        ),
-                                        distance: 0.10,
-                                        children: _screens,
-                                      ),
-                                    ),
-                                  ),
-                                  AnimatedSwitcher(
+                          child: Column(
+                            children: <Widget>[
+                              Expanded(
+                                child: Padding(
+                                  // Mantiene las cuatro secciones montadas
+                                  // (como el IndexedStack) pero desliza y
+                                  // desvanece según el cambio de índice. Cada
+                                  // hijo lleva su TickerMode para detener el
+                                  // vinilo de la pestaña oculta.
+                                  padding: EdgeInsets.zero,
+                                  child: DirectionalSectionStack(
+                                    index: section.index,
                                     duration: context.motion.duration(
-                                      const Duration(milliseconds: 320),
+                                      const Duration(milliseconds: 340),
                                     ),
-                                    switchInCurve: Curves.easeOutBack,
-                                    switchOutCurve: Curves.easeInCubic,
-                                    // El mini que sale es un panel decorado;
-                                    // pintarlo durante la transición deja
-                                    // un rectángulo justo encima de la barra.
-                                    layoutBuilder:
-                                        (
-                                          Widget? currentChild,
-                                          List<Widget> previousChildren,
-                                        ) => Stack(
-                                          alignment: Alignment.center,
-                                          children: <Widget>[
-                                            Offstage(
-                                              offstage: true,
-                                              child: Stack(
-                                                alignment: Alignment.center,
-                                                children: previousChildren,
-                                              ),
-                                            ),
-                                            ?currentChild,
-                                          ],
-                                        ),
-                                    transitionBuilder:
-                                        (
-                                          Widget child,
-                                          Animation<double> animation,
-                                        ) {
-                                          return SlideTransition(
-                                            position: Tween<Offset>(
-                                              begin: const Offset(0, 0.4),
-                                              end: Offset.zero,
-                                            ).animate(animation),
-                                            child: FadeTransition(
-                                              opacity: animation,
-                                              child: child,
-                                            ),
-                                          );
-                                        },
-                                    child: section != AppSection.player
-                                        ? SizedBox(
-                                            key: const ValueKey<String>('mini'),
-                                            child: CompactThemeScope(
-                                              surface: CompactSurface.mini,
-                                              child: MiniPlayerBar(
-                                                onOpen: () => _goToSection(
-                                                  AppSection.player,
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                        : const SizedBox.shrink(
-                                            key: ValueKey<String>('no-mini'),
-                                          ),
+                                    distance: 0.10,
+                                    children: _screens,
                                   ),
-                                ],
-                              );
-                            },
+                                ),
+                              ),
+                              AnimatedSwitcher(
+                                duration: context.motion.duration(
+                                  const Duration(milliseconds: 320),
+                                ),
+                                switchInCurve: Curves.easeOutBack,
+                                switchOutCurve: Curves.easeInCubic,
+                                // El mini que sale es un panel decorado;
+                                // pintarlo durante la transición deja un
+                                // rectángulo justo encima de la barra.
+                                layoutBuilder:
+                                    (
+                                      Widget? currentChild,
+                                      List<Widget> previousChildren,
+                                    ) => Stack(
+                                      alignment: Alignment.center,
+                                      children: <Widget>[
+                                        Offstage(
+                                          offstage: true,
+                                          child: Stack(
+                                            alignment: Alignment.center,
+                                            children: previousChildren,
+                                          ),
+                                        ),
+                                        ?currentChild,
+                                      ],
+                                    ),
+                                transitionBuilder:
+                                    (
+                                      Widget child,
+                                      Animation<double> animation,
+                                    ) {
+                                      return SlideTransition(
+                                        position: Tween<Offset>(
+                                          begin: const Offset(0, 0.4),
+                                          end: Offset.zero,
+                                        ).animate(animation),
+                                        child: FadeTransition(
+                                          opacity: animation,
+                                          child: child,
+                                        ),
+                                      );
+                                    },
+                                child: section != AppSection.player
+                                    ? SizedBox(
+                                        key: const ValueKey<String>('mini'),
+                                        child: CompactThemeScope(
+                                          surface: CompactSurface.mini,
+                                          child: MiniPlayerBar(
+                                            onOpen: () =>
+                                                _goToSection(AppSection.player),
+                                          ),
+                                        ),
+                                      )
+                                    : const SizedBox.shrink(
+                                        key: ValueKey<String>('no-mini'),
+                                      ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                   ),
                 ),
-                const _NavOverflowMenu(),
+                // En el reproductor el ⋮ vive dentro del panel de controles,
+                // justo debajo del corazón. Aquí solo duplicaría el menú.
+                if (section != AppSection.player) const _NavOverflowMenu(),
                 if (Platform.isWindows) const _SidePeekTab(),
               ],
             );
