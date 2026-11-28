@@ -25,6 +25,7 @@ import 'package:polaris_music/core/theme/compact_style_config.dart';
 import 'package:polaris_music/features/equalizer/domain/equalizer_controller.dart';
 import 'package:polaris_music/features/equalizer/presentation/equalizer_providers.dart';
 import 'package:polaris_music/features/player/domain/player_controller.dart';
+import 'package:polaris_music/features/player/presentation/artwork_gestures.dart';
 import 'package:polaris_music/features/player/presentation/audio_output_providers.dart';
 import 'package:polaris_music/features/player/presentation/now_playing_screen.dart';
 import 'package:polaris_music/features/player/presentation/player_providers.dart';
@@ -263,6 +264,28 @@ void main() {
     await tester.tap(find.text('Biblioteca'));
     await tester.pumpAndSettle();
     expect(find.text('section:library'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('la carátula cambia sin transición pero conserva los gestos', (
+    WidgetTester tester,
+  ) async {
+    await _pumpPlayer(tester);
+
+    final Finder artwork = find.byKey(
+      const ValueKey<String>('artwork-7-squareRounded'),
+    );
+    expect(artwork, findsOneWidget);
+    expect(
+      find.ancestor(of: artwork, matching: find.byType(AnimatedSwitcher)),
+      findsNothing,
+      reason: 'el fundido/deslizamiento al cambiar de pista se quitó',
+    );
+    expect(
+      find.descendant(of: artwork, matching: find.byType(ArtworkGestures)),
+      findsOneWidget,
+      reason: 'el preview y el aura al arrastrar siguen activos',
+    );
     expect(tester.takeException(), isNull);
   });
 }

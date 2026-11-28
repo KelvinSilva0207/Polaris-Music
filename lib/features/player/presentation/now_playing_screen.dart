@@ -2369,69 +2369,6 @@ class _QueueWavePainter extends CustomPainter {
 // Carátula adaptativa
 // ---------------------------------------------------------------------------
 
-/// Fundido cinematográfico entre carátula y letras y entre pistas.
-///
-/// La dirección del deslizamiento se deriva del cambio de posición en el orden
-/// activo; así funciona igual con la cola secuencial que con el espejo barajado
-/// y no depende de comparar ids ni carátulas.
-class _CinematicSwitcher extends StatefulWidget {
-  const _CinematicSwitcher({required this.position, required this.child});
-
-  final int position;
-  final Widget child;
-
-  @override
-  State<_CinematicSwitcher> createState() => _CinematicSwitcherState();
-}
-
-class _CinematicSwitcherState extends State<_CinematicSwitcher> {
-  bool _forward = true;
-
-  @override
-  void didUpdateWidget(covariant _CinematicSwitcher oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.position != widget.position) {
-      _forward = widget.position > oldWidget.position;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedSwitcher(
-      duration: context.motion.duration(const Duration(milliseconds: 460)),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      // El layout por defecto apila la pista saliente sobre la entrante; eso
-      // produce el "ghost". Solo pintamos la entrante y conservamos el
-      // fundido/deslazamiento/escala de la transición.
-      layoutBuilder: (Widget? currentChild, List<Widget> previousChildren) =>
-          currentChild ?? const SizedBox.shrink(),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        final bool toLyrics =
-            child.key is ValueKey<String> &&
-            (child.key as ValueKey<String>).value.startsWith('artwork-lyrics');
-        final Offset begin = toLyrics
-            ? const Offset(0, 0.10)
-            : Offset(_forward ? 0.16 : -0.16, 0);
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position: Tween<Offset>(
-              begin: begin,
-              end: Offset.zero,
-            ).animate(animation),
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.94, end: 1).animate(animation),
-              child: child,
-            ),
-          ),
-        );
-      },
-      child: widget.child,
-    );
-  }
-}
-
 class _ArtworkStage extends ConsumerWidget {
   const _ArtworkStage({
     required this.track,
@@ -2629,8 +2566,8 @@ class _PlayerStage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Posición en el orden activo: decide si la transición entra desde la
-    // derecha (siguiente) o desde la izquierda (anterior), también en shuffle.
+    // Posición en el orden activo: elige las carátulas vecinas del preview de
+    // gestos, también con la cola barajada.
     final int position = ref.watch(
       playerControllerProvider.select((PlayerUiState s) => s.playback.index),
     );
@@ -2690,8 +2627,11 @@ class _PlayerStage extends ConsumerWidget {
             ),
           );
 
-    final Widget stage = _CinematicSwitcher(position: position, child: child);
-    return expanded ? SizedBox.expand(child: stage) : stage;
+    // Cambio de pista y de carátula/letras sin transición: las claves de los
+    // KeyedSubtree siguen garantizando que el Estado se reinicie, pero el
+    // contenido aparece directamente. Los gestos (preview y aura) viven en
+    // _ArtworkStage y no se tocan.
+    return expanded ? SizedBox.expand(child: child) : child;
   }
 }
 
