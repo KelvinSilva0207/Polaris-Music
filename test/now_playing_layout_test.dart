@@ -22,6 +22,7 @@ import 'package:polaris_music/core/services/window_service.dart';
 import 'package:polaris_music/core/theme/app_theme.dart';
 import 'package:polaris_music/core/theme/app_theme_config.dart';
 import 'package:polaris_music/core/theme/compact_style_config.dart';
+import 'package:polaris_music/core/utils/lrc_parser.dart';
 import 'package:polaris_music/features/equalizer/domain/equalizer_controller.dart';
 import 'package:polaris_music/features/equalizer/presentation/equalizer_providers.dart';
 import 'package:polaris_music/features/player/domain/player_controller.dart';
@@ -29,6 +30,10 @@ import 'package:polaris_music/features/player/presentation/artwork_gestures.dart
 import 'package:polaris_music/features/player/presentation/audio_output_providers.dart';
 import 'package:polaris_music/features/player/presentation/now_playing_screen.dart';
 import 'package:polaris_music/features/player/presentation/player_providers.dart';
+import 'package:polaris_music/features/lyrics/data/lyrics_service.dart';
+import 'package:polaris_music/features/lyrics/presentation/expanded_lyrics_view.dart';
+import 'package:polaris_music/features/lyrics/presentation/lyrics_providers.dart';
+import 'package:polaris_music/shared/widgets/polaris_surface.dart';
 
 import 'support/fake_settings_service.dart';
 
@@ -81,6 +86,24 @@ class _SnapshotEqualizerController extends EqualizerController {
     SettingsService settings,
     AudioEngineService engine,
   ) : super(db.eqDao, settings, engine);
+}
+
+class _FakeLyricsService extends LyricsService {
+  _FakeLyricsService(super.dao);
+
+  @override
+  Future<LyricsResult?> resolve(Track track, {bool allowOnline = true}) async {
+    return LyricsResult(
+      source: 'local',
+      document: LrcDocument(
+        synced: true,
+        lines: <LyricLine>[
+          const LyricLine(time: Duration.zero, text: 'Primera línea'),
+          const LyricLine(time: Duration(seconds: 20), text: 'Segunda línea'),
+        ],
+      ),
+    );
+  }
 }
 
 /// Ejecutor inerte: el DAO del ecualizador nunca recibe consultas en este test.
@@ -162,6 +185,7 @@ Future<void> _pumpPlayer(WidgetTester tester) async {
       overrides: <Override>[
         playerControllerProvider.overrideWith((Ref ref) => player),
         audioEngineProvider.overrideWithValue(engine),
+        settingsServiceProvider.overrideWithValue(settings),
         themeConfigProvider.overrideWithValue(AppThemeConfig.defaults),
         compactStyleProvider(CompactSurface.player)
             .overrideWithValue(CompactStyleConfig.player),
@@ -174,6 +198,9 @@ Future<void> _pumpPlayer(WidgetTester tester) async {
         audioOutputSelectionProvider.overrideWith((Ref ref) => output),
         equalizerControllerProvider.overrideWith(
           (Ref ref) => _SnapshotEqualizerController(db, settings, engine),
+        ),
+        lyricsServiceProvider.overrideWithValue(
+          _FakeLyricsService(db.lyricsDao),
         ),
       ],
       child: MaterialApp(
@@ -285,6 +312,46 @@ void main() {
       find.descendant(of: artwork, matching: find.byType(ArtworkGestures)),
       findsOneWidget,
       reason: 'el preview y el aura al arrastrar siguen activos',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('las letras se muestran dentro del reproductor sin recuadro', (
+    WidgetTester tester,
+  ) async {
+    await _pumpPlayer(tester);
+    final TestGesture swipe = await tester.startGesture(
+      tester.getCenter(find.byType(ArtworkGestures)),
+    );
+    await swipe.moveBy(const Offset(0, -60));
+    await swipe.up();
+    await tester.pumpAndSettle();
+
+    final Finder lyrics = find.byType(ExpandedLyricsView);
+    expect(lyrics, findsOneWidget);
+    expect(
+      find.descendant(of: lyrics, matching: find.byType(PolarisSurface)),
+      findsNothing,
+      reason: 'la letra no debe tener superficie, borde ni sombra propios',
+    );
+    expect(
+      find.descendant(of: lyrics, matching: find.byType(Divider)),
+      findsNothing,
+      reason: 'el panel no debe quedar separado del reproductor',
+    );
+    expect(
+      find.text('Toca una línea para saltar a ese instante'),
+      findsNothing,
+    );
+    expect(find.text('Primera línea'), findsOneWidget);
+    expect(find.byTooltip('Opciones de letra'), findsOneWidget);
+    expect(find.byTooltip('Volver a la carátula'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Volver a la carátula'));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('artwork-7-squareRounded')),
+      findsOneWidget,
     );
     expect(tester.takeException(), isNull);
   });

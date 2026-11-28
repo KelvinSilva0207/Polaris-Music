@@ -136,8 +136,8 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
         final LyricHighlight highlight = language.lyricHighlight;
         final FontWeight bodyWeight =
             tokens.typography?.lyrics ?? FontWeight.w600;
-        final double activeSize = widget.immersive ? 34 : 22;
-        final double normalSize = widget.immersive ? 24 : 17;
+        final double activeSize = widget.immersive ? 32 : 22;
+        final double normalSize = widget.immersive ? 23 : 17;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -151,10 +151,13 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
               onImport: widget.onImport,
               onEdit: widget.onEdit,
             ),
-            if (widget.onSeek != null)
+            // Dentro del reproductor la letra no lleva ayudas ni divisores:
+            // la pista ya está en la barra de progreso y el panel sería otro
+            // recuadro dentro del mismo espacio.
+            if (!widget.immersive && widget.onSeek != null)
               Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: widget.immersive ? 18 : 12,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
                   vertical: 2,
                 ),
                 child: Text(
@@ -165,7 +168,7 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                   ),
                 ),
               ),
-            const Divider(height: 1),
+            if (!widget.immersive) const Divider(height: 1),
             Expanded(
               child: ShaderMask(
                 // Los bordes se desvanecen para que la letra aparezca y
@@ -185,7 +188,7 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                 child: ListView.builder(
                   key: const PageStorageKey<String>('polaris-lyrics'),
                   padding: widget.immersive
-                      ? const EdgeInsets.fromLTRB(28, 44, 28, 96)
+                      ? const EdgeInsets.fromLTRB(24, 8, 24, 96)
                       : const EdgeInsets.fromLTRB(20, 24, 20, 48),
                   itemCount: document.lines.length,
                   itemBuilder: (BuildContext context, int index) {
@@ -239,8 +242,12 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                                 color: isActive
                                     ? tokens.karaokeColor
                                     : isPast
-                                    ? context.onPanel.withValues(alpha: 0.52)
-                                    : context.onPanel.withValues(alpha: 0.92),
+                                    ? context.onPanel.withValues(
+                                        alpha: widget.immersive ? 0.34 : 0.52,
+                                      )
+                                    : context.onPanel.withValues(
+                                        alpha: widget.immersive ? 0.76 : 0.92,
+                                      ),
                                 decoration:
                                     isActive &&
                                         highlight == LyricHighlight.underline
@@ -265,7 +272,11 @@ class _LyricsPanelState extends ConsumerState<LyricsPanel> {
                               ),
                               textAlign: TextAlign.center,
                               child: _decorateLyricLine(
-                                highlight: highlight,
+                                // En el reproductor ninguna línea lleva marco:
+                                // solo tipografía, peso y color del tema.
+                                highlight: widget.immersive
+                                    ? LyricHighlight.none
+                                    : highlight,
                                 active: isActive,
                                 accent: tokens.karaokeColor,
                                 radius: language.tileRadius,
@@ -501,14 +512,14 @@ class _PlainLyrics extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       padding: immersive
-          ? const EdgeInsets.fromLTRB(28, 28, 28, 96)
+          ? const EdgeInsets.fromLTRB(24, 8, 24, 96)
           : const EdgeInsets.fromLTRB(20, 20, 20, 48),
       children: <Widget>[
         Text(
           'Letra sin sincronía · $source',
           style: TextStyle(
             fontSize: 11,
-            color: context.onPanel.withValues(alpha: 0.50),
+            color: context.onPanel.withValues(alpha: immersive ? 0.42 : 0.50),
           ),
         ),
         const SizedBox(height: 16),
@@ -516,9 +527,9 @@ class _PlainLyrics extends StatelessWidget {
           text,
           textAlign: immersive ? TextAlign.center : TextAlign.start,
           style: TextStyle(
-            fontSize: immersive ? 24 : 18,
+            fontSize: immersive ? 23 : 18,
             height: 1.5,
-            color: context.onPanel.withValues(alpha: 0.92),
+            color: context.onPanel.withValues(alpha: immersive ? 0.76 : 0.92),
             fontWeight: context.tokens.typography?.lyrics ?? FontWeight.w600,
           ),
         ),

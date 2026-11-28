@@ -8,7 +8,6 @@ import '../../../core/models/track.dart';
 import '../../../core/providers/app_providers.dart';
 import '../../../core/theme/theme_tokens.dart';
 import '../../../core/utils/lrc_parser.dart';
-import '../../../shared/widgets/polaris_surface.dart';
 import '../../player/presentation/player_providers.dart';
 import '../data/lyrics_service.dart';
 import 'lyrics_editor_dialog.dart';
@@ -118,77 +117,72 @@ class _ExpandedLyricsViewState extends ConsumerState<ExpandedLyricsView> {
     ref.watch(settingsValuesProvider);
     final bool karaoke = ref.read(settingsServiceProvider).karaokeEnabled;
 
-    return PolarisSurface(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 6),
-      borderRadius: context.tokens.tileRadius + 6,
-      glowColor: widget.accent,
+    // Sin superficie propia: la letra usa el mismo lienzo que el reproductor.
+    // Solo una fila de controles muy discreta la separa del resto del player.
+    return Material(
+      // Material transparente: da contexto a IconButton/InkWell sin dibujar
+      // superficie, borde ni sombra. La letra comparte el lienzo del player.
+      type: MaterialType.transparency,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Icon(Icons.lyrics_rounded, size: 18, color: widget.accent),
-              const SizedBox(width: 8),
-              Text(
-                'Letras',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: ink.withValues(alpha: 0.88),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: <Widget>[
+                const Spacer(),
+                IconButton(
+                  tooltip: karaoke
+                      ? 'Desactivar karaoke'
+                      : 'Karaoke: resalta cada palabra',
+                  onPressed: synced ? () => _toggleKaraoke(karaoke) : null,
+                  icon: Icon(
+                    karaoke ? Icons.lyrics_rounded : Icons.lyrics_outlined,
+                    size: 19,
+                    color: karaoke
+                        ? widget.accent
+                        : ink.withValues(alpha: synced ? 0.6 : 0.25),
+                  ),
+                  visualDensity: VisualDensity.compact,
                 ),
-              ),
-              const Spacer(),
-              IconButton(
-                tooltip: karaoke
-                    ? 'Desactivar karaoke'
-                    : 'Karaoke: resalta cada palabra',
-                onPressed: synced ? () => _toggleKaraoke(karaoke) : null,
-                icon: Icon(
-                  karaoke ? Icons.lyrics_rounded : Icons.lyrics_outlined,
-                  size: 20,
-                  color: karaoke
-                      ? widget.accent
-                      : ink.withValues(alpha: synced ? 0.72 : 0.3),
+                PopupMenuButton<String>(
+                  tooltip: 'Opciones de letra',
+                  icon: Icon(
+                    Icons.more_vert_rounded,
+                    size: 19,
+                    color: ink.withValues(alpha: 0.6),
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onSelected: _onMenuSelected,
+                  itemBuilder: (BuildContext context) =>
+                      const <PopupMenuEntry<String>>[
+                        PopupMenuItem<String>(
+                          value: 'download',
+                          child: Text('Buscar letra en LRCLIB'),
+                        ),
+                        PopupMenuItem<String>(
+                          value: 'import',
+                          child: Text('Importar archivo .lrc'),
+                        ),
+                        PopupMenuItem<String>(
+                          value: 'edit',
+                          child: Text('Crear o sincronizar letra'),
+                        ),
+                      ],
                 ),
-                visualDensity: VisualDensity.compact,
-              ),
-              PopupMenuButton<String>(
-                tooltip: 'Opciones de letra',
-                icon: Icon(
-                  Icons.more_vert_rounded,
-                  size: 20,
-                  color: ink.withValues(alpha: 0.72),
+                IconButton(
+                  tooltip: 'Volver a la carátula',
+                  onPressed: widget.onClose,
+                  icon: Icon(
+                    Icons.close_rounded,
+                    size: 19,
+                    color: ink.withValues(alpha: 0.6),
+                  ),
+                  visualDensity: VisualDensity.compact,
                 ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onSelected: _onMenuSelected,
-                itemBuilder: (BuildContext context) =>
-                    const <PopupMenuEntry<String>>[
-                      PopupMenuItem<String>(
-                        value: 'download',
-                        child: Text('Buscar letra en LRCLIB'),
-                      ),
-                      PopupMenuItem<String>(
-                        value: 'import',
-                        child: Text('Importar archivo .lrc'),
-                      ),
-                      PopupMenuItem<String>(
-                        value: 'edit',
-                        child: Text('Crear o sincronizar letra'),
-                      ),
-                    ],
-              ),
-              IconButton(
-                tooltip: 'Volver a la carátula',
-                onPressed: widget.onClose,
-                icon: Icon(
-                  Icons.close_rounded,
-                  size: 20,
-                  color: ink.withValues(alpha: 0.72),
-                ),
-                visualDensity: VisualDensity.compact,
-              ),
-            ],
+              ],
+            ),
           ),
           if (_notice != null)
             Padding(
@@ -203,7 +197,6 @@ class _ExpandedLyricsViewState extends ConsumerState<ExpandedLyricsView> {
                 ),
               ),
             ),
-          const SizedBox(height: 4),
           Expanded(
             child: LyricsPanel(
               track: widget.track,
